@@ -129,7 +129,11 @@ except:
 D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=dtype )
 D_test  =  set_Dataset_attributes( data.D_val, device=DEVICE, dtype=dtype ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
 data_is_univariate = (D_train[0][0].numel()==1)
-
+try:
+    scale = data.scale
+    conditional_std /= scale
+except:
+    pass
 
 
 ### ~~~
@@ -164,26 +168,23 @@ if data_is_univariate:
     #
     # ~~~ Define the main plotting routine
     plot_predictions = plot_bnn_empirical_quantiles if visualize_bnn_using_quantiles else plot_bnn_mean_and_std
-    def plot_esnsemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble, predictions_include_conditional_std=extra_std, how_many_individual_predictions=how_many_individual_predictions, title=description_of_the_experiment ):
+    def plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble, extra_std=(conditional_std if extra_std else 0.), how_many_individual_predictions=how_many_individual_predictions, title=description_of_the_experiment ):
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
             predictions = ensemble(grid).squeeze().T
-            if predictions_include_conditional_std:
-                predictions += ensemble.conditional_std * torch.randn_like(predictions)
-        return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, predictions_include_conditional_std, how_many_individual_predictions, title )
+        return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, how_many_individual_predictions, title )
     #
     # ~~~ Plot the state of the posterior predictive distribution upon its initialization
     if make_gif:
         gif = GifMaker()      # ~~~ essentially just a list of images
         fig,ax = plt.subplots(figsize=(12,6))
-        fig,ax = plot_esnsemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
+        fig,ax = plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
         for j in range(initial_frame_repetitions):
             gif.capture( clear_frame_upon_capture=(j+1==initial_frame_repetitions) )
 
 #
 # ~~~ Do the actual training loop
-K_history, grads_of_K_history = [], []
 with support_for_progress_bars():   # ~~~ this just supports green progress bars
     pbar = tqdm( desc=description_of_the_experiment, total=n_epochs*len(dataloader), ascii=' >=' )
     for e in range(n_epochs):
@@ -191,17 +192,14 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
         # ~~~ Training logic
         for X, y in dataloader:
             X, y = X.to(DEVICE), y.to(DEVICE)
-            # ensemble.train_step(X,y)
-            K, grads_of_K = ensemble.train_step(X,y)
-            K_history.append( (torch.eye( *K.shape, device=K.device ) - K).abs().mean().item() )
-            grads_of_K_history.append( grads_of_K.abs().mean().item() )
+            ensemble.train_step(X,y)
             _ = pbar.update()
         predictions = ensemble(X)
-        pbar.set_postfix({ "mse of mean": f"{mse_of_mean(predictions,y):<4.2f}" })
+        pbar.set_postfix({ "mse of mean": f"{mse_of_mean(predictions,y):<4.4f}" })
         #
         # ~~~ Plotting logic
-        if make_gif and (e+1)%how_often==0:
-            fig,ax = plot_esnsemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
+        if data_is_univariate and make_gif and (e+1)%how_often==0:
+            fig,ax = plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
             gif.capture()
             # print("captured")
 
@@ -212,7 +210,7 @@ pbar.close()
 if data_is_univariate:
     if not make_gif:    # ~~~ make a plot now
         fig,ax = plt.subplots(figsize=(12,6))
-    fig,ax = plot_esnsemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
+    fig,ax = plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
     if make_gif:
         for j in range(final_frame_repetitions):
             gif.capture( clear_frame_upon_capture=(j+1==final_frame_repetitions) )
