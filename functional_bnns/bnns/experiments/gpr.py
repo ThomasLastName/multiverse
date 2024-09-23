@@ -9,7 +9,7 @@ import torch
 from matplotlib import pyplot as plt
 from importlib import import_module
 import argparse
-imoprt sys
+import sys
 
 #
 # ~~~ The guts of the model
