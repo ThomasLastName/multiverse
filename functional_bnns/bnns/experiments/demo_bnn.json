@@ -15,7 +15,7 @@
 	"post_eta": 0.5,
 	"prior_M": 2000,
 	"post_M": 40,
-    "conditional_std": 0.19,
+	"conditional_std": 0.19,
 	"Optimizer": "Adam",
 	"lr": 0.0005,
 	"batch_size": 64,
@@ -27,7 +27,7 @@
 	"how_many_individual_predictions": 6,
 	"visualize_bnn_using_quantiles": false,
 	"n_posterior_samples": 100,
-    "extra_std": true,
+	"extra_std": true,
 	"n_posterior_samples_evaluation": 1000,
 	"show_diagnostics" : true
 }
