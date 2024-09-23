@@ -262,14 +262,14 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             # history["prior"].append(log_prior_density.item())
             # history["like"].append( log_likelihood_density.item())
             # to_print = {
-            #     "ELBO" : f"{-negative_ELBO.item():<4.2f}",
-            #     "post" : f"{log_posterior_density.item():<4.2f}",
-            #     "prior": f"{log_prior_density.item():<4.2f}",
-            #     "like" : f"{log_likelihood_density.item():<4.2f}"
+            #     "ELBO" : f"{-negative_ELBO.item():<4.4f}",
+            #     "post" : f"{log_posterior_density.item():<4.4f}",
+            #     "prior": f"{log_prior_density.item():<4.4f}",
+            #     "like" : f"{log_likelihood_density.item():<4.4f}"
             # }
             m = X.shape[0]
             accuracy = -( log_likelihood_density.item() + (m/2)*torch.log(2*torch.pi*BNN.conditional_std) )/2 * BNN.conditional_std/m # ~~~ basically, mse if weights are Gaussian, mae if weights are Laplace, etc. maybe off by a factor of 2 or something
-            to_print = { "conventional loss" : f"{accuracy.item():<4.2f}" }
+            to_print = { "conventional loss" : f"{accuracy.item():<4.4f}" }
             pbar.set_postfix(to_print)
             _ = pbar.update()
         #
