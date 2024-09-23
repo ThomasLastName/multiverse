@@ -48,6 +48,7 @@ hyperparameter_template = {
         #
     # ~~~ For metrics and visualization
     "extra_std" : True,
+    "show_diagnostics" : True
 }
 
 #

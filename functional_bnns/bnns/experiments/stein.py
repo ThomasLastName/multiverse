@@ -37,7 +37,6 @@ from quality_of_life.my_base_utils          import support_for_progress_bars, di
 
 #
 # ~~~ Template for what the dictionary of hyperparmeters should look like
-
 hyperparameter_template = {
     #
     # ~~~ Misc.
@@ -69,7 +68,8 @@ hyperparameter_template = {
     #
     # ~~~ For metrics and visualization
     "extra_std" : True,
-    "n_posterior_samples_evaluation" : 1000 # ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
+    "n_posterior_samples_evaluation" : 1000,# ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
+    "show_diagnostics" : True
 }
 
 #

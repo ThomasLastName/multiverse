@@ -76,7 +76,8 @@ hyperparameter_template = {
     #
     # ~~~ For metrics and visualization
     "extra_std" : True,
-    "n_posterior_samples_evaluation" : 1000 # ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
+    "n_posterior_samples_evaluation" : 1000,# ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
+	"show_diagnostics" : True
 }
 
 #
