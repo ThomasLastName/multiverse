@@ -188,7 +188,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-            pbar.set_postfix({ "loss": f"{loss.item():<4.2f}" })
+            pbar.set_postfix({ "loss": f"{loss.item():<4.4f}" })
             _ = pbar.update()
         #
         # ~~~ Plotting logic
