@@ -1,5 +1,5 @@
 
-from bnns.data.missing_middle import x_train, y_train, x_test, y_test, x_val, y_val
+from bnns.data.univar_missing_middle import x_train, y_train, x_test, y_test, x_val, y_val, f
 from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
 
 #
@@ -7,7 +7,7 @@ from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
 scale = 12
 y_train /= scale
 y_test /= scale
-v_val /= scale
+y_val /= scale
 ground_truth = lambda x: f(x)/scale
 
 #
