@@ -1,1 +1,21 @@
-{"DEVICE": "cuda", "dtype": "float", "seed": 2024, "Optimizer": "Adam", "lr": 0.0005, "batch_size": 64, "n_epochs": 5000, "n_MC_samples": 1, "make_gif": false, "how_often": 10, "initial_frame_repetitions": 24, "final_frame_repetitions": 48, "how_many_individual_predictions" : 0, "visualize_bnn_using_quantiles" : true, "n_posterior_samples" : 100, "data": "univar_missing_middle", "model": "univar_NN_dropout", "n_posterior_samples_evaluation" : 1000, "show_diagnostics" : true}
+{
+	"DEVICE": "cuda",
+	"dtype": "float",
+	"seed": 2024,
+	"Optimizer": "Adam",
+	"lr": 0.0005,
+	"batch_size": 64,
+	"n_epochs": 5000,
+	"n_MC_samples": 1,
+	"make_gif": false,
+	"how_often": 10,
+	"initial_frame_repetitions": 24,
+	"final_frame_repetitions": 48,
+	"how_many_individual_predictions" : 0,
+	"visualize_bnn_using_quantiles" : true,
+	"n_posterior_samples" : 100,
+	"data": "bivar_trivial",
+	"model": "bivar_NN_dropout",
+	"n_posterior_samples_evaluation" : 1000,
+	"show_diagnostics" : true
+}
