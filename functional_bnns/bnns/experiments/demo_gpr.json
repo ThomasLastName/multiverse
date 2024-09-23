@@ -1,1 +1,9 @@
-{"DEVICE": "cpu", "dtype": "float", "seed": 2024, "data": "univar_missing_middle", "conditional_std": 0.19, "bw": 0.1, "extra_std": true}
+{
+	"DEVICE": "cpu",
+	"dtype": "float",
+	"seed": 2024,
+	"data": "univar_missing_middle",
+	"conditional_std": 0.19,
+	"bw": 0.1,
+	"extra_std": true
+}
