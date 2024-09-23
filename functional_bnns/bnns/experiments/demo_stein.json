@@ -1,1 +1,24 @@
-{"DEVICE": "cuda", "dtype": "float", "seed": 2024, "data": "bivar_trivial", "model": "bivar_NN", "conditional_std": 0.19, "bw": null, "n_Stein_particles": 100, "Optimizer": "Adam", "lr": 0.001, "batch_size": 64, "n_epochs": 100, "make_gif": false, "how_often": 10, "initial_frame_repetitions": 24, "final_frame_repetitions": 48, "how_many_individual_predictions": 6, "visualize_bnn_using_quantiles": true, "n_posterior_samples": 100, "extra_std": true, "n_posterior_samples_evaluation": 1000, "show_diagnostics" : true}
+{
+	"DEVICE": "cuda",
+	"dtype": "float",
+	"seed": 2024,
+	"data": "univar_missing_middle_normalized_12",
+	"model": "univar_NN",
+	"conditional_std": 0.19,
+	"bw": null,
+	"n_Stein_particles": 100,
+	"Optimizer": "Adam",
+	"lr": 0.005,
+	"batch_size": 64,
+	"n_epochs": 2000,
+	"make_gif": true,
+	"how_often": 100,
+	"initial_frame_repetitions": 24,
+	"final_frame_repetitions": 48,
+	"how_many_individual_predictions": 6,
+	"visualize_bnn_using_quantiles": true,
+	"n_posterior_samples": 100,
+	"extra_std": true,
+	"n_posterior_samples_evaluation": 1000,
+	"show_diagnostics" : true
+}
