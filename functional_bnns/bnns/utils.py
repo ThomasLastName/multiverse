@@ -27,7 +27,7 @@ except:
 def log_gaussian_pdf( where, mu, sigma ):
     assert mu.shape==where.shape
     try:
-        assert len(sigma.shape)==0 or sigma.shape==mu.shape
+        assert len(sigma.shape)==0 or sigma.shape==mu.shape # ~~~ either scalar, or a matrix of the same shape is `mu` and `where`
         assert (sigma>0).all()
     except:
         assert isinstance(1,(float,int))
