@@ -9,7 +9,7 @@ from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
 #
 # ~~~ Set path to the .rda file
 root = find_root_dir_of_repo()
-PATH = os.path.join( root, "bnns", "data", "slosh_dat_nj.rda" )
+PATH = os.path.join( root, "functional_bnns", "bnns", "data", "slosh_dat_nj.rda" )
 if __name__ == "__main__":
     ans = input(f"    Is the path {PATH} correct?\n    Enter 'y' for yes, any other key for no.\n")
     if not ans.lower()=="y":

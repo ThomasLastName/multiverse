@@ -9,7 +9,7 @@ from bnns.data.slosh_70_15_15 import coords_np, inputs_np, out_np, idx_train, id
 #
 # ~~~ Establish the path to the folder `bnns/data`
 root = find_root_dir_of_repo()
-PATH = os.path.join( root, "bnns", "data" )
+PATH = os.path.join( root, "functional_bnns", "bnns", "data" )
 
 
 #
