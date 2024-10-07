@@ -110,6 +110,39 @@ def univar_poly_fit( x, y, degree=1 ):
     R_squared = cor(poly(x),y)**2
     return poly, coeffs, R_squared
 
+#
+# ~~~ Draw uniform random samples from the convex hull of `points` with shape (n_points,d)
+def sample_from_convex_hull( points, n_samples, noise=0.):
+    #
+    # ~~~ Reshape the points to (n_points,d) in case it's a flat vector, in which case d==1
+    n_points,d = points.reshape(points.shape[0],-1).shape
+    #
+    # ~~~ Sample uniformly at random from the probability simplex (https://mathoverflow.net/questions/368226/uniform-distribution-on-a-simplex)
+    exp_dist = torch.distributions.Exponential(rate=1.0) 
+    weights = exp_dist.sample(sample_shape=(n_samples,n_points)).to( device=points.device, dtype=points.dtype )
+    weights /= weights.sum( dim=1, keepdim=True )    
+    #
+    # ~~~ Compute convex combinations of the original points using the random weights
+    points_from_convex_hull = weights@points
+    return points_from_convex_hull + noise*torch.randn_like(points_from_convex_hull)
+
+# points = torch.randn(1000,5)
+# centroid = points.mean(dim=0)
+# magnitudes = (points**2).sum(dim=1).sqrt()
+# normalized_points = (points.T/magnitudes).T
+# assert normalized_points.shape==(1000,5) and (normalized_points**2).sum(dim=1).sqrt().allclose(torch.ones(1000))
+# samples = sample_from_convex_hull(normalized_points,900)
+# print("Average distance from the centroid:", (samples-centroid).norm(dim=1).mean().item())
+#
+# ~~~ Generate all the weight combinations (n1/res,n2/res,...,nd/res) where n1,...,nd are non-negative integers summing to `res`
+# def generate_Barycentric_grid(d,res,weights_only=True,points=None):
+#     if not weights_only:
+#         n_points, d = points.reshape(points.shape[0],-1).shape
+#     grid_of_weights = torch.tensor(list(product( *d*[[j for j in range(res+1)]])))      # ~~~ all combinations (n1,...,nd) where 0<=ni<=res for all i
+#     convex_weights = grid_of_weights[torch.where(grid_of_weights.sum(dim=1)==res)]/res  # ~~~ filter for only those which sum to `res`, and normalize to sum to 1
+#     assert convex_weights.shape == ( math.comb(res+d-1,res), d) # ~~~ https://en.wikipedia.org/wiki/Stars_and_bars_(combinatorics)#Theorem_two
+#     return convex_weights if weights_only else convex_weights@points
+
 
 
 ### ~~~
