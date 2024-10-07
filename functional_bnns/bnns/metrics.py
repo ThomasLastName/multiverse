@@ -131,13 +131,13 @@ def uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty, quantile
 
 #
 # ~~~ Measure strength of the relation "predictive uncertainty (std. dev.)" ~ "distance from training points"
-def uncertainty_vs_proximity( predictions, y_test, quantile_uncertainty, x_test, x_train, show=True ):
+def uncertainty_vs_proximity( predictions, quantile_uncertainty, x_test, x_train, show=True ):
     with torch.no_grad():
         uncertainty = iqr(predictions,dim=0) if quantile_uncertainty else predictions.std(dim=0)
         proximity = torch.cdist( x_test.reshape(x_test.shape[0],-1), x_train.reshape(x_train.shape[0],-1) ).min(dim=1).values
-        n_test, n_out_features = y_test.shape
+        n_out_features = predictions.shape[-1]
         proximity = torch.column_stack(n_out_features*[proximity]) # ~~~ proximity to training data is the same for each of the output features
-        assert y_test.shape == proximity.shape == uncertainty.shape
+        assert proximity.shape == uncertainty.shape
         uncertainty  =  uncertainty.flatten().cpu().numpy()
         proximity    =    proximity.flatten().cpu().numpy()
         #
