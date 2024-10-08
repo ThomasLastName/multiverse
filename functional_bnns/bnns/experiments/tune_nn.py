@@ -14,11 +14,11 @@ from quality_of_life.my_base_utils import dict_to_json, my_warn
 
 #
 # ~~~ Define all hyperparmeters *including* even the ones not to be tuned
-TO_BE_TUNED = "placeholder_value"
+TO_BE_TUNED = "placeholder value"
 hyperparameter_template = {
     #
     # ~~~ Misc.
-    "DEVICE" : "cpu",
+    "DEVICE" : "cuda",
     "dtype" : "float",
     "seed" : 2024,
     #
@@ -31,27 +31,34 @@ hyperparameter_template = {
     "lr" : TO_BE_TUNED,
     "batch_size" : TO_BE_TUNED,
     "n_epochs" : TO_BE_TUNED,
+    "n_MC_samples" : 1,                     # ~~~ relevant for droupout
+    #
+    # ~~~ For visualization
+    "make_gif" : False,
+    "how_often" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
+    "initial_frame_repetitions" : 24,       # ~~~ for how many frames should the state of initialization be rendered
+    "final_frame_repetitions" : 48,         # ~~~ for how many frames should the state after training be rendered
+    "how_many_individual_predictions" : 6,  # ~~~ how many posterior predictive samples to plot
+    "visualize_bnn_using_quantiles" : True, # ~~~ for dropout, if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
+    "n_posterior_samples" : 100,            # ~~~ for dropout, how many samples to use to make the empirical distributions for plotting
     #
     # ~~~ For metrics and visualization
+    "n_posterior_samples_evaluation" : 1000,
     "show_diagnostics" : False
 }
+
 
 #
 # ~~~ Values that we want to test for each one TO_BE_TUNED
 LR = np.linspace( 1e-5, 1e-2, 25 )
-N_EPOCHS = np.linspace( 500, 20000, 25 )
+N_EPOCHS = [ int(obj) for obj in np.linspace( 500, 20000, 25 ) ]
 BATCH_SIZE = [ 10, 20, 50, 100 ]
 ARCHITECTURE = [
-        [100,100],
-        [300,300],
-        [500,500],
-        [750,750],
-        [1000,1000],
-        [100,100,100],
-        [300,300,300],
-        [500,500,500],
-        [750,750,750],
-        [1000,1000,1000],
+        "univar_NN",            # ~~~ 2 hidden layers, 100 neurons each
+        "univar_NN_300_300",    # ~~~ 2 hidden layers, 300 neurons each
+        "univar_NN_500_500",    # ~~~ 2 hidden layers, 500 neurons each
+        "univar_NN_750_750",    # ~~~ 2 hidden layers, 750 neurons each
+        "univar_NN_1000_1000"   # ~~~ 2 hidden layers, 1000 neurons each
     ]
 
 
@@ -63,17 +70,11 @@ ARCHITECTURE = [
 #
 # ~~~ Gather metadata
 parser = argparse.ArgumentParser()
-try:
-    parser.add_argument( '--folder_name', type=str, required=True )
-except:
-    print("")
-    print("    Hint: try `python tune_nn.py --json ?????`")
-    print("")
-    raise
+parser.add_argument( '--folder_name', type=str, required=True )
 parser.add_argument( '--save_trained_models', action=argparse.BooleanOptionalAction )
 args = parser.parse_args()
 folder_name = args.folder_name
-save_trained_models = args.save_trained_models
+save_trained_models = (args.save_trained_models is not None)
 
 #
 # ~~~ Create the folder `folder_name` as a subdirectory of `bnns.experiments`
@@ -110,7 +111,7 @@ for lr in LR:
                 # ~~~ Save the hyperparameters to a .json file
                 tag = generate_json_filename()
                 json_filename = os.path.join(folder_name,tag)
-                dict_to_json( hyperparameter_template, json_filename )
+                dict_to_json( hyperparameter_template, json_filename, verbose=False )
                 #
                 # ~~~ Run the training script on that dictionary of hyperparameters
                 basic_command = f"python train_nn.py --json {json_filename} --overwrite_json"

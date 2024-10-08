@@ -224,13 +224,14 @@ if data_is_univariate:
         gif.develop( destination="NN", fps=24 )
         plt.close()
     else:
-        fig,ax = plt.subplots(figsize=(12,6))
-        fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
-        plt.show()
+        if show_diagnostics:
+            fig,ax = plt.subplots(figsize=(12,6))
+            fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
+            plt.show()
 
 #
 # ~~~ Validate implementation of the algorithm on the synthetic dataset "bivar_trivial"
-if data.__name__ == "bnns.data.bivar_trivial":
+if data.__name__ == "bnns.data.bivar_trivial" and show_diagnostics:
     from bnns.data.univar_missing_middle import x_test, y_test
     fig,ax = plt.subplots(figsize=(12,6))
     plt.plot( x_test.cpu(), y_test.cpu(), "--", color="green" )
@@ -282,8 +283,8 @@ else:
 
 #
 # ~~~ Display the results
-print_dict(hyperparameters)
-
+if show_diagnostics:
+    print_dict(hyperparameters)
 
 
 
@@ -295,7 +296,7 @@ if input_json_filename.startswith("demo"):
     my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
 else:
     output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
-    dict_to_json( hyperparameters, output_json_filename )
+    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=show_diagnostics )
     if model_save_dir is not None:
         # save the model, assuming model_save_dir could be something like `subfolder_of_experiments/model_name.pt`
         raise NotImplementedError("TODO")
