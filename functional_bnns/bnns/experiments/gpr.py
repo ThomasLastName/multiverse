@@ -120,7 +120,7 @@ K_in    =   kernel_matrix( x_train.unsqueeze(-1), x_train.unsqueeze(-1), bw )
 K_out   =   kernel_matrix( x_test.unsqueeze(-1),  x_test.unsqueeze(-1),  bw )
 K_btwn  =   kernel_matrix( x_test.unsqueeze(-1),  x_train.unsqueeze(-1), bw )
 with torch.no_grad():
-    sigma2 = torch.tensor(conditional_std)
+    sigma2 = torch.tensor(conditional_std)**2
 
 K_inv = torch.linalg.inv( K_in + sigma2*torch.eye(len(x_train),device=DEVICE) )
 posterior_mean  =  (K_btwn@K_inv@y_train).squeeze()
