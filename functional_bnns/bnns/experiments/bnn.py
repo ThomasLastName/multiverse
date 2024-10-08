@@ -88,17 +88,22 @@ if hasattr(sys,"ps1"):
     input_json_filename = "demo_bnn.json"
 else:
     #
-    # ~~~ When executed as a script (both with or without the `-i` flag), use argparse to extract the file name from `python bnn.py --json file_name.json` (https://stackoverflow.com/a/67731094)
+    # ~~~ Use argparse to extract the file name `my_hyperparmeters.json` from `python train_bnn.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
     parser = argparse.ArgumentParser()
     try:
         parser.add_argument( '--json', type=str, required=True )
-        input_json_filename = parser.parse_args().json
-        input_json_filename = input_json_filename if input_json_filename.endswith(".json") else input_json_filename+".json"
     except:
         print("")
-        print("    Hint: try `python bnn.py --json demo_bnn`")
+        print("    Hint: try `python train_bnn.py --json demo_bnn`")
         print("")
         raise
+    parser.add_argument( '--final_test', action=argparse.BooleanOptionalAction )
+    parser.add_argument( '--overwrite_json', action=argparse.BooleanOptionalAction )
+    args = parser.parse_args()
+    final_test = (args.final_test is not None)
+    overwrite_json = (args.overwrite_json is not None)
+    input_json_filename = args.json
+    input_json_filename = input_json_filename if input_json_filename.endswith(".json") else input_json_filename+".json"
 
 #
 # ~~~ Load the .json file into a dictionary
@@ -142,8 +147,20 @@ except:
     data = import_module(data)
 
 D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=dtype )
-D_test  =  set_Dataset_attributes( data.D_val, device=DEVICE, dtype=dtype ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
+D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=dtype )
+D_val   =   set_Dataset_attributes( data.D_val, device=DEVICE, dtype=dtype ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
 data_is_univariate = (D_train[0][0].numel()==1)
+
+try:
+    scale = data.scale
+    conditional_std /= scale
+except:
+    pass
+
+try:
+    grid = data.grid.to( device=DEVICE, dtype=dtype )
+except:
+    pass
 
 
 
@@ -171,7 +188,6 @@ if gaussian_approximation:
 if data_is_univariate:
     #
     # ~~~ Define some objects used for plotting
-    grid = data.x_test.to( device=DEVICE, dtype=dtype )
     green_curve =  data.y_test.cpu().squeeze()
     x_train_cpu = data.x_train.cpu()
     y_train_cpu = data.y_train.cpu().squeeze()
@@ -332,23 +348,57 @@ if data.__name__ == "bnns.data.bivar_trivial":
 #
 # ~~~ Compute the posterior predictive distribution on the testing dataset
 x_train, y_train  =  convert_Dataset_to_Tensors(D_train)
-x_test, y_test    =    convert_Dataset_to_Tensors(D_test)
+x_test, y_test    =    convert_Dataset_to_Tensors( D_test if final_test else D_val )
+interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=dtype )
+extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=dtype )
+
+def predict(x):
+        predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(n_posterior_samples_evaluation) ])
+        if extra_std:
+            predictions += BNN.conditional_std*torch.randn_like(predictions)
+        return predictions
+
 with torch.no_grad():
-    predictions = torch.stack([ BNN(x_test,resample_weights=True) for _ in range(n_posterior_samples_evaluation) ])
-    if extra_std:
-        predictions += BNN.conditional_std*torch.randn_like(predictions)
+    predictions = predict(x_test)
+    predictions_on_interpolary_grid = predict(interpolary_grid)
+    predictions_on_extrapolary_grid = predict(extrapolary_grid)
 
 #
 # ~~~ Compute the desired metrics
-hyperparameters["METRIC_mse_of_median"]  =  mse_of_median( predictions, y_test )
 hyperparameters["METRIC_mse_of_mean"]    =    mse_of_mean( predictions, y_test )
-hyperparameters["METRIC_mae_of_median"]  =  mae_of_median( predictions, y_test )
 hyperparameters["METRIC_mae_of_mean"]    =    mae_of_mean( predictions, y_test )
-hyperparameters["METRIC_max_norm_of_median"]  =  max_norm_of_median( predictions, y_test )
 hyperparameters["METRIC_max_norm_of_mean"]    =    max_norm_of_mean( predictions, y_test )
 for estimator in ("mean","median"):
-    hyperparameters[f"METRIC_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions, y_test, (estimator=="median"), x_test, x_train, show=show_diagnostics )
+    hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+    hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
     hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=visualize_bnn_using_quantiles, quantile_accuracy=(estimator=="median"), show=show_diagnostics )
+
+#
+# ~~~ For the SLOSH dataset, run all the same metrics on the unprocessed data (the actual heatmaps)
+try:
+    S = data.s_truncated.to( device=DEVICE, dtype=dtype )
+    V = data.V_truncated.to( device=DEVICE, dtype=dtype )
+    Y = data.unprocessed_y_test.to( device=DEVICE, dtype=dtype )
+    def predict(x):
+        predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(n_posterior_samples_evaluation) ])
+        if extra_std:
+            predictions += BNN.conditional_std*torch.randn_like(predictions)
+        return predictions.mean(dim=0,keepdim=True) * S @ V.T
+    with torch.no_grad():
+        predictions = predict(x_test)
+        predictions_on_interpolary_grid = predict(interpolary_grid)
+        predictions_on_extrapolary_grid = predict(extrapolary_grid)
+    #
+    # ~~~ Compute the desired metrics
+    hyperparameters["METRIC_unprocessed_mse_of_mean"]    =    mse_of_mean( predictions, Y )
+    hyperparameters["METRIC_unprocessed_mae_of_mean"]    =    mae_of_mean( predictions, Y )
+    hyperparameters["METRIC_unprocessed_max_norm_of_mean"]    =    max_norm_of_mean( predictions, Y )
+    for estimator in ("mean","median"):
+        hyperparameters[f"METRIC_unprocessed_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+        hyperparameters[f"METRIC_unprocessed_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
+        hyperparameters[f"METRIC_unprocessed_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, Y, quantile_uncertainty=visualize_bnn_using_quantiles, quantile_accuracy=(estimator=="median"), show=show_diagnostics )
+except:
+    pass
 
 #
 # ~~~ Print the results
@@ -363,7 +413,7 @@ print_dict(hyperparameters)
 if input_json_filename.startswith("demo"):
     my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
 else:
-    output_json_filename = generate_json_filename()
+    output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
     dict_to_json( hyperparameters, output_json_filename )
 
 #

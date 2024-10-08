@@ -69,20 +69,27 @@ hyperparameter_template = {
 if hasattr(sys,"ps1"):
     #
     # ~~~ If this is an interactive (not srcipted) session, i.e., we are directly typing/pasting in the commands (I do this for debugging), then use the demo json name
-    input_json_filename = "demo_det_nn.json"
+    input_json_filename = "demo_nn.json"
 else:
     #
-    # ~~~ Use argparse to extract the file name from `python det_nn.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
+    # ~~~ Use argparse to extract the file name "my_hyperparmeters.json" from `python train_nn.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
     parser = argparse.ArgumentParser()
     try:
         parser.add_argument( '--json', type=str, required=True )
-        input_json_filename = parser.parse_args().json
-        input_json_filename = input_json_filename if input_json_filename.endswith(".json") else input_json_filename+".json"
     except:
         print("")
-        print("    Hint: try `python det_nn.py --json demo_det_nn`")
+        print("    Hint: try `python train_nn.py --json demo_nn`")
         print("")
         raise
+    parser.add_argument( '--model_save_dir', type=str )
+    parser.add_argument( '--final_test', action=argparse.BooleanOptionalAction )
+    parser.add_argument( '--overwrite_json', action=argparse.BooleanOptionalAction )
+    args = parser.parse_args()
+    model_save_dir = args.model_save_dir
+    final_test = (args.final_test is not None)
+    overwrite_json = (args.overwrite_json is not None)
+    input_json_filename = args.json
+    input_json_filename = input_json_filename if input_json_filename.endswith(".json") else input_json_filename+".json"
 
 #
 # ~~~ Load the .json file into a dictionary
@@ -120,8 +127,21 @@ except:
     data = import_module(data)
 
 D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=dtype )
-D_test  =  set_Dataset_attributes( data.D_val, device=DEVICE, dtype=dtype ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
+D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=dtype )
+D_val   =   set_Dataset_attributes( data.D_val, device=DEVICE, dtype=dtype ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
 data_is_univariate = (D_train[0][0].numel()==1)
+
+try:
+    scale = data.scale
+    conditional_std /= scale
+except:
+    pass
+
+try:
+    grid = data.grid.to( device=DEVICE, dtype=dtype )
+except:
+    pass
+
 
 #
 # ~~~ Infer whether or not the model's forward pass is stochastic (e.g., whether or not it's using dropout)
@@ -149,7 +169,6 @@ description_of_the_experiment = "Conventional, Deterministic Training" if not dr
 #
 # ~~~ Some plotting stuff
 if data_is_univariate:
-    grid = data.x_test.to( device=DEVICE, dtype=dtype )
     green_curve =  data.y_test.cpu().squeeze()
     x_train_cpu = data.x_train.cpu()
     y_train_cpu = data.y_train.cpu().squeeze()
@@ -232,8 +251,16 @@ if data.__name__ == "bnns.data.bivar_trivial":
 #
 # ~~~ Compute the posterior predictive distribution on the testing dataset
 x_train, y_train  =  convert_Dataset_to_Tensors(D_train)
-x_test, y_test    =    convert_Dataset_to_Tensors(D_test)
-predictions = torch.stack([ NN(x_test) for _ in range(n_posterior_samples_evaluation) ]) if dropout else NN(x_test)
+x_test, y_test    =    convert_Dataset_to_Tensors( D_test if final_test else D_val )
+interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=dtype )
+extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=dtype )
+
+predict = lambda points: torch.stack([ NN(points) for _ in range(n_posterior_samples_evaluation) ]) if dropout else NN(points)
+
+with torch.no_grad():
+    predictions = predict(x_test)
+    predictions_on_interpolary_grid = predict(interpolary_grid)
+    predictions_on_extrapolary_grid = predict(extrapolary_grid)
 
 #
 # ~~~ Compute the desired metrics
@@ -245,7 +272,8 @@ if dropout:
     hyperparameters["METRIC_max_norm_of_median"]  =  max_norm_of_median( predictions, y_test )
     hyperparameters["METRIC_max_norm_of_mean"]    =    max_norm_of_mean( predictions, y_test )
     for estimator in ("mean","median"):
-        hyperparameters[f"METRIC_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions, y_test, (estimator=="median"), x_test, x_train, show=show_diagnostics )
+        hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+        hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
         hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=visualize_bnn_using_quantiles, quantile_accuracy=(estimator=="median"), show=show_diagnostics )
 else:
     hyperparameters["METRIC_mse"] = mse( NN, x_test, y_test )
@@ -266,7 +294,11 @@ print_dict(hyperparameters)
 if input_json_filename.startswith("demo"):
     my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
 else:
-    output_json_filename = generate_json_filename()
+    output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
     dict_to_json( hyperparameters, output_json_filename )
+    if model_save_dir is not None:
+        # save the model, assuming model_save_dir could be something like `subfolder_of_experiments/model_name.pt`
+        raise NotImplementedError("TODO")
+
 
 #
