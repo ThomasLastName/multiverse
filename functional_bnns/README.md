@@ -40,8 +40,8 @@ If desired, the dependencies on `plotly` and `quality_of_life` could be removed.
 
 In order to run a test, the procedure is as follows. In order to specify hyperparameters, put a `.json` file containing hyperparameter values for the experiment that you want to run in the `experiments` folder.
 Different algorithms require different hyperparmeters, and these differences are reflected in the scripts that load the `.json` files.
-At the time of writing, there are 4 python scripts in the `experiments` folder: `bnn.py`, `det_nn.py`, `gpr.py`, and `stein.py`. To train a model with the hyperparamters specified by the `.json` file, say, `my_hyperpars.json`, you can run the script from the command in the experiment folder using `python <algorithm>.py --json my_hyperparameters`.
-To see which hyperparameters are expected by the algorithm (which are the fields that you need to include in your .json file), check either the demo .json file included with the repo, or check the body the python script, where a dictionary called `hyperparameter_template` should be defined.
+At the time of writing, there are 4 python scripts in the `experiments` folder: `train_bnn.py`, `train_nn.py`, `train_gpr.py`, and `train_stein.py`. To train a model with the hyperparamters specified by the `.json` file, say, `my_hyperpars.json`, navigate to the `experiment` folder and run `python train_<algorithm>.py --json my_hyperparameters`.
+To see which hyperparameters are expected by the algorithm (which are the fields that you need to include in your .json file), check either the demo .json file included with the repo, or check the body of the python script, where a dictionary called `hyperparameter_template` should be defined.
 
 ## The SLOSH Dataset
 
@@ -67,7 +67,7 @@ The interpretation is as follows:
  - The *right* singular vectors $`v^{(1)}, \ldots, v^{(r)}`$ are the "principal heatmaps." Every heay map in our dataset (i.e., every row of the data matrix $`Y`$) is a linear combination of them.
  - The coefficients $`s_1,\ldots,s_r`$ are expected to be have $`s_k \approx 0`$ for $`k`$ large. They are not included in the "principal heatmaps." Rather, they merely *down-weight* the "principal heatmaps." 
  - The m-by-r matrix $`U`$ of *left* singular vectors is what needs to be predicted. They are what varies from sample to sample, for they are all that depends on the row index $`\ell`$ of the data matrix.
- - When a vector of coefficients $`(a_1,\ldots,a_r)`$ is produced by some predictive model, the final prediction is $`a_1 s_1 v^{(1)} + ... + a_r s_r v^{(r)}`$, which has the same shape (and meaning!) as one of the rows of $Y$. Thus, given a batch `A` of such vectors, i.e., a matrix with $`r`$ rows, the final batch of predictions is given by $`A S V^\intercal`$.
+ - When a vector of coefficients $`(a_1,\ldots,a_r)`$ is produced by some predictive model, the final prediction is $`a_1 s_1 v^{(1)} + ... + a_r s_r v^{(r)}`$, which has the same shape (and meaning!) as one of the rows of $Y$. Thus, given a batch `A` of such vectors, i.e., a matrix with $`r`$ columns, the final batch of predictions is given by $`A S V^\intercal`$.
 
 In other words, the originally given data matrix `Y` is pre-processed with an SVD `Y = U @ S @ V.T` where `S` is diagonal. Then `S` and `V` are stored for the prediction phase, while the processed matrix `U` is treated as the data matrix for the purposes of training.
 After training, a batch prediction `P` with as many columns as `U` (but fewer rows: only as many as the batch size) can be re-converted into the same format as `Y` via `final_prediction = P @ S @ V.T`, each *row* of which should look like "the same kind of data" as each row of `Y`.
@@ -79,7 +79,8 @@ That is to say, one must be cognizant of whether or not PCA is *the only* pre-pr
 
 All the .json files are supposed to have a field called "data" whose value is a text string. Suppose the "data" field has a value of "my_brand_new_dataset".
 In that case, the python scripts which run experiments all attempt to `import my_brand_new_dataset from bnns.data` meaning that you need to create a file called `my_brand_new_dataset.py` located in the folder `data` if you want this to work.
-Additionally, within that file `my_brand_new_dataset.py`, you must define 3 pytorch datasets: `D_train`, `D_val`, and `D_test`, as the python scripts which run experiments will attempt to access these variables from that file in that location.
+Within the file `my_brand_new_dataset.py`, you must define 3 pytorch datasets: `D_train`, `D_val`, and `D_test`, as well as two pytorch tensors `interpolary_grid` and `extrapolary_grid`. The python scripts that run experiments will attempt to access these variables from that file in that location.
+Additionally, for examples with a one-dimensional input, if you want the scripts to plot your models, then you must define a pytorch vector `grid` with `grid.ndim==1` which is used to create the plots.
 
 ## Creating your own Models
 
