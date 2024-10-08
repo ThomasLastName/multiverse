@@ -172,10 +172,11 @@ def sample_from_convex_hull( points, n_samples, noise=0.):
 #
 # ~~~ Generate a .json filename based on the current datetime
 def generate_json_filename(verbose=True):
-    time = datetime.now(pytz.timezone('US/Mountain'))               # ~~~ current date and time MST
+    time = datetime.now(pytz.timezone('US/Central'))        # ~~~ current date and time CST
     file_name = str(time)
-    file_name = file_name[:file_name.find(".")].replace(" ","_")    # ~~~ remove the number of seconds (indicated with ".") and replace blank space (between date and time) with an underscore
-    file_name = process_for_saving(file_name+".json")               # ~~~ procsess_for_saving("path_that_exists.json") returns "path_that_exists (1).json"
+    file_name = file_name[:file_name.find(".")]             # ~~~ remove the number of milliseconds (indicated with ".") 
+    file_name = file_name.replace(" ","_").replace(":","-") # ~~~ replace blank space (between date and time) with an underscore and colons (hr:mm:ss) with dashes
+    file_name = process_for_saving(file_name+".json")       # ~~~ procsess_for_saving("path_that_exists.json") returns "path_that_exists (1).json"
     if verbose:
         if time.hour > 12:
             hour = time.hour - 12
