@@ -80,7 +80,7 @@ if hasattr(sys,"ps1"):
     input_json_filename = "demo_stein.json"
 else:
     #
-    # ~~~ Use argparse to extract the file name from `python train_stein.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
+    # ~~~ Use argparse to extract the file name name "my_hyperparmeters.json" from `python train_stein.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
     parser = argparse.ArgumentParser()
     try:
         parser.add_argument( '--json', type=str, required=True )
