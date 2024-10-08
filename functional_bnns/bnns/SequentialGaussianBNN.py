@@ -2,10 +2,10 @@
 import math
 import torch
 from torch import nn
-from torch.func import jacrev, functional_call
 from bnns.SSGE import SpectralSteinEstimator as SSGE
 from bnns.SSGE import BaseScoreEstimator as SSGE_backend
 from bnns.utils import log_gaussian_pdf, get_std, gaussian_kl, manual_Jacobian
+from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 kernel_matrix = SSGE_backend().gram_matrix
 
@@ -24,7 +24,16 @@ class SequentialGaussianBNN(nn.Module):
         super().__init__()
         self.model_mean = nn.Sequential(*nn.ModuleList(args))
         self.model_std  = nonredundant_copy_of_module_list(self.model_mean)
+        #
+        # ~~~ Basic information about the model: in_features, out_features, and n_layers, etc.
         self.n_layers   = len(self.model_mean)
+        self.out_features = self.model_mean[-1].out_features
+        for layer in self.model_mean:
+            if hasattr(layer,"in_features"):    # ~~~ the first layer with an `in_features` attribute
+                self.in_features = layer.in_features 
+                break
+        #
+        # ~~~ Define a prior on the weights
         with torch.no_grad():
             #
             # ~~~ Define the prior means: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired mean values (==zero, for now)
@@ -51,7 +60,7 @@ class SequentialGaussianBNN(nn.Module):
         # ~~~ Define the assumed level of noise in the training data: when this is set to smaller values, the model "pays more attention" to the data, and fits it more aggresively (can also be a vector)
         self.conditional_std = torch.tensor(0.001)
         #
-        # ~~~ NEW attributes for SSGE and functional training
+        # ~~~ Attributes for SSGE and functional training
         self.prior_J   = "please specify"
         self.post_J    = "please specify"
         self.prior_eta = "please specify"
@@ -61,6 +70,14 @@ class SequentialGaussianBNN(nn.Module):
         self.measurement_set = None
         self.prior_SSGE      = None
         self.use_eigh        = True
+        #
+        # ~~~ Boolean attribute for whether or not to use a GP prior
+        self.use_GP_prior = False
+        self.prior_GP_kernel_bandwidth = "please specify"
+        self.prior_GP_kernel_scale = "please specify"
+        self.prior_GP_kernel_eta = "please specify"
+        self.post_GP_eta = "please specify"
+        self.prior_GP_mean = lambda x: torch.zeros( x.shape[0], self.out_features ).to( device=x.device, dtype=x.dtype )
     #
     # ~~~ Sample according to a "standard normal distribution in the shape of our neural network"
     def sample_from_standard_normal(self):
@@ -90,9 +107,67 @@ class SequentialGaussianBNN(nn.Module):
                 b = mean_layer.bias   +   self.rho(std_layer.bias) * z.bias     # ~~~ b = F_\theta(z.bias)   is normal with the trainable (posterior) mean and std
                 x = x@A.T + b                                                   # ~~~ apply the appropriately distributed weights to this layer's input
         return x
+    # ~~~
     #
-    # ~~~ What the forward pass would be if we distributed weights according to the prior distribution
+    ### ~~~
+    ## ~~~ Methods for computing the loss in Bayes by Backprop
+    ### ~~~
+    #
+    # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
+    def log_likelihood_density( self, x_train, y_train ):
+        return log_gaussian_pdf( where=y_train, mu=self(x_train,resample_weights=False), sigma=self.conditional_std )  # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.conditional_std (the latter being a tunable hyper-parameter)
+    #
+    # ~~~ Compute \ln( f_W(F_\theta(z)) ) at a point w sampled from the standard MVN distribution, where f_W is the prior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
+    def log_prior_density(self):
+        #
+        # ~~~ Because the weights and biases are mutually independent, the log prior pdf can be decomposed as a summation \sum_j
+        log_prior = 0.
+        for j in range(self.n_layers):
+            z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
+            if isinstance( z, torch.nn.modules.linear.Linear ):
+                post_mean      =    self.model_mean[j]  # ~~~ the trainable (posterior) means of this layer's parameters
+                post_std       =    self.model_std[j]   # ~~~ the trainable (posterior) standard deviations of this layer's parameters
+                prior_mean     =    self.prior_mean[j]  # ~~~ the prior means of this layer's parameters
+                prior_std      =    self.prior_std[j]   # ~~~ the prior standard deviations of this layer's parameters
+                F_theta_of_z   =    post_mean.weight + self.rho(post_std.weight)*z.weight
+                log_prior     +=    log_gaussian_pdf( where=F_theta_of_z, mu=prior_mean.weight, sigma=prior_std.weight )
+                F_theta_of_z   =    post_mean.bias   +  self.rho(post_std.bias) * z.bias
+                log_prior     +=    log_gaussian_pdf( where=F_theta_of_z,  mu=prior_mean.bias,  sigma=prior_std.bias   )
+        return log_prior
+    #
+    # ~~~ Compute \ln( q_\theta(F_\theta(z)) ) at a point z sampled from the standard MVN distribution, where q_\theta is the posterior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
+    def log_posterior_density(self):
+        #
+        # ~~~ Because the weights and biases are mutually independent, the log_prior_pdf can be decomposed as a summation \sum_j
+        log_posterior = 0.
+        for j in range(self.n_layers):
+            z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
+            if isinstance( z, torch.nn.modules.linear.Linear ):
+                mean_layer      =    self.model_mean[j] # ~~~ the trainable (posterior) means of this layer's parameters
+                std_layer       =    self.model_std[j]  # ~~~ the trainable (posterior) standard deviations of this layer's parameters
+                sigma_weight    =    self.rho(std_layer.weight)
+                sigma_bias      =    self.rho(std_layer.bias)
+                F_theta_of_z    =    mean_layer.weight + sigma_weight*z.weight
+                log_posterior  +=    log_gaussian_pdf( where=F_theta_of_z, mu=mean_layer.weight, sigma=sigma_weight )
+                F_theta_of_z    =    mean_layer.bias   +  sigma_bias * z.bias
+                log_posterior  +=    log_gaussian_pdf( where=F_theta_of_z,  mu=mean_layer.bias,   sigma=sigma_bias  )
+        return log_posterior
+    # ~~~
+    #
+    ### ~~~
+    ## ~~~ Methods for computing the fBNN loss from Sun et al. 2019 (https://arxiv.org/abs/1903.05779)
+    ### ~~~
+    #
+    # ~~~ Sample from the priorly distributed outputs of the network
     def prior_forward(self,x,resample_weights=True):
+        #
+        # ~~~ If the prior distribution is a Gaussian process, then we just need to sample from the correct Gaussian distribution
+        if self.use_GP_prior:
+            #
+            # ~~~ The realized sample of the distribution of Y|X=x,W=w is entirely determined by self.realized_standard_normal
+            mu, root_Sigma = self.mu_and_root_Sigma_of_GP_prior(x)
+            z = torch.randn( x.shape[0], device=x.device, dtype=x.dtype )
+            return mu + (root_Sigma@z).T    # ~~~ mu + Sigma^{-1/2} z \sim N(mu,Sigma); einsum computes this in batches
         #
         # ~~~ The realized sample of the distribution of Y|X=x,W=w is entirely determined by self.realized_standard_normal
         if resample_weights:
@@ -115,82 +190,59 @@ class SequentialGaussianBNN(nn.Module):
                 x = x@A.T + b                       # ~~~ apply the appropriately distributed weights to this layer's input
         return x
     #
-    # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def log_likelihood_density( self, x_train, y_train ):
-        return log_gaussian_pdf( where=y_train, mu=self(x_train,resample_weights=False), sigma=self.conditional_std )  # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.conditional_std (the latter being a tunable hyper-parameter)
-    #
-    # ~~~ Compute \ln( f_W(F_\theta(z)) ) at a point w sampled from the standard MVN distribution, where f_W is the prior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def log_prior_density(self):
-        #
-        # ~~~ Because the weights and biases are mutually independent, the log prior pdf can be decomposed as a summation \sum_j
-        log_prior = 0.
-        for j in range(self.n_layers):
-            z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
-            if isinstance( z, torch.nn.modules.linear.Linear ):
-                post_mean      =    self.model_mean[j]  # ~~~ the trainable (posterior) means of this layer's parameters
-                post_std       =    self.model_std[j]   # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                prior_mean     =    self.prior_mean[j]  # ~~~ the prior means of this layer's parameters
-                prior_std      =    self.prior_std[j]   # ~~~ the prior standard deviations of this layer's parameters
-                F_theta_of_z   =    post_mean.weight + self.rho(post_std.weight)*z.weight
-                log_prior     +=    log_gaussian_pdf( where=F_theta_of_z, mu=prior_mean.weight, sigma=prior_std.weight )
-                F_theta_of_z   =    post_mean.bias   +  self.rho(post_std.bias) * z.bias
-                log_prior     +=    log_gaussian_pdf( where=F_theta_of_z,  mu=prior_mean.bias,  sigma=prior_std.bias   )
-                # F_theta_of_z   =    prior_mean.weight + prior_std.weight*z.weight
-                # log_prior     +=    log_gaussian_pdf( where=F_theta_of_z, mu=prior_mean.weight, sigma=prior_std.weight )
-                # F_theta_of_z   =    prior_mean.bias   +  prior_std.bias * z.bias
-                # log_prior     +=    log_gaussian_pdf( where=F_theta_of_z,  mu=prior_mean.bias,  sigma=prior_std.bias   )
-        return log_prior
-    #
-    # ~~~ Compute \ln( q_\theta(F_\theta(z)) ) at a point z sampled from the standard MVN distribution, where q_\theta is the posterior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def log_posterior_density(self):
-        #
-        # ~~~ Because the weights and biases are mutually independent, the log_prior_pdf can be decomposed as a summation \sum_j
-        log_posterior = 0.
-        for j in range(self.n_layers):
-            z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
-            if isinstance( z, torch.nn.modules.linear.Linear ):
-                mean_layer      =    self.model_mean[j] # ~~~ the trainable (posterior) means of this layer's parameters
-                std_layer       =    self.model_std[j]  # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                sigma_weight    =    self.rho(std_layer.weight)
-                sigma_bias      =    self.rho(std_layer.bias)
-                F_theta_of_z    =    mean_layer.weight + sigma_weight*z.weight
-                log_posterior  +=    log_gaussian_pdf( where=F_theta_of_z, mu=mean_layer.weight, sigma=sigma_weight )
-                F_theta_of_z    =    mean_layer.bias   +  sigma_bias * z.bias
-                log_posterior  +=    log_gaussian_pdf( where=F_theta_of_z,  mu=mean_layer.bias,   sigma=sigma_bias  )
-        return log_posterior
-    #
-    # ~~~ NEW
+    # ~~~ Instantiate the SSGE estimator of the prior score, using samples from the prior distribution
     def setup_prior_SSGE(self):
         with torch.no_grad():
-            prior_samples = torch.row_stack([ self.prior_forward(self.measurement_set).flatten() for _ in range(self.prior_M) ])
-            try:
-                self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh )
-            except RuntimeError:
-                self.use_eigh = False
-                my_warn("Due to a bug in the pytorch source code, BNN.use_eigh has been set to False")
-                self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh )
+            #
+            # ~~~ Sample from the prior distribution self.prior_M times (and flatten the samples)
+            if self.use_GP_prior:
+                mu, root_Sigma = self.mu_and_root_Sigma_of_GP_prior(self.measurement_set)
+                Z = torch.randn( size=( self.prior_M, self.measurement_set.shape[0] ), device=self.measurement_set.device, dtype=self.measurement_set.dtype )
+                Sz = root_Sigma@Z.T
+                prior_samples = torch.row_stack([ (mu + Sz[:,:,j].T).flatten() for j in range(self.prior_M) ])
+            else:
+                prior_samples = torch.row_stack([ self.prior_forward(self.measurement_set).flatten() for _ in range(self.prior_M) ])
+            #
+            # ~~~ Build an SSGE estimator using those samples
+            self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh )
+            #
+            # ~~~ No longer necessary (?) workaround for a bug in the pytorch source code
+            # try:
+            #     self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh )
+            # except RuntimeError:
+            #     self.use_eigh = False
+            #     my_warn("Due to a bug in the pytorch source code, BNN.use_eigh has been set to False")
+            #     self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh )
     #
-    # ~~~ NEW
-    def sample_new_measurement_set(self):
-        raise NotImplementedError("In order to resample a measurement set, you must assign `self.sample_measurement_set=my_method` where `my_method` accepts the argument `self` and assigns a value to `self.meaurementset=___`.")
-        # self.measurement_set = ???
+    # ~~~ Generate a fresh grid of several "points like our model's inputs" from the input domain
+    def sample_new_measurement_set(self,n=200):
+        #
+        # ~~~ Infer device and dtype
+        for layer in self.model_mean:
+            if hasattr(layer,"weight"):         # ~~~ the first layer with weights
+                device = layer.weight.device
+                dtype = layer.weight.dtype
+                break
+        #
+        # ~~~ In the common case that the inputs are standardized, then standard random normal vectors are "points like our model's inputs"
+        self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
     #
-    # ~~~ NEW
-    def functional_kl( self, resample_measurement_set=True ):
+    # ~~~ Estimate KL_div( posterior output || the prior output ) using the SSGE, assuming we don't have a forula for the density of the outputs
+    def functional_kl( self, resample_measurement_set=True, n_meas=200 ):
         #
         # ~~~ if `resample_measurement_set==True` then generate a new meausrement set
         if resample_measurement_set:
-            self.sample_new_measurement_set()
+            self.sample_new_measurement_set(n=n_meas)
         #
         # ~~~ Prepare for using SSGE to estimate some of the gradient terms
         with torch.no_grad():
             if self.prior_SSGE is None:
                 self.setup_prior_SSGE()
-            posterior_samples = torch.row_stack([ self( self.measurement_set ).flatten() for _ in range(self.post_M) ])
+            posterior_samples = torch.row_stack([ self(self.measurement_set).flatten() for _ in range(self.post_M) ])
             posterior_SSGE = SSGE( samples=posterior_samples, eta=self.post_eta, J=self.post_J, h=self.use_eigh )
         #
-        # ~~~ By the chain rule, at these points we must (use SSGE to) compute the scores          
-        yhat = self( self.measurement_set ).flatten()
+        # ~~~ By the chain rule, at these points we must compute the "scores," i.e., gradients of the log-densities (we use SSGE to compute them)
+        yhat = self(self.measurement_set).flatten()
         #
         # ~~~ Use SSGE to compute "the intractible parts of the chain rule"
         with torch.no_grad():
@@ -198,18 +250,49 @@ class SequentialGaussianBNN(nn.Module):
             prior_score_at_yhat     = self.prior_SSGE( yhat.reshape(1,-1) )
         #
         # ~~~ Combine all the ingridents as per the chain rule 
-        log_posterior_density  =  ( posterior_score_at_yhat @ yhat).squeeze() # ~~~ the inner product from the chain rule
-        log_prior_density      =  (prior_score_at_yhat @ yhat).squeeze()      # ~~~ the inner product from the chain rule            
+        log_posterior_density  =  ( posterior_score_at_yhat @ yhat ).squeeze()  # ~~~ the inner product from the chain rule
+        log_prior_density      =  ( prior_score_at_yhat @ yhat ).squeeze()      # ~~~ the inner product from the chain rule            
         return log_posterior_density, log_prior_density
+    # ~~~
     #
-    # ~~~ A callable GP prior
-    def GP_prior(self,x):
-        # if not hasattr(self,"K0inv"):
-        #     bw = 0.1
-        #     K_first_feature  = kernel_matrix( X[:,0].unsqueeze(-1), X[:,0].unsqueeze(-1) , bw ) + 0.0001*torch.ones_like(X[:,0]).diag()
-        #     K_second_feature = kernel_matrix( X[:,1].unsqueeze(-1), X[:,1].unsqueeze(-1) , bw ) + 0.0001*torch.ones_like(X[:,1]).diag()
-        #     self.K0inv = torch.block_diag( torch.linalg.inv(K_first_feature), torch.linalg.inv(K_second_feature) ) + 0.0001*torch.ones_like(X).diag()
-        return torch.zeros_like(x.flatten()), torch.ones_like(x.flatten()).diag()
+    ### ~~~
+    ## ~~~ Methods for computing the fBNN loss using a Gaussian approximation (https://arxiv.org/abs/2312.17199)
+    ### ~~~
+    #
+    # ~~~ Get the mean and covariance of the GP prior at points x
+    def mu_and_root_Sigma_of_GP_prior( self, x, inv=False, flatten=False ):
+        #
+        # ~~~ Compute the mean of the prior GP
+        MU = self.prior_GP_mean(x)
+        MU = MU.flatten() if flatten else MU
+        #
+        # ~~~ Compute either the cholesky square root, or that of the inverse
+        def simple_linalg_routine(A):
+            try:
+                if not inv:
+                    return torch.linalg.cholesky(A)
+                if inv:
+                    try:
+                        return torch.linalg.cholesky(torch.linalg.inv(A))
+                    except:
+                        print("Having to use `cholesky_inverse`")
+                        return torch.linalg.cholesky(torch.cholesky_inverse(torch.linalg.cholesky(A)))
+            except torch._C._LinAlgError:
+                my_warn('pythorch is having trouble taking the cholesky inverse of the covariance matrix of the prior GP. Perhaps, consider adding more "stabilizing noise" (i.e., K + eta*I) by increasing the value of `BNN.prior_GP_kernel_eta` and/or increasing the numerical precision by using torch.double (if using torch.float currently)')
+                raise
+        #
+        # ~~~ Either stack the covariance matrices of each output feature into a third order tensor, or form a block diagonal matrix out of them
+        combiner = lambda list_of_matrices: torch.block_diag(*list_of_matrices) if flatten else torch.stack(list_of_matrices)
+        SQRT_SIGMA = combiner([
+                simple_linalg_routine(
+                    #
+                    # ~~~ Build the kernel matrix for the j-th output feature
+                    self.prior_GP_kernel_scale[j] * kernel_matrix( x, x, self.prior_GP_kernel_bandwidth[j] )
+                    + self.prior_GP_kernel_eta[j] * torch.eye( x.shape[0], device=x.device, dtype=x.dtype )
+                )
+                for j in range(self.out_features)
+            ])
+        return MU, SQRT_SIGMA
     #
     # ~~~ Compute the mean and standard deviation of a normal distribution approximating q_theta
     def simple_gaussian_approximation( self, resample_measurement_set=True ):
@@ -232,7 +315,7 @@ class SequentialGaussianBNN(nn.Module):
         self.sample_from_standard_normal()          # ~~~ essentially, resample network weights from the current distribution
         z = self.realized_standard_normal[-1]
         S_beta = self.rho(self.model_std[-1].weight).flatten()  # ~~~ the vector along the main diagonal of the covariance matrix, which would be the diagonal matrix `S_beta.diag()`
-        Theta_beta_minus_mu_beta = S_beta * z.weight.flatten()  # ~~~ Theta_beta = mu_theta + Sigma_beta*z is sampled as Theta_sampled = mu_theta + Sigam_theta*z_sampled (a flat 1d vector)
+        Theta_beta_minus_mu_beta = S_beta * z.weight.flatten()  # ~~~ Theta_beta = mu_theta + Sigma_beta*z is sampled as Theta_sampled = mu_theta + Sigma_theta*z_sampled (a flat 1d vector)
         mu_theta = self( self.measurement_set, resample_weights=False ).flatten() - J_beta @ Theta_beta_minus_mu_beta   # ~~~ solving for the mean of the approximating normal distribution when using f on the LHS of the paper's equation (12)
         Sigma_theta = (S_beta*J_beta) @ (S_beta*J_beta).T
         return mu_theta, Sigma_theta
@@ -258,13 +341,12 @@ class SequentialGaussianBNN(nn.Module):
         # return mu_theta, Sigma_theta
     #
     # ~~~ Compute the mean and standard deviation of a normal distribution approximating q_theta
-    def gaussian_kl( self, mu_theta=None, Sigma_theta=None, resample_measurement_set=True, add_stabilizing_noise=False ):
-        mu_0, Sigma_0_inv = self.GP_prior(self.measurement_set)
-        if mu_theta is None and Sigma_theta is None:
-            mu_theta, Sigma_theta = self.simple_gaussian_approximation( resample_measurement_set=resample_measurement_set )
+    def gaussian_kl( self, resample_measurement_set=True, add_stabilizing_noise=True ):
+        mu_0, root_Sigma_0_inv = self.mu_and_root_Sigma_of_GP_prior( self.measurement_set, inv=True, flatten=True )
+        mu_theta, Sigma_theta = self.simple_gaussian_approximation( resample_measurement_set=resample_measurement_set )
         if add_stabilizing_noise:
-            Sigma_theta += torch.diag( self.conditional_std*torch.ones_like(Sigma_theta.diag()) )
-        return gaussian_kl( mu_theta, torch.linalg.cholesky(Sigma_theta), mu_0, torch.linalg.cholesky(Sigma_0_inv) )
+            Sigma_theta += torch.diag( self.post_GP_eta * torch.ones_like(Sigma_theta.diag()) )
+        return gaussian_kl( mu_theta, torch.linalg.cholesky(Sigma_theta), mu_0, root_Sigma_0_inv )
     #
     # ~~~ A helper function that samples a bunch from the predicted posterior distribution
     def posterior_predicted_mean_and_std( self, x_test, n_samples ):
@@ -273,23 +355,3 @@ class SequentialGaussianBNN(nn.Module):
             std = predictions.std(dim=-1).cpu()             # ~~~ transfer to cpu in order to be able to plot them
             point_estimate = predictions.mean(dim=-1).cpu() # ~~~ transfer to cpu in order to be able to plot them
         return point_estimate, std
-
-
-#
-# ~~~ This was the first thing I tried, but it resulted in memory overflow, which is why I opted to not even both with torch.distributions
-# from torch.distributions.multivariate_normal import MultivariateNormal
-# priors = []
-# for p in BNN.parameters():
-#     print("go")
-#     if len(p.shape)==1: # ~~~ for the biases
-#         numb_pars = len(p)
-#         std = 1/math.sqrt(numb_pars)
-#     else:               # ~~~ for the weight matrices, pytorch's `xavier normal` initialization (https://pytorch.org/docs/stable/_modules/torch/nn/init.html#xavier_normal_)
-#         fan_in, fan_out = _calculate_fan_in_and_fan_out(p)
-#         gain = calculate_gain("relu")
-#         std = gain * math.sqrt(2.0 / float(fan_in + fan_out))
-#         numb_pars = math.prod(p.shape)
-#     priors.append( MultivariateNormal(
-#             mean=torch.zeros(numb_pars),
-#             covariance_matrix = std*torch.eye(numb_pars)
-#         ) )
