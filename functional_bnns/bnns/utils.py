@@ -111,6 +111,26 @@ def univar_poly_fit( x, y, degree=1 ):
     return poly, coeffs, R_squared
 
 #
+# ~~~ Start with a grid of points in the unit cube, and then transform it to the desired bounds, includeing some exaggeration of the bounds
+def  process_grid_of_unit_cube( grid_of_unit_cube, bounds, extrapolation_percent=0.05 ):
+    lo = bounds[:,0].clone()
+    hi = bounds[:,1].clone()
+    range = hi-lo
+    hi += extrapolation_percent*range
+    lo -= extrapolation_percent*range
+    grid = lo + (hi-lo)*grid_of_unit_cube
+    extrapolary_grid = grid[torch.where(torch.logical_or(
+            torch.any( grid>bounds[:,1], dim=1 ),
+            torch.any( grid<bounds[:,0], dim=1 )
+        ))]
+    interpolary_grid = grid[torch.where(torch.logical_and(
+            torch.all( grid<=bounds[:,1], dim=1 ),
+            torch.all( grid>=bounds[:,0], dim=1 )
+        ))]
+    return extrapolary_grid, interpolary_grid
+
+
+#
 # ~~~ Draw uniform random samples from the convex hull of `points` with shape (n_points,d)
 def sample_from_convex_hull( points, n_samples, noise=0.):
     #
