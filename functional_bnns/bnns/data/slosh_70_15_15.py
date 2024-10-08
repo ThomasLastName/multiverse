@@ -3,18 +3,13 @@ import os
 import torch
 import pyreadr                  # ~~~ from https://stackoverflow.com/a/61699417
 import numpy as np
-from quality_of_life.my_base_utils import find_root_dir_of_repo
 from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
 from bnns.utils import process_grid_of_unit_cube
+from bnns import __path__
 
 #
 # ~~~ Set path to the .rda file
-root = find_root_dir_of_repo()
-PATH = os.path.join( root, "functional_bnns", "bnns", "data", "slosh_dat_nj.rda" )
-if __name__ == "__main__":
-    ans = input(f"    Is the path {PATH} correct?\n    Enter 'y' for yes, any other key for no.\n")
-    if not ans.lower()=="y":
-        PATH = input("    Please type the path without quotes and press enter:\n") # ~~~ e.g., /Users/winckelman/Downloads/slosh_dat_nj.rda
+PATH = os.path.join( __path__, "data", "slosh_dat_nj.rda" )
 
 #
 # ~~~ Extract the data as numpy arrays
