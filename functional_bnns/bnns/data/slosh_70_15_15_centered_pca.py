@@ -4,7 +4,7 @@ import torch
 import os
 from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
 from quality_of_life.my_base_utils import find_root_dir_of_repo
-from bnns.data.slosh_70_15_15 import coords_np, inputs_np, out_np, idx_train, idx_test, idx_val
+from bnns.data.slosh_70_15_15 import coords_np, inputs_np, out_np, idx_train, idx_test, idx_val, extrapolary_grid, interpolary_grid
 
 #
 # ~~~ Establish the path to the folder `bnns/data`
@@ -25,6 +25,7 @@ except:
     data_matrix = torch.from_numpy( out_np - np.mean(out_np,axis=0) )
     #
     # ~~~ Process the data (do SVD)
+    print("Computing principal components...")
     torch.manual_seed(2024)     # ~~~ torch.svd_lowrank is stochastic
     U, s, Vt = torch.linalg.svd( data_matrix, full_matrices=False )
     V = Vt.T
@@ -50,6 +51,9 @@ x_val = torch.from_numpy(inputs_np[idx_val])
 y_train = U_truncated[idx_train]
 y_test = U_truncated[idx_test]
 y_val = U_truncated[idx_val]
+unprocessed_y_train = torch.from_numpy(out_np[idx_train])
+unprocessed_y_test = torch.from_numpy(out_np[idx_test])
+unprocessed_y_val = torch.from_numpy(out_np[idx_val])
 
 #
 # ~~~ Finally, package as objects of class torch.utils.data.Dataset
