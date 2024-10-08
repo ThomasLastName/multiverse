@@ -24,8 +24,8 @@ y_test = f(x_test)
 
 #
 # ~~~ Synthetic (noisy) validation data
-x_val = 2*torch.rand( size=(n_val,) )**2 - 1        # ~~~ uniformly random points in [-1,1]
-x_val = x_val.sign() * x_val.abs()**(1/6)         # ~~~ push it away from zero
+x_val = 2*torch.rand( size=(n_val,) )**2 - 1    # ~~~ uniformly random points in [-1,1]
+x_val = x_val.sign() * x_val.abs()**(1/6)       # ~~~ push it away from zero
 y_val = f(x_val) + noise*torch.randn( size=(n_val,) )
 
 #
@@ -37,6 +37,15 @@ y_val   =   y_val.reshape(-1,1)
 #
 # ~~~ Rename the function according to how it will be imported
 ground_truth = f
+grid = x_test
+extrapolary_grid = grid[torch.where(torch.logical_or(
+        grid > x_train.max(),
+        grid < x_train.min()
+    ))]
+interpolary_grid = grid[torch.where(torch.logical_and(
+        grid <= x_train.max(),
+        grid >= x_train.min()
+    ))]
 
 #
 # ~~~ Finally, package as objects of class torch.utils.data.Dataset
