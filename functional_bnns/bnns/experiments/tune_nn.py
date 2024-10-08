@@ -86,12 +86,13 @@ except FileExistsError:
 
 #
 # ~~~ Create the folder `folder_name/experimental_models`
-try:
-    os.mkdir(os.path.join(folder_name,"experimental_models"))
-except FileExistsError:
-    folder_is_empty = len(os.listdir(folder_name))==0
-    if not folder_is_empty:
-        my_warn(f"Folder `{folder_name}/experimental_models` already exists. The .json files from this experiement will be added to a non-empty folder.")
+if save_trained_models:
+    try:
+        os.mkdir(os.path.join(folder_name,"experimental_models"))
+    except FileExistsError:
+        folder_is_empty = len(os.listdir(folder_name))==0
+        if not folder_is_empty:
+            my_warn(f"Folder `{folder_name}/experimental_models` already exists. The .json files from this experiement will be added to a non-empty folder.")
 
 #
 # ~~~ Loop over the hyperparameter grid
@@ -112,7 +113,7 @@ for lr in LR:
                 dict_to_json( hyperparameter_template, json_filename )
                 #
                 # ~~~ Run the training script on that dictionary of hyperparameters
-                basic_command = f"train_nn.py --json {json_filename} --overwrite_json"
+                basic_command = f"python train_nn.py --json {json_filename} --overwrite_json"
                 if save_trained_models:
-                    basic_command += f" --model_save_dir {os.path.join(folder_name,"experimental_models",tag)}"
+                    basic_command += f" --model_save_dir {os.path.join(folder_name,'experimental_models',tag)}"
                 run( basic_command, shell=True )
