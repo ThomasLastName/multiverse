@@ -5,6 +5,7 @@ import pyreadr                  # ~~~ from https://stackoverflow.com/a/61699417
 import numpy as np
 from quality_of_life.my_base_utils import find_root_dir_of_repo
 from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
+from bnns.utils import process_grid_of_unit_cube
 
 #
 # ~~~ Set path to the .rda file
@@ -44,8 +45,45 @@ y_test = torch.from_numpy(out_np[idx_test])
 y_val = torch.from_numpy(out_np[idx_val])
 
 #
-# ~~~ Finally, package as objects of class torch.utils.data.Dataset
+# ~~~ Package as objects of class torch.utils.data.Dataset
 D_train = convert_Tensors_to_Dataset(x_train,y_train)
 D_test = convert_Tensors_to_Dataset(x_test,y_test)
 D_val = convert_Tensors_to_Dataset(x_val,y_val)
 
+#
+# ~~~ First feaure: sea level rise
+lower_sea_level_rise = -20
+upper_sea_level_rise = 350
+
+#
+# ~~~ Second feaure: heading upon landfall
+lower_landfall_heading = 204.0349
+upper_landfall_heading = 384.02444
+
+#
+# ~~~ Third feaure: velocity upon landfall
+lower_landfall_v = 0
+upper_landfall_v = 40
+
+#
+# ~~~ Fourth feaure: minimum air pressure upon landfall
+lower_min_landfall_p = 930
+upper_min_landfall_p = 980
+
+#
+# ~~~ Fifth feaure: latitude upon landfall
+lower_landfall_lat = 38.32527
+upper_landfall_lat = 39.26811
+
+#
+# ~~~ Finally, generate a relatively "fine" grid of the input domain (in 5D, no reasonably sized grid is really fine)
+# grid = torch.quasirandom.SobolEngine(dimension=5).draw(25000) # ~~~ a non-random, "space filling grid"
+grid_of_unit_cube = torch.rand(25000,5)  # ~~~ a uniform random grid
+bounds = torch.tensor([
+        [ lower_sea_level_rise, upper_sea_level_rise ],
+        [ lower_landfall_heading, upper_landfall_heading ],
+        [ lower_landfall_v, upper_landfall_v ],
+        [ lower_min_landfall_p, upper_min_landfall_p ],
+        [ lower_landfall_lat, upper_landfall_lat ]
+    ])
+extrapolary_grid, interpolary_grid = process_grid_of_unit_cube( grid_of_unit_cube, bounds )
