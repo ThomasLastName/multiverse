@@ -9,7 +9,7 @@ from bnns import __path__
 
 #
 # ~~~ Set path to the .rda file
-PATH = os.path.join( __path__, "data", "slosh_dat_nj.rda" )
+PATH = os.path.join( __path__[0], "data", "slosh_dat_nj.rda" )
 
 #
 # ~~~ Extract the data as numpy arrays
@@ -83,5 +83,5 @@ bounds = torch.tensor([
     ])
 extrapolary_grid, interpolary_grid = process_grid_of_unit_cube( grid_of_unit_cube, bounds )
 
-# interpolary_grid = torch.cat([x_train + 0.1*torch.randn_like(x_train) for _ in range(10)], dim=0)
-# dists = torch.cdist(interpolary_grid,x_train).min(dim=1).values
+interpolary_grid = torch.cat([ x_train + 0.05*torch.randn_like(x_train) for _ in range(5) ])
+dists = torch.cdist(interpolary_grid,x_train).min(dim=1).values
