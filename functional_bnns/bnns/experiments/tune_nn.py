@@ -5,6 +5,7 @@ from subprocess import run
 import numpy as np
 from bnns.utils import generate_json_filename
 from quality_of_life.my_base_utils import dict_to_json, my_warn
+from quality_of_life.ansi import bcolors
 
 
 
@@ -78,11 +79,13 @@ save_trained_models = (args.save_trained_models is not None)
 
 #
 # ~~~ Create the folder `folder_name` as a subdirectory of `bnns.experiments`
+note = False
 try:
     os.mkdir(folder_name)
 except FileExistsError:
     folder_is_empty = len(os.listdir(folder_name))==0
     if not folder_is_empty:
+        note = True
         my_warn(f"Folder {folder_name} already exists. The .json files from this experiement will be added to a non-empty folder.")
 
 #
@@ -93,10 +96,18 @@ if save_trained_models:
     except FileExistsError:
         folder_is_empty = len(os.listdir(folder_name))==0
         if not folder_is_empty:
+            note = True
             my_warn(f"Folder `{folder_name}/experimental_models` already exists. The .json files from this experiement will be added to a non-empty folder.")
 
 #
+# ~~~ Super perfectionist, unnecessary formatting of output
+if not note:
+    print("")
+
+#
 # ~~~ Loop over the hyperparameter grid
+N = len(LR)*len(N_EPOCHS)*len(BATCH_SIZE)*len(ARCHITECTURE)
+count = 0
 for lr in LR:
     for n_epochs in N_EPOCHS:
         for batch_size in BATCH_SIZE:
@@ -109,7 +120,8 @@ for lr in LR:
                 hyperparameter_template["model"] = architecture
                 #
                 # ~~~ Save the hyperparameters to a .json file
-                tag = generate_json_filename()
+                count += 1
+                tag = generate_json_filename(message=f"EXPERIMENT {count}/{N}" + bcolors.ENDC + f": lr={lr}, e={n_epochs}, b={batch_size}, model={architecture}")
                 json_filename = os.path.join(folder_name,tag)
                 dict_to_json( hyperparameter_template, json_filename, verbose=False )
                 #

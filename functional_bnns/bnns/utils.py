@@ -9,7 +9,8 @@ import pytz
 from datetime import datetime
 from matplotlib import pyplot as plt
 import fiona
-from quality_of_life.my_base_utils import process_for_saving, dict_to_json
+from quality_of_life.ansi import bcolors
+from quality_of_life.my_base_utils import process_for_saving, my_warn
 try:
     from quality_of_life.my_base_utils import buffer
 except:
@@ -171,12 +172,16 @@ def sample_from_convex_hull( points, n_samples, noise=0.):
 
 #
 # ~~~ Generate a .json filename based on the current datetime
-def generate_json_filename(verbose=True):
+def generate_json_filename(verbose=True,message=None):
+    #
+    # ~~~ Generate a .json filename
     time = datetime.now(pytz.timezone('US/Central'))        # ~~~ current date and time CST
     file_name = str(time)
     file_name = file_name[:file_name.find(".")]             # ~~~ remove the number of milliseconds (indicated with ".") 
     file_name = file_name.replace(" ","_").replace(":","-") # ~~~ replace blank space (between date and time) with an underscore and colons (hr:mm:ss) with dashes
     file_name = process_for_saving(file_name+".json")       # ~~~ procsess_for_saving("path_that_exists.json") returns "path_that_exists (1).json"
+    #
+    # ~~~ Craft a message to print
     if verbose:
         if time.hour > 12:
             hour = time.hour - 12
@@ -184,8 +189,13 @@ def generate_json_filename(verbose=True):
         else:
             hour = time.hour
             suffix = "am"
+        base_message = bcolors.OKBLUE + f"    Generating file name {file_name} at {hour}:{time.minute:02d}{suffix} CST" + bcolors.HEADER
+        if message is not None:
+            if not message[0]==" ":
+                message = " " + message
+            base_message += message
         print("")
-        print(f"    Generating file name {file_name} at {hour}:{time.minute}{suffix}")
+        print(base_message)
         print("")
     return file_name
 
