@@ -117,4 +117,8 @@ for lr in LR:
                 basic_command = f"python train_nn.py --json {json_filename} --overwrite_json"
                 if save_trained_models:
                     basic_command += f" --model_save_dir {os.path.join(folder_name,'experimental_models',tag)}"
-                run( basic_command, shell=True )
+                output = run( basic_command, shell=True )
+                #
+                # ~~~ Break out of the loop if there was an error in `train_nn.py`
+                if not output.returncode==0:
+                    break
