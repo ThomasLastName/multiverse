@@ -4,6 +4,7 @@ from bnns.SSGE import SpectralSteinEstimator
 from matplotlib import pyplot as plt
 import math
 import numpy as np
+from quality_of_life.my_base_utils import support_for_progress_bars
 from quality_of_life.my_visualization_utils import *
 from tqdm import trange
 
@@ -42,10 +43,11 @@ def make_hist(m,lim=1000000):
 if make_gif:
     gif = GifMaker()
     lim = 100000000
-    for m in trange(0,M,5):
-        new_lim = make_hist( m+5, lim )
-        lim = min(lim,new_lim)
-        gif.capture()
+    with support_for_progress_bars():
+        for m in trange(0,M,5):
+            new_lim = make_hist( m+5, lim )
+            lim = min(lim,new_lim)
+            gif.capture()
     # gif.develop( destination="intended_filename", fps=24 ) # if you want to save the .gif
 else:
     make_hist(M)
