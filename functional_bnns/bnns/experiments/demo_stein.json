@@ -1,5 +1,5 @@
 {
-	"DEVICE": "cuda",
+	"DEVICE": "cpu",
 	"dtype": "float",
 	"seed": 2024,
 	"data": "univar_missing_middle_normalized_12",
