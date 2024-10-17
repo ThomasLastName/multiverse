@@ -3,11 +3,9 @@ import math
 import torch
 from torch import nn
 from bnns.SSGE import SpectralSteinEstimator as SSGE
-from bnns.SSGE import BaseScoreEstimator as SSGE_backend
 from bnns.utils import log_gaussian_pdf, get_std, gaussian_kl, manual_Jacobian
 from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
-kernel_matrix = SSGE_backend().gram_matrix
 
 
 
@@ -71,13 +69,8 @@ class SequentialGaussianBNN(nn.Module):
         self.prior_SSGE      = None
         self.use_eigh        = True
         #
-        # ~~~ Boolean attribute for whether or not to use a GP prior
-        self.use_GP_prior = False
-        self.prior_GP_kernel_bandwidth = "please specify"
-        self.prior_GP_kernel_scale = "please specify"
-        self.prior_GP_kernel_eta = "please specify"
+        # ~~~ A hyperparameter needed for the gaussian appxroximation method
         self.post_GP_eta = "please specify"
-        self.prior_GP_mean = lambda x: torch.zeros( x.shape[0], self.out_features ).to( device=x.device, dtype=x.dtype )
     #
     # ~~~ Sample according to a "standard normal distribution in the shape of our neural network"
     def sample_from_standard_normal(self):
@@ -162,10 +155,10 @@ class SequentialGaussianBNN(nn.Module):
     def prior_forward(self,x,resample_weights=True):
         #
         # ~~~ If the prior distribution is a Gaussian process, then we just need to sample from the correct Gaussian distribution
-        if self.use_GP_prior:
+        if hasattr(self,"GP"):
             #
             # ~~~ The realized sample of the distribution of Y|X=x,W=w is entirely determined by self.realized_standard_normal
-            mu, root_Sigma = self.mu_and_root_Sigma_of_GP_prior(x)
+            mu, root_Sigma = self.GP.prior_mu_and_Sigma( x, cholesky=True )  # ~~~ return the cholesky square roots of the covariance matrices
             z = torch.randn( x.shape[0], device=x.device, dtype=x.dtype )
             return mu + (root_Sigma@z).T    # ~~~ mu + Sigma^{-1/2} z \sim N(mu,Sigma); einsum computes this in batches
         #
@@ -195,11 +188,13 @@ class SequentialGaussianBNN(nn.Module):
         with torch.no_grad():
             #
             # ~~~ Sample from the prior distribution self.prior_M times (and flatten the samples)
-            if self.use_GP_prior:
-                mu, root_Sigma = self.mu_and_root_Sigma_of_GP_prior(self.measurement_set)
+            if hasattr(self,"GP"):
+                mu, root_Sigma = self.GP.prior_mu_and_Sigma( self.measurement_set, cholesky=True )  # ~~~ return the cholesky square roots of the covariance matrices
                 Z = torch.randn( size=( self.prior_M, self.measurement_set.shape[0] ), device=self.measurement_set.device, dtype=self.measurement_set.dtype )
-                Sz = root_Sigma@Z.T
-                prior_samples = torch.row_stack([ (mu + Sz[:,:,j].T).flatten() for j in range(self.prior_M) ])
+                SZ = root_Sigma@Z.T # ~~~ SZ[:,:,j] is the matrix you get from stacking the vectors Sigma_i^{1/2}z_j for i=1,...,self.out_features, where z_j==Z[j] and Sigma_i is the covariance matrix of the model's i-th output
+                #
+                # ~~~ Sample from the N(mu,Sigma) distribution by taking mu+Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
+                prior_samples = torch.row_stack([ (mu + SZ[:,:,j].T).flatten() for j in range(self.prior_M) ])
             else:
                 prior_samples = torch.row_stack([ self.prior_forward(self.measurement_set).flatten() for _ in range(self.prior_M) ])
             #
@@ -259,41 +254,6 @@ class SequentialGaussianBNN(nn.Module):
     ## ~~~ Methods for computing the fBNN loss using a Gaussian approximation (https://arxiv.org/abs/2312.17199)
     ### ~~~
     #
-    # ~~~ Get the mean and covariance of the GP prior at points x
-    def mu_and_root_Sigma_of_GP_prior( self, x, inv=False, flatten=False ):
-        #
-        # ~~~ Compute the mean of the prior GP
-        MU = self.prior_GP_mean(x)
-        MU = MU.flatten() if flatten else MU
-        #
-        # ~~~ Compute either the cholesky square root, or that of the inverse
-        def simple_linalg_routine(A):
-            try:
-                if not inv:
-                    return torch.linalg.cholesky(A)
-                if inv:
-                    try:
-                        return torch.linalg.cholesky(torch.linalg.inv(A))
-                    except:
-                        print("Having to use `cholesky_inverse`")
-                        return torch.linalg.cholesky(torch.cholesky_inverse(torch.linalg.cholesky(A)))
-            except torch._C._LinAlgError:
-                my_warn('pythorch is having trouble taking the cholesky inverse of the covariance matrix of the prior GP. Perhaps, consider adding more "stabilizing noise" (i.e., K + eta*I) by increasing the value of `BNN.prior_GP_kernel_eta` and/or increasing the numerical precision by using torch.double (if using torch.float currently)')
-                raise
-        #
-        # ~~~ Either stack the covariance matrices of each output feature into a third order tensor, or form a block diagonal matrix out of them
-        combiner = lambda list_of_matrices: torch.block_diag(*list_of_matrices) if flatten else torch.stack(list_of_matrices)
-        SQRT_SIGMA = combiner([
-                simple_linalg_routine(
-                    #
-                    # ~~~ Build the kernel matrix for the j-th output feature
-                    self.prior_GP_kernel_scale[j] * kernel_matrix( x, x, self.prior_GP_kernel_bandwidth[j] )
-                    + self.prior_GP_kernel_eta[j] * torch.eye( x.shape[0], device=x.device, dtype=x.dtype )
-                )
-                for j in range(self.out_features)
-            ])
-        return MU, SQRT_SIGMA
-    #
     # ~~~ Compute the mean and standard deviation of a normal distribution approximating q_theta
     def simple_gaussian_approximation( self, resample_measurement_set=True ):
         #
@@ -342,7 +302,7 @@ class SequentialGaussianBNN(nn.Module):
     #
     # ~~~ Compute the mean and standard deviation of a normal distribution approximating q_theta
     def gaussian_kl( self, resample_measurement_set=True, add_stabilizing_noise=True ):
-        mu_0, root_Sigma_0_inv = self.mu_and_root_Sigma_of_GP_prior( self.measurement_set, inv=True, flatten=True )
+        mu_0, root_Sigma_0_inv = self.GP.prior_mu_and_Sigma( self.measurement_set, inv=True, flatten=True, cholesky=True )   # ~~~ return the flattened cholesky square roots of the inverses of the covariance matrices
         mu_theta, Sigma_theta = self.simple_gaussian_approximation( resample_measurement_set=resample_measurement_set )
         if add_stabilizing_noise:
             Sigma_theta += torch.diag( self.post_GP_eta * torch.ones_like(Sigma_theta.diag()) )

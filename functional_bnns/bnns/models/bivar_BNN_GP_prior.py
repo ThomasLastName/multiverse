@@ -2,11 +2,12 @@
 import torch
 from torch import nn
 from bnns.models.bivar_BNN import BNN
+from bnns.GPR import simple_mean_zero_RPF_kernel_GP
 
-BNN.use_GP_prior = True
-BNN.prior_GP_kernel_bandwidth = torch.tensor(BNN.out_features*[0.1])
-BNN.prior_GP_kernel_scale = torch.tensor(BNN.out_features*[1.])
-BNN.prior_GP_kernel_eta = torch.tensor(BNN.out_features*[0.19])
+BNN.GP = simple_mean_zero_RPF_kernel_GP(
+        out_features = BNN.out_features,
+        eta = 0.19
+    )
 
 # from bnns.SequentialGaussianBNN import kernel_matrix
 # x = torch.randn(100,2)
