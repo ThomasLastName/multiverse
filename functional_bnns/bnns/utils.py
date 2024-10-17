@@ -2,7 +2,7 @@
 import math
 import numpy as np
 import torch
-from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used (optionally) to define the prior distribution on network weights
+from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
 
 import os
 import pytz
@@ -113,7 +113,7 @@ def univar_poly_fit( x, y, degree=1 ):
 
 #
 # ~~~ Start with a grid of points in the unit cube, and then transform it to the desired bounds, includeing some exaggeration of the bounds
-def  process_grid_of_unit_cube( grid_of_unit_cube, bounds, extrapolation_percent=0.05 ):
+def process_grid_of_unit_cube( grid_of_unit_cube, bounds, extrapolation_percent=0.05 ):
     lo = bounds[:,0].clone()
     hi = bounds[:,1].clone()
     range = hi-lo
@@ -194,9 +194,7 @@ def generate_json_filename(verbose=True,message=None):
             if not message[0]==" ":
                 message = " " + message
             base_message += message
-        print("")
         print(base_message)
-        print("")
     return file_name
 
 #

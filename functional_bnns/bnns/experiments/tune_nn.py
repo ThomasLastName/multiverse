@@ -100,7 +100,7 @@ if save_trained_models:
             my_warn(f"Folder `{folder_name}/experimental_models` already exists. The .json files from this experiement will be added to a non-empty folder.")
 
 #
-# ~~~ Super perfectionist, unnecessary formatting of output
+# ~~~ Perfectionist, superficial formatting of output
 if not note:
     print("")
 
@@ -134,3 +134,6 @@ for lr in LR:
                 # ~~~ Break out of the loop if there was an error in `train_nn.py`
                 if not output.returncode==0:
                     break
+                #
+                # ~~~ Perfectionist, superficial formatting of output
+                print("")
