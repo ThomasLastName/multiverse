@@ -56,7 +56,7 @@ hyperparameter_template = {
     "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ for how many frames should the state of initialization be rendered
     "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ for how many frames should the state after training be rendered
     "HOW_MANY_INDIVIDUAL_PREDICTIONS" : 6,  # ~~~ how many posterior predictive samples to plot
-    "VISUALIZE_BNN_USING_QUANTILES" : True, # ~~~ for dropout, if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
+    "VISUALIZE_DISTRIBUTION_USING_QUANTILES" : True, # ~~~ for dropout, if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
     "N_POSTERIOR_SAMPLES" : 100,            # ~~~ for dropout, how many samples to use to make the empirical distributions for plotting
     #
     # ~~~ For metrics and visualization
@@ -110,21 +110,12 @@ torch.manual_seed(SEED)
 # ~~~ Handle the dtypes not writeable in .json format (e.g., if your dictionary includes the value `torch.optim.Adam` you can't save it as .json)
 DTYPE = getattr(torch,DTYPE)            # ~~~ e.g., DTYPE=="float" (str) -> DTYPE==torch.float (torch.dtype) 
 torch.set_default_dtype(DTYPE)
-OPTIMIZER = getattr(optim,OPTIMIZER)    # ~~~ e.g., OPTIMIZER=="Adam" (str) -> OPTIMIZER==optim.Adam
-
-#
-# ~~~ Load the network architecture
-try:
-    MODEL = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as MODEL`
-except:
-    MODEL = import_module(MODEL)
-
-NN = MODEL.NN.to( device=DEVICE, dtype=DTYPE )
+Optimizer = getattr(optim,OPTIMIZER)    # ~~~ e.g., OPTIMIZER=="Adam" (str) -> Optimizer==optim.Adam
 
 #
 # ~~~ Load the data
 try:
-    data = import_module(f"bnns.data.{DATA}")   # ~~~ this is equivalent to `import bnns.data.<DATA> as DATA`
+    data = import_module(f"bnns.data.{DATA}")   # ~~~ this is equivalent to `import bnns.data.<DATA> as data`
 except:
     data = import_module(DATA)
 
@@ -134,15 +125,18 @@ D_val   =   set_Dataset_attributes( data.D_val, device=DEVICE, dtype=DTYPE ) # ~
 data_is_univariate = (D_train[0][0].numel()==1)
 
 try:
-    scale = data.scale
-    conditional_std /= scale
-except:
-    pass
-
-try:
     grid = data.grid.to( device=DEVICE, dtype=DTYPE )
 except:
     pass
+
+#
+# ~~~ Load the network architecture
+try:
+    model = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as model`
+except:
+    model = import_module(MODEL)
+
+NN = model.NN.to( device=DEVICE, dtype=DTYPE )
 
 
 #
@@ -160,7 +154,7 @@ with torch.no_grad():
 
 #
 # ~~~ The optimizer, dataloader, and loss function
-optimizer = OPTIMIZER( NN.parameters(), lr=LR )
+optimizer = Optimizer( NN.parameters(), lr=LR )
 dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
 loss_fn = nn.MSELoss()
 
@@ -177,7 +171,7 @@ if data_is_univariate:
     if dropout:
         #
         # ~~~ Override the plotting routine `plot_nn` by defining instead a routine which 
-        plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_BNN_USING_QUANTILES else plot_bnn_mean_and_std
+        plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
         def plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, nn, extra_std=0., HOW_MANY_INDIVIDUAL_PREDICTIONS=HOW_MANY_INDIVIDUAL_PREDICTIONS, N_POSTERIOR_SAMPLES=N_POSTERIOR_SAMPLES, title=description_of_the_experiment ):
             #
             # ~~~ Draw from the predictive distribuion
@@ -275,10 +269,10 @@ if dropout:
     hyperparameters["METRIC_max_norm_of_median"]  =  max_norm_of_median( predictions, y_test )
     hyperparameters["METRIC_max_norm_of_mean"]    =    max_norm_of_mean( predictions, y_test )
     for estimator in ("mean","median"):
-        show = SHOW_DIAGNOSTICS and ((estimator=="median")==VISUALIZE_BNN_USING_QUANTILES)  # ~~~ i.e., diagnostics are requesed, the prediction type mathces the uncertainty type (mean and std. dev., or median and iqr)
+        show = SHOW_DIAGNOSTICS and ((estimator=="median")==VISUALIZE_DISTRIBUTION_USING_QUANTILES)  # ~~~ i.e., diagnostics are requesed, the prediction type mathces the uncertainty type (mean and std. dev., or median and iqr)
         hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
         hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-        hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_BNN_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=show )
+        hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=show )
 else:
     hyperparameters["METRIC_mse"] = mse( NN, x_test, y_test )
     hyperparameters["METRIC_mae"] = mae( NN, x_test, y_test )
