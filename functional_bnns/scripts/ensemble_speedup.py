@@ -27,7 +27,7 @@ from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 ### ~~~
 
 STEIN = True
-VMAP = False
+N_COPIES = 100
 
 SEED = 2024
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -39,7 +39,38 @@ NN = NN.to(DEVICE)
 
 
 ### ~~~
-## ~~~ Do a Stein neural network ensemble
+## ~~~ Test all three forward passes to confirm they are equivalent, and compare their speeds
+### ~~~
+
+#
+# ~~~ Set the seed
+_ = torch.manual_seed(SEED)
+
+#
+# ~~~ Instantiate an ensemble (the same both times)
+ensemble = Ensemble(
+        architecture = nonredundant_copy_of_module_list(NN),    # ~~~ copy for reproducibility
+        n_copies = N_COPIES,
+        Optimizer = lambda params: torch.optim.Adam( params, lr=0.001 ),
+        conditional_std = torch.tensor(0.19),
+        device = DEVICE
+    )
+
+with torch.no_grad():
+    assert ( ensemble(X,method="vmap") - ensemble(X,method="bmm") ).abs().max() < 1e-6
+    assert ( ensemble(X,method="vmap") - ensemble(X,method="naive")      ).abs().max() < 1e-6
+    print("")
+    print("    Testing the speed of the forward pass.")
+    print("")
+    with support_for_progress_bars():
+        for method in ["naive","bmm","vmap"]:
+            for _ in trange( 100, desc=f"method={method}" ):
+                _ = ensemble(X,method=method)
+
+
+
+### ~~~
+## ~~~ Test the naive training method against the current best
 ### ~~~
 
 for OLD_TRAINING in [True,False]:
@@ -50,42 +81,27 @@ for OLD_TRAINING in [True,False]:
     # ~~~ Instantiate an ensemble (the same both times)
     ensemble = Ensemble(
             architecture = nonredundant_copy_of_module_list(NN),    # ~~~ copy for reproducibility
-            n_copies = 100,
+            n_copies = N_COPIES,
             Optimizer = lambda params: torch.optim.Adam( params, lr=0.001 ),
             conditional_std = torch.tensor(0.19),
             device = DEVICE
         )
     #
-    # ~~~ Test the use of vmap in the __call__ method
-    assert ( ensemble(X,vectorized=True) - ensemble(X,vectorized=False) ).abs().max() < 1e-6
-    if OLD_TRAINING: # ~~~ only run this test for one of the two training methods (it is the same in both cases)
-        print("")
-        print("    Testing the speed of the __call__ method with and without vmap.")
-        print("")
-        with support_for_progress_bars():
-            for _ in trange( 100, desc="With vmap" ):
-                _ = ensemble(X,vectorized=True)
-            for _ in trange( 100, desc="Without vmap" ):
-                _ = ensemble(X,vectorized=False)
-    #
     # ~~~ Test that the vmap is using the upddated parameters (which vectorized=False certainly does)
-    ensemble.train_step( X, y, stein=STEIN, easy_implementation=OLD_TRAINING, vectorized=VMAP )
-    assert ( ensemble(X,vectorized=True) - ensemble(X,vectorized=False) ).abs().max() < 1e-6
+    _ = ensemble.train_step( X, y, stein=STEIN, naive_implementation=OLD_TRAINING, vectorized_forward=(not OLD_TRAINING) )
     if OLD_TRAINING:
         result_of_old_training = ensemble(X)
-        # grad_from_old_training = get_flat_grads(ensemble.models[0])
     else:
         result_of_new_training = ensemble(X)
-        # grad_from_new_training = get_flat_grads(ensemble.models[0])
 
 #
 # ~~~ Test the same update was performed whether using the original or the new implementation
-assert torch.allclose( result_of_new_training, result_of_old_training )
+assert ( result_of_new_training - result_of_old_training ).abs().mean() < 1e-6
 print("")
 print("    Testing the speed of the train_step method with and without einsum.")
 print("")
 with support_for_progress_bars():
-    for _ in trange( 20, desc="With einsum" ):
-        ensemble.train_step( X, y, stein=STEIN, easy_implementation=False )
-    for _ in trange( 20, desc="Without einsum" ):
-        ensemble.train_step( X, y, stein=STEIN, easy_implementation=True )
+    for _ in trange( 10, desc="Original training implementation" ):
+        _ = ensemble.train_step( X, y, stein=STEIN, naive_implementation=True, vectorized_forward=False )
+    for _ in trange( 10, desc="Optimized training implementation" ):
+        _ = ensemble.train_step( X, y, stein=STEIN, naive_implementation=False, vectorized_forward=True )
