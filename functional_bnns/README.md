@@ -40,7 +40,7 @@ If desired, the dependencies on `plotly` and `quality_of_life` could be removed.
 
 In order to run a test, the procedure is as follows. In order to specify hyperparameters, put a `.json` file containing hyperparameter values for the experiment that you want to run in the `experiments` folder.
 Different algorithms require different hyperparmeters, and these differences are reflected in the scripts that load the `.json` files.
-At the time of writing, there are 4 python scripts in the `experiments` folder: `train_bnn.py`, `train_nn.py`, `train_gpr.py`, and `train_stein.py`. To train a model with the hyperparamters specified by the `.json` file, say, `my_hyperpars.json`, navigate to the `experiment` folder and run `python train_<algorithm>.py --json my_hyperparameters`.
+At the time of writing, there are 4 python scripts in the `experiments` folder: `train_bnn.py`, `train_nn.py`, `train_gpr.py`, and `train_ensemble.py`. To train a model with the hyperparamters specified by the `.json` file, say, `my_hyperpars.json`, navigate to the `experiment` folder and run `python train_<algorithm>.py --json my_hyperparameters`.
 To see which hyperparameters are expected by the algorithm (which are the fields that you need to include in your .json file), check either the demo .json file included with the repo, or check the body of the python script, where a dictionary called `hyperparameter_template` should be defined.
 
 ## The SLOSH Dataset
@@ -91,7 +91,7 @@ Additionally, within that file `my_brand_new_architecture.py`, you must define a
 
 # Contributors
 
- - The code for SSGE was taken from the repo https://github.com/AntixK/Spectral-Stein-Gradient
+ - The code for SSGE was adapted from the repo https://github.com/AntixK/Spectral-Stein-Gradient
 
 
 

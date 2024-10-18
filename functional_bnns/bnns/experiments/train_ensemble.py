@@ -15,7 +15,7 @@ import sys
 
 #
 # ~~~ The guts of the model
-from bnns.Stein_GD import SequentialSteinEnsemble as Ensemble
+from bnns.Ensemble import SequentialSteinEnsemble as Ensemble
 from bnns.metrics import *
 
 #

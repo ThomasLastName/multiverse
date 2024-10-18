@@ -3,7 +3,7 @@ import torch
 
 from bnns.models.bivar_NN import NN
 from bnns.data.bivar_trivial import x_train
-from bnns.Stein_GD import SequentialSteinEnsemble as Ensemble
+from bnns.Ensemble import SequentialSteinEnsemble as Ensemble
 
 ensemble = Ensemble(
     architecture = NN,
