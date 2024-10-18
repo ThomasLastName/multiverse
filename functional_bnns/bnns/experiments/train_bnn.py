@@ -40,44 +40,44 @@ hyperparameter_template = {
     #
     # ~~~ Misc.
     "DEVICE" : "cpu",
-    "dtype" : "float",
-    "seed" : 2024,
+    "DTYPE" : "float",
+    "SEED" : 2024,
     #
     # ~~~ Which problem
-    "data" : "univar_missing_middle",
-    "model" : "univar_BNN",
+    "DATA" : "univar_missing_middle",
+    "MODEL" : "univar_BNN",
     #
     # ~~~ For training
-    "gaussian_approximation" : True,    # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
-    "functional" : False,   # ~~~ whether or to do functional training or (if False) BBB
-    "n_MC_samples" : 20,    # ~~~ expectations (in the variational loss) are estimated as an average of this many Monte-Carlo samples
-    "project" : True,       # ~~~ if True, use projected gradient descent; else use the weird thing from the paper
-    "projection_tol" : 1e-6,# ~~~ for numerical reasons, project onto [projection_tol,Inf), rather than onto [0,Inft)
-    "prior_J"   : 100,      # ~~~ `J` in the SSGE of the prior score
-    "post_J"    : 10,       # ~~~ `J` in the SSGE of the posterior score
-    "prior_eta" : 0.5,      # ~~~ `eta` in the SSGE of the prior score
-    "post_eta"  : 0.5,      # ~~~ `eta` in the SSGE of the posterior score
-    "prior_M"   : 4000,     # ~~~ `M` in the SSGE of the prior score
-    "post_M"    : 40,       # ~~~ `M` in the SSGE of the posterior score
-    "conditional_std" : 0.19,
-    "Optimizer" : "Adam",
-    "lr" : 0.0005,
-    "batch_size" : 64,
-    "n_epochs" : 200,
+    "GAUSSIAN_APPROXIMATION" : True,    # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
+    "FUNCTIONAL" : False,   # ~~~ whether or to do functional training or (if False) BBB
+    "N_MC_SAMPLES" : 20,    # ~~~ expectations (in the variational loss) are estimated as an average of this many Monte-Carlo samples
+    "PROJECT" : True,       # ~~~ if True, use projected gradient descent; else use the weird thing from the paper
+    "PROJECTION_TOL" : 1e-6,# ~~~ for numerical reasons, project onto [PROJECTION_TOL,Inf), rather than onto [0,Inft)
+    "PRIOR_J"   : 100,      # ~~~ `J` in the SSGE of the prior score
+    "POST_J"    : 10,       # ~~~ `J` in the SSGE of the posterior score
+    "PRIOR_eta" : 0.5,      # ~~~ `eta` in the SSGE of the prior score
+    "POST_eta"  : 0.5,      # ~~~ `eta` in the SSGE of the posterior score
+    "PRIOR_M"   : 4000,     # ~~~ `M` in the SSGE of the prior score
+    "POST_M"    : 40,       # ~~~ `M` in the SSGE of the posterior score
+    "CONDITIONAL_STD" : 0.19,
+    "OPTIMIZER" : "Adam",
+    "LR" : 0.0005,
+    "BATCH_SIZE" : 64,
+    "N_EPOCHS" : 200,
     #
     # ~~~ For visualization (only applicable on 1d data)
-    "make_gif" : True,
-    "how_often" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
-    "initial_frame_repetitions" : 24,       # ~~~ for how many frames should the state of initialization be rendered
-    "final_frame_repetitions" : 48,         # ~~~ for how many frames should the state after training be rendered
-    "how_many_individual_predictions" : 6,  # ~~~ how many posterior predictive samples to plot
-    "visualize_bnn_using_quantiles" : True, # ~~~ if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
-    "n_posterior_samples" : 100,            # ~~~ for plotting, posterior distributions are approximated as empirical dist.'s of this many samples
+    "MAKE_GIF" : True,
+    "HOW_OFTEN" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
+    "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ for how many frames should the state of initialization be rendered
+    "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ for how many frames should the state after training be rendered
+    "HOW_MANY_INDIVIDUAL_PREDICTIONS" : 6,  # ~~~ how many posterior predictive samples to plot
+    "VISUALIZE_DISTRIBUTION_USING_QUANTILES" : True, # ~~~ if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
+    "N_POSTERIOR_SAMPLES" : 100,            # ~~~ for plotting, posterior distributions are approximated as empirical dist.'s of this many samples
     #
     # ~~~ For metrics and visualization
-    "extra_std" : True,
-    "n_posterior_samples_evaluation" : 1000,# ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
-	"show_diagnostics" : True
+    "EXTRA_STD" : True,
+    "N_POSTERIOR_SAMPLES_EVALUATION" : 1000,# ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
+	"SHOW_DIAGNOSTICS" : True
 }
 
 #
@@ -97,9 +97,11 @@ else:
         print("    Hint: try `python train_bnn.py --json demo_bnn`")
         print("")
         raise
+    parser.add_argument( '--model_save_dir', type=str )
     parser.add_argument( '--final_test', action=argparse.BooleanOptionalAction )
     parser.add_argument( '--overwrite_json', action=argparse.BooleanOptionalAction )
     args = parser.parse_args()
+    model_save_dir = args.model_save_dir
     final_test = (args.final_test is not None)
     overwrite_json = (args.overwrite_json is not None)
     input_json_filename = args.json
@@ -115,52 +117,52 @@ globals().update(hyperparameters)       # ~~~ e.g., if hyperparameters=={ "a":1,
 
 #
 # ~~~ Might as well fix a seed, e.g., for randomly shuffling the order of batches during training
-torch.manual_seed(seed)
+torch.manual_seed(SEED)
 
 #
 # ~~~ Handle the dtypes not writeable in .json format (e.g., if your dictionary includes the value `torch.optim.Adam` you can't save it as .json)
-dtype = getattr(torch,dtype)            # ~~~ e.g., "float" (str) -> torch.float (torch.dtype) 
-torch.set_default_dtype(dtype)
-Optimizer = getattr(optim,Optimizer)    # ~~~ e.g., "Adam" (str) -> optim.Adam
-
-#
-# ~~~ Load the network architecture
-try:
-    model = import_module(f"bnns.models.{model}")   # ~~~ this is equivalent to `import bnns.models.<model> as model`
-except:
-    model = import_module(model)
-
-BNN = model.BNN.to( device=DEVICE, dtype=dtype )
-BNN.conditional_std = torch.tensor(conditional_std)
-BNN.prior_J = prior_J
-BNN.post_J = post_J
-BNN.prior_eta = prior_eta
-BNN.post_eta = post_eta
-BNN.prior_M = prior_M
-BNN.post_M = post_M
+DTYPE = getattr(torch,DTYPE)            # ~~~ e.g., "float" (str) -> torch.float (torch.dtype) 
+torch.set_default_dtype(DTYPE)
+Optimizer = getattr(optim,OPTIMIZER)    # ~~~ e.g., OPTIMIZER=="Adam" (str) -> Optimizer==optim.Adam
 
 #
 # ~~~ Load the data
 try:
-    data = import_module(f"bnns.data.{data}")   # ~~~ this is equivalent to `import bnns.data.<data> as data`
+    data = import_module(f"bnns.data.{DATA}")   # ~~~ this is equivalent to `import bnns.data.<DATA> as data`
 except:
-    data = import_module(data)
+    data = import_module(DATA)
 
-D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=dtype )
-D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=dtype )
-D_val   =   set_Dataset_attributes( data.D_val, device=DEVICE, dtype=dtype ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
+D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=DTYPE )
+D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=DTYPE )
+D_val   =   set_Dataset_attributes( data.D_val, device=DEVICE, dtype=DTYPE ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
 data_is_univariate = (D_train[0][0].numel()==1)
 
 try:
     scale = data.scale
-    conditional_std /= scale
+    CONDITIONAL_STD /= scale
 except:
     pass
 
 try:
-    grid = data.grid.to( device=DEVICE, dtype=dtype )
+    grid = data.grid.to( device=DEVICE, dtype=DTYPE )
 except:
     pass
+
+#
+# ~~~ Load the network architecture
+try:
+    model = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as model`
+except:
+    model = import_module(MODEL)
+
+BNN = model.BNN.to( device=DEVICE, dtype=DTYPE )
+BNN.conditional_std = torch.tensor(CONDITIONAL_STD)
+BNN.prior_J = PRIOR_J
+BNN.post_J = POST_J
+BNN.prior_eta = PRIOR_eta
+BNN.post_eta = POST_eta
+BNN.prior_M = PRIOR_M
+BNN.post_M = POST_M
 
 
 
@@ -170,18 +172,18 @@ except:
 
 #
 # ~~~ The optimizer and dataloader
-dataloader = torch.utils.data.DataLoader( D_train, batch_size=batch_size )
-mean_optimizer = Optimizer( BNN.model_mean.parameters(), lr=lr )
-std_optimizer  =  Optimizer( BNN.model_std.parameters(), lr=lr )
+dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
+mean_optimizer = Optimizer( BNN.model_mean.parameters(), lr=LR )
+std_optimizer  =  Optimizer( BNN.model_std.parameters(), lr=LR )
 
 #
 # ~~~ Some naming stuff
-description_of_the_experiment = "fBNN" if functional else "BBB"
-if gaussian_approximation:
-    if functional:
+description_of_the_experiment = "fBNN" if FUNCTIONAL else "BBB"
+if GAUSSIAN_APPROXIMATION:
+    if FUNCTIONAL:
         description_of_the_experiment += " Using a Gaussian Approximation"
     else:
-        my_warn("`gaussian_approximation` was specified as True, but `functional` was specified as False; since Rudner et al.'s Gaussian approximation is only used in fBNNs, it will not be used in this case.")
+        my_warn("`GAUSSIAN_APPROXIMATION` was specified as True, but `FUNCTIONAL` was specified as False; since Rudner et al.'s Gaussian approximation is only used in fBNNs, it will not be used in this case.")
 
 #
 # ~~~ Some plotting stuff
@@ -193,22 +195,22 @@ if data_is_univariate:
     y_train_cpu = data.y_train.cpu().squeeze()
     #
     # ~~~ Define the main plotting routine
-    plot_predictions = plot_bnn_empirical_quantiles if visualize_bnn_using_quantiles else plot_bnn_mean_and_std
-    def plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, bnn, extra_std=(BNN.conditional_std if extra_std else 0.), how_many_individual_predictions=how_many_individual_predictions, n_posterior_samples=n_posterior_samples, title=description_of_the_experiment, prior=False ):
+    plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
+    def plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, bnn, extra_std=(BNN.conditional_std if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, n_posterior_samples=N_POSTERIOR_SAMPLES, title=description_of_the_experiment, prior=False ):
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
             forward = bnn.prior_forward if prior else bnn
-            predictions = torch.column_stack([ forward(grid,resample_weights=True) for _ in range(n_posterior_samples) ])
-        return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, how_many_individual_predictions, title )
+            predictions = torch.column_stack([ forward(grid,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ])
+        return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, HOW_MANY_INDIVIDUAL_PREDICTIONS, title )
     #
     # ~~~ Plot the state of the posterior predictive distribution upon its initialization
-    if make_gif:
+    if MAKE_GIF:
         gif = GifMaker()      # ~~~ essentially just a list of images
         fig,ax = plt.subplots(figsize=(12,6))
         fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN, prior=True )
-        for j in range(initial_frame_repetitions):
-            gif.capture( clear_frame_upon_capture=(j+1==initial_frame_repetitions) )
+        for j in range(INITIAL_FRAME_REPETITIONS):
+            gif.capture( clear_frame_upon_capture=(j+1==INITIAL_FRAME_REPETITIONS) )
 
 #
 # ~~~ Define some objects for recording the hisorty of training
@@ -219,12 +221,12 @@ for metric in metrics:
 
 #
 # ~~~ Define how to project onto the constraint set
-if project:
+if PROJECT:
     BNN.rho = lambda x:x
     def projection_step(BNN):
         with torch.no_grad():
             for p in BNN.model_std.parameters():
-                p.data = torch.clamp( p.data, min=projection_tol )
+                p.data = torch.clamp( p.data, min=PROJECTION_TOL )
     projection_step(BNN)
 
 #
@@ -235,17 +237,17 @@ BNN.measurement_set = x_train
 #
 # ~~~ Start the training loop
 with support_for_progress_bars():   # ~~~ this just supports green progress bars
-    pbar = tqdm( desc=description_of_the_experiment, total=n_epochs*len(dataloader), ascii=' >=' )
-    for e in range(n_epochs):
+    pbar = tqdm( desc=description_of_the_experiment, total=N_EPOCHS*len(dataloader), ascii=' >=' )
+    for e in range(N_EPOCHS):
         #
         # ~~~ Training logic
         for X, y in dataloader:
             X, y = X.to(DEVICE), y.to(DEVICE)
-            for j in range(n_MC_samples):
+            for j in range(N_MC_SAMPLES):
                 #
                 # ~~~ Compute the gradient of the loss function
-                if functional:
-                    if gaussian_approximation:
+                if FUNCTIONAL:
+                    if GAUSSIAN_APPROXIMATION:
                         log_posterior_density = BNN.gaussian_kl( resample_measurement_set=False, add_stabilizing_noise=True )
                         log_prior_density = torch.tensor(0.)
                     else:
@@ -257,7 +259,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             #
             # ~~~ Add the the likelihood term and differentiate
             log_likelihood_density = BNN.log_likelihood_density(X,y)
-            negative_ELBO = ( log_posterior_density - log_prior_density - log_likelihood_density )/n_MC_samples
+            negative_ELBO = ( log_posterior_density - log_prior_density - log_likelihood_density )/N_MC_SAMPLES
             negative_ELBO.backward()
             #
             # ~~~ This would be training based only on the data:
@@ -270,7 +272,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
                 optimizer.zero_grad()
             #
             # ~~~ Do the projection
-            if project:
+            if PROJECT:
                 projection_step(BNN)
             #
             # ~~~ Record some diagnostics
@@ -291,7 +293,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             _ = pbar.update()
         #
         # ~~~ Plotting logic
-        if data_is_univariate and make_gif and (e+1)%how_often==0:
+        if data_is_univariate and MAKE_GIF and (e+1)%HOW_OFTEN==0:
             fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
             gif.capture()
             # print("captured")
@@ -301,8 +303,8 @@ pbar.close()
 #
 # ~~~ Plot the state of the posterior predictive distribution at the end of training
 if data_is_univariate:
-    if make_gif:
-        for j in range(final_frame_repetitions):
+    if MAKE_GIF:
+        for j in range(FINAL_FRAME_REPETITIONS):
             gif.frames.append( gif.frames[-1] )
         gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
@@ -314,10 +316,10 @@ if data_is_univariate:
 #
 # ~~~ Validate implementation of the algorithm on the synthetic dataset "bivar_trivial"
 if data.__name__ == "bnns.data.bivar_trivial":
-    x_test = data.D_test.X.to( device=DEVICE, dtype=dtype )
-    y_test = data.D_test.y.to( device=DEVICE, dtype=dtype )
+    x_test = data.D_test.X.to( device=DEVICE, dtype=DTYPE )
+    y_test = data.D_test.y.to( device=DEVICE, dtype=DTYPE )
     with torch.no_grad():
-        predictions = torch.column_stack([ BNN(x_test,resample_weights=True).mean(dim=-1) for _ in range(n_posterior_samples_evaluation) ])
+        predictions = torch.column_stack([ BNN(x_test,resample_weights=True).mean(dim=-1) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
     fig,ax = plt.subplots(figsize=(12,6))
     plt.plot( x_test.cpu(), y_test.cpu(), "--", color="green" )
     y_pred = predictions.mean(dim=-1)
@@ -333,7 +335,7 @@ if data.__name__ == "bnns.data.bivar_trivial":
 ## ~~~ Debugging diagnostics
 ### ~~~
 
-# def plot( metric, window_size=n_epochs/50 ):
+# def plot( metric, window_size=N_EPOCHS/50 ):
 #     plt.plot( moving_average(history[metric],int(window_size)) )
 #     plt.grid()
 #     plt.tight_layout()
@@ -349,12 +351,12 @@ if data.__name__ == "bnns.data.bivar_trivial":
 # ~~~ Compute the posterior predictive distribution on the testing dataset
 x_train, y_train  =  convert_Dataset_to_Tensors(D_train)
 x_test, y_test    =    convert_Dataset_to_Tensors( D_test if final_test else D_val )
-interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=dtype )
-extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=dtype )
+interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
+extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )
 
 def predict(x):
-        predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(n_posterior_samples_evaluation) ])
-        if extra_std:
+        predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
+        if EXTRA_STD:
             predictions += BNN.conditional_std*torch.randn_like(predictions)
         return predictions
 
@@ -369,19 +371,19 @@ hyperparameters["METRIC_mse_of_mean"]    =    mse_of_mean( predictions, y_test )
 hyperparameters["METRIC_mae_of_mean"]    =    mae_of_mean( predictions, y_test )
 hyperparameters["METRIC_max_norm_of_mean"]    =    max_norm_of_mean( predictions, y_test )
 for estimator in ("mean","median"):
-    hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
-    hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-    hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=visualize_bnn_using_quantiles, quantile_accuracy=(estimator=="median"), show=show_diagnostics )
+    hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+    hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
+    hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
 
 #
 # ~~~ For the SLOSH dataset, run all the same metrics on the unprocessed data (the actual heatmaps)
 try:
-    S = data.s_truncated.to( device=DEVICE, dtype=dtype )
-    V = data.V_truncated.to( device=DEVICE, dtype=dtype )
-    Y = data.unprocessed_y_test.to( device=DEVICE, dtype=dtype )
+    S = data.s_truncated.to( device=DEVICE, dtype=DTYPE )
+    V = data.V_truncated.to( device=DEVICE, dtype=DTYPE )
+    Y = data.unprocessed_y_test.to( device=DEVICE, dtype=DTYPE )
     def predict(x):
-        predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(n_posterior_samples_evaluation) ])
-        if extra_std:
+        predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
+        if EXTRA_STD:
             predictions += BNN.conditional_std*torch.randn_like(predictions)
         return predictions.mean(dim=0,keepdim=True) * S @ V.T
     with torch.no_grad():
@@ -394,9 +396,9 @@ try:
     hyperparameters["METRIC_unprocessed_mae_of_mean"]    =    mae_of_mean( predictions, Y )
     hyperparameters["METRIC_unprocessed_max_norm_of_mean"]    =    max_norm_of_mean( predictions, Y )
     for estimator in ("mean","median"):
-        hyperparameters[f"METRIC_unprocessed_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
-        hyperparameters[f"METRIC_unprocessed_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-        hyperparameters[f"METRIC_unprocessed_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, Y, quantile_uncertainty=visualize_bnn_using_quantiles, quantile_accuracy=(estimator=="median"), show=show_diagnostics )
+        hyperparameters[f"METRIC_unprocessed_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+        hyperparameters[f"METRIC_unprocessed_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
+        hyperparameters[f"METRIC_unprocessed_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
 except:
     pass
 
@@ -414,6 +416,9 @@ if input_json_filename.startswith("demo"):
     my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
 else:
     output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
-    dict_to_json( hyperparameters, output_json_filename )
+    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=SHOW_DIAGNOSTICS )
+    if model_save_dir is not None:
+        # save the model, assuming model_save_dir could be something like `subfolder_of_experiments/model_name.pt`
+        raise NotImplementedError("TODO")
 
 #
