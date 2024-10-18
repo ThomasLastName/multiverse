@@ -76,7 +76,7 @@ hyperparameter_template = {
 if hasattr(sys,"ps1"):
     #
     # ~~~ If this is an interactive (not srcipted) session, i.e., we are directly typing/pasting in the commands (I do this for debugging), then use the demo json name
-    input_json_filename = "demo_stein.json"
+    input_json_filename = "demo_ensemble.json"
 else:
     #
     # ~~~ Use argparse to extract the file name name "my_hyperparmeters.json" from `python train_stein.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
@@ -85,7 +85,7 @@ else:
         parser.add_argument( '--json', type=str, required=True )
     except:
         print("")
-        print("    Hint: try `python train_stein.py --json demo_stein`")
+        print("    Hint: try `python train_stein.py --json demo_ensemble`")
         print("")
         raise
     parser.add_argument( '--model_save_dir', type=str )
