@@ -83,5 +83,5 @@ bounds = torch.tensor([
     ])
 extrapolary_grid, interpolary_grid = process_grid_of_unit_cube( grid_of_unit_cube, bounds )
 
-interpolary_grid = torch.cat([ x_train + 0.05*torch.randn_like(x_train) for _ in range(5) ])
+interpolary_grid = torch.cat([ x_train + 0.1*torch.randn_like(x_train).sign()*torch.rand_like(x_train) for _ in range(5) ])
 dists = torch.cdist(interpolary_grid,x_train).min(dim=1).values
