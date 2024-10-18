@@ -41,36 +41,34 @@ hyperparameter_template = {
     #
     # ~~~ Misc.
     "DEVICE" : "cpu",
-    "dtype" : "float",
-    "seed" : 2024,
+    "DTYPE" : "float",
+    "SEED" : 2024,
     #
     # ~~~ Which problem
-    "data" : "univar_missing_middle",
-    "model" : "univar_NN",
+    "DATA" : "univar_missing_middle",
+    "MODEL" : "univar_NN",
     #
     # ~~~ For training
     "STEIN" : True,
-    "conditional_std" : 0.19,
-    "bw" : None,
-    "n_Stein_particles" : 100,
-    "Optimizer" : "Adam",
-    "lr" : 0.0005,
-    "batch_size" : 64,
-    "n_epochs" : 200,
+    "CONDITIONAL_STD" : 0.19,
+    "BW" : None,
+    "N_MODELS" : 100,
+    "OPTIMIZER" : "Adam",
+    "LR" : 0.0005,
+    "BATCH_SIZE" : 64,
+    "N_EPOCHS" : 200,
     #
     # ~~~ For visualization (only applicable on 1d data)
-    "make_gif" : True,
-    "how_often" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
-    "initial_frame_repetitions" : 24,       # ~~~ for how many frames should the state of initialization be rendered
-    "final_frame_repetitions" : 48,         # ~~~ for how many frames should the state after training be rendered
-    "how_many_individual_predictions" : 6,  # ~~~ how many posterior predictive samples to plot
-    "visualize_bnn_using_quantiles" : True, # ~~~ if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
-    "n_posterior_samples" : 100,            # ~~~ for plotting, posterior distributions are approximated as empirical dist.'s of this many samples
+    "MAKE_GIF" : True,
+    "HOW_OFTEN" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
+    "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ for how many frames should the state of initialization be rendered
+    "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ for how many frames should the state after training be rendered
+    "HOW_MANY_INDIVIDUAL_PREDICTIONS" : 6,  # ~~~ how many posterior predictive samples to plot
+    "VISUALIZE_DISTRIBUTION_USING_QUANTILES" : True, # ~~~ if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
     #
     # ~~~ For metrics and visualization
-    "extra_std" : True,
-    "n_posterior_samples_evaluation" : 1000,# ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
-    "show_diagnostics" : True
+    "EXTRA_STD" : True,
+    "SHOW_DIAGNOSTICS" : True
 }
 
 #
@@ -90,9 +88,11 @@ else:
         print("    Hint: try `python train_stein.py --json demo_stein`")
         print("")
         raise
+    parser.add_argument( '--model_save_dir', type=str )
     parser.add_argument( '--final_test', action=argparse.BooleanOptionalAction )
     parser.add_argument( '--overwrite_json', action=argparse.BooleanOptionalAction )
     args = parser.parse_args()
+    model_save_dir = args.model_save_dir
     final_test = (args.final_test is not None)
     overwrite_json = (args.overwrite_json is not None)
     input_json_filename = args.json
@@ -108,46 +108,45 @@ globals().update(hyperparameters)       # ~~~ e.g., if hyperparameters=={ "a":1,
 
 #
 # ~~~ Might as well fix a seed, e.g., for randomly shuffling the order of batches during training
-torch.manual_seed(seed)
+torch.manual_seed(SEED)
 
 #
 # ~~~ Handle the dtypes not writeable in .json format (e.g., if your dictionary includes the value `torch.optim.Adam` you can't save it as .json)
-dtype = getattr(torch,dtype)            # ~~~ e.g., "float" (str) -> torch.float (torch.dtype) 
-torch.set_default_dtype(dtype)
-Optimizer = getattr(optim,Optimizer)    # ~~~ e.g., "Adam" (str) -> optim.Adam
-
-#
-# ~~~ Load the network architecture
-try:
-    model = import_module(f"bnns.models.{model}")   # ~~~ this is equivalent to `import bnns.models.<model> as model`
-except:
-    model = import_module(model)
-
-NN = model.NN.to( device=DEVICE, dtype=dtype )
+DTYPE = getattr(torch,DTYPE)            # ~~~ e.g., DTYPE=="float" (str) -> DTYPE==torch.float (torch.dtype) 
+torch.set_default_dtype(DTYPE)
+Optimizer = getattr(optim,OPTIMIZER)    # ~~~ e.g., OPTIMIZER=="Adam" (str) -> Optimizer==optim.Adam
 
 #
 # ~~~ Load the data
 try:
-    data = import_module(f"bnns.data.{data}")   # ~~~ this is equivalent to `import bnns.data.<data> as data`
+    data = import_module(f"bnns.data.{DATA}")   # ~~~ this is equivalent to `import bnns.data.<DATA> as data`
 except:
-    data = import_module(data)
+    data = import_module(DATA)
 
-D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=dtype )
-D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=dtype )
-D_val   =   set_Dataset_attributes( data.D_val, device=DEVICE, dtype=dtype ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
+D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=DTYPE )
+D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=DTYPE )
+D_val   =   set_Dataset_attributes( data.D_val, device=DEVICE, dtype=DTYPE ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
 data_is_univariate = (D_train[0][0].numel()==1)
 
 try:
     scale = data.scale
-    conditional_std /= scale
+    CONDITIONAL_STD /= scale
 except:
     pass
 
 try:
-    grid = data.grid.to( device=DEVICE, dtype=dtype )
+    grid = data.grid.to( device=DEVICE, dtype=DTYPE )
 except:
     pass
 
+#
+# ~~~ Load the network architecture
+try:
+    model = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as model`
+except:
+    model = import_module(MODEL)
+
+NN = model.NN.to( device=DEVICE, dtype=DTYPE )
 
 
 
@@ -159,16 +158,16 @@ except:
 # ~~~ Instantiate an ensemble
 ensemble = Ensemble(
         architecture = nonredundant_copy_of_module_list(NN),
-        n_copies = n_Stein_particles,
-        Optimizer = lambda params: Optimizer( params, lr=lr ),
-        conditional_std = torch.tensor(conditional_std),
+        n_copies = N_MODELS,
+        Optimizer = lambda params: Optimizer( params, lr=LR ),
+        conditional_std = torch.tensor(CONDITIONAL_STD),
         device = DEVICE,
-        bw = bw
+        bw = BW
     )
 
 #
 # ~~~ The dataloader
-dataloader = torch.utils.data.DataLoader( D_train, batch_size=batch_size )
+dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
 
 #
 # ~~~ Some plotting stuff
@@ -181,27 +180,27 @@ if data_is_univariate:
     y_train_cpu = data.y_train.cpu().squeeze()
     #
     # ~~~ Define the main plotting routine
-    plot_predictions = plot_bnn_empirical_quantiles if visualize_bnn_using_quantiles else plot_bnn_mean_and_std
-    def plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble, extra_std=(conditional_std if extra_std else 0.), how_many_individual_predictions=how_many_individual_predictions, title=description_of_the_experiment ):
+    plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
+    def plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble, extra_std=(ensemble.conditional_std if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, title=description_of_the_experiment ):
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
             predictions = ensemble(grid).squeeze().T
-        return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, how_many_individual_predictions, title )
+        return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, HOW_MANY_INDIVIDUAL_PREDICTIONS, title )
     #
     # ~~~ Plot the state of the posterior predictive distribution upon its initialization
-    if make_gif:
+    if MAKE_GIF:
         gif = GifMaker()      # ~~~ essentially just a list of images
         fig,ax = plt.subplots(figsize=(12,6))
         fig,ax = plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
-        for j in range(initial_frame_repetitions):
-            gif.capture( clear_frame_upon_capture=(j+1==initial_frame_repetitions) )
+        for j in range(INITIAL_FRAME_REPETITIONS):
+            gif.capture( clear_frame_upon_capture=(j+1==INITIAL_FRAME_REPETITIONS) )
 
 #
 # ~~~ Do the actual training loop
 with support_for_progress_bars():   # ~~~ this just supports green progress bars
-    pbar = tqdm( desc=description_of_the_experiment, total=n_epochs*len(dataloader), ascii=' >=' )
-    for e in range(n_epochs):
+    pbar = tqdm( desc=description_of_the_experiment, total=N_EPOCHS*len(dataloader), ascii=' >=' )
+    for e in range(N_EPOCHS):
         #
         # ~~~ Training logic
         for X, y in dataloader:
@@ -213,7 +212,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
         pbar.set_postfix({ "mse of mean": f"{mse_of_mean(predictions,y):<4.4f}" })
         #
         # ~~~ Plotting logic
-        if data_is_univariate and make_gif and (e+1)%how_often==0:
+        if data_is_univariate and MAKE_GIF and (e+1)%HOW_OFTEN==0:
             fig,ax = plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
             gif.capture()
             # print("captured")
@@ -223,12 +222,12 @@ pbar.close()
 #
 # ~~~ Plot the state of the posterior predictive distribution at the end of training
 if data_is_univariate:
-    if not make_gif:    # ~~~ make a plot now
+    if not MAKE_GIF:    # ~~~ make a plot now
         fig,ax = plt.subplots(figsize=(12,6))
     fig,ax = plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
-    if make_gif:
-        for j in range(final_frame_repetitions):
-            gif.capture( clear_frame_upon_capture=(j+1==final_frame_repetitions) )
+    if MAKE_GIF:
+        for j in range(FINAL_FRAME_REPETITIONS):
+            gif.capture( clear_frame_upon_capture=(j+1==FINAL_FRAME_REPETITIONS) )
         gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
     else:
@@ -240,7 +239,7 @@ if data_is_univariate:
 ## ~~~ Debugging diagnostics
 ### ~~~
 
-# def plot( metric, window_size=n_epochs/50 ):
+# def plot( metric, window_size=N_EPOCHS/50 ):
 #     plt.plot( moving_average(history[metric],int(window_size)) )
 #     plt.grid()
 #     plt.tight_layout()
@@ -256,12 +255,12 @@ if data_is_univariate:
 # ~~~ Compute the posterior predictive distribution on the testing dataset
 x_train, y_train  =  convert_Dataset_to_Tensors(D_train)
 x_test, y_test    =    convert_Dataset_to_Tensors( D_test if final_test else D_val )
-interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=dtype )
-extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=dtype )
+interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
+extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )
 
 def predict(x):
     predictions = ensemble(x)
-    if extra_std:
+    if EXTRA_STD:
         predictions += ensemble.conditional_std*torch.randn_like(predictions)
     return predictions
 
@@ -279,9 +278,9 @@ hyperparameters["METRIC_mae_of_mean"]    =    mae_of_mean( predictions, y_test )
 hyperparameters["METRIC_max_norm_of_median"]  =  max_norm_of_median( predictions, y_test )
 hyperparameters["METRIC_max_norm_of_mean"]    =    max_norm_of_mean( predictions, y_test )
 for estimator in ("mean","median"):
-    hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
-    hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show_diagnostics, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-    hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=visualize_bnn_using_quantiles, quantile_accuracy=(estimator=="median"), show=show_diagnostics )
+    hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+    hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
+    hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
 
 #
 # ~~~ Print the results
@@ -292,11 +291,18 @@ print_dict(hyperparameters)
 ### ~~~
 ## ~~~ Save the results
 ### ~~~
+### ~~~
+## ~~~ Save the results
+### ~~~
 
 if input_json_filename.startswith("demo"):
     my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
 else:
     output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
-    dict_to_json( hyperparameters, output_json_filename )
+    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=SHOW_DIAGNOSTICS )
+    if model_save_dir is not None:
+        # save the model, assuming model_save_dir could be something like `subfolder_of_experiments/model_name.pt`
+        raise NotImplementedError("TODO")
+
 
 #
