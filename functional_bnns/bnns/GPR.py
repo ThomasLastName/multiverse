@@ -50,9 +50,9 @@ class RPF_kernel_GP:
                 self,
                 out_features,   # ~~~ the (positive integer) number of output features
                 means,  # ~~~ something with a __call__ method satisfying means(x).shape==(x.shape[0],out_features)
-                etas,   # ~~~ a list (or vector) of length out_features; the kernel matrix of j-th output gets a +=etas[j]*I
-                bandwidths = None,  # ~~~ a list (or vector) of length out_features; if None, then it will be inferred heuristically
-                scales = None       # ~~~ a list (or vector) of length out_features; if None, then it will be taken to ones_like(etas)
+                etas,   # ~~~ a list of length out_features; the kernel matrix of j-th output gets a +=etas[j]*I
+                bandwidths = None,  # ~~~ a list of length out_features; if None, then it will be inferred heuristically
+                scales = None       # ~~~ a list of length out_features; if None, then it will be taken to all 1's
             ):
         #
         # ~~~ Features of the problem
@@ -61,14 +61,14 @@ class RPF_kernel_GP:
         # ~~~ Kernel hyperparameters
         self.means = means
         self.bandwidths = bandwidths
-        self.scales = torch.ones_like(etas) if scales is None else scales
+        self.scales = out_features*[1.] if scales is None else scales
         self.etas = etas
     #
     # ~~~ Infer a kernel bandwidth from the data heuristically
     def set_sigma_based_on_data(self,x,y):
         if y is None:
             y = x
-        self.bandwidths = torch.tensor(self.out_features*[torch.cdist(x,y).median()])
+        self.bandwidths = self.out_features*[torch.cdist(x,y).median().item()]
     #
     # ~~~ Build a list of covariance matrices (one for each output) K_{i,j} = kernel(x_i,y_j)
     def build_kernel_matrices( self, x, y=None, add_stabilizing_noise=True ):
@@ -183,7 +183,7 @@ class simple_mean_zero_RPF_kernel_GP(RPF_kernel_GP):
             ):
         super().__init__(
                 out_features = out_features,
-                etas = eta*torch.ones(out_features),
+                etas = out_features*[eta],
                 bandwidths = None,
                 scales = None,
                 means = lambda x: torch.zeros( x.shape[0], self.out_features ).to( device=x.device, dtype=x.dtype )
