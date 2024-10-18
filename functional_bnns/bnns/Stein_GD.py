@@ -31,17 +31,18 @@ def flatten_parameters(list_of_models):
         ])  # ~~~ has shape (len(list_of_models),n_parameters_per_model)
 
 loss_fn = nn.MSELoss()
-class SteinEnsemble:
+class SteinEnsemble(nn.Module):
     def __init__( self, list_of_NNs, Optimizer, conditional_std, bw=None ):
+        super().__init__()
         with torch.no_grad():
             #
             # ~~~ Establish basic attributes
-            self.models = list_of_NNs    # ~~~ each "particle" is (the parameters of) a neural network
+            self.models = nn.ModuleList(list_of_NNs)        # ~~~ each "particle" is (the parameters of) a neural network
             self.n_models = len(self.models)
             inferred_device = self.models[0][-1].weight.device
             self.conditional_std = conditional_std.to(inferred_device)
             self.bw = bw
-            self.optimizers = [ Optimizer(model.parameters()) for model in self.models ]
+            self.optimizer = Optimizer(self.parameters())   # ~~~ not entirely necessary to have this as an attribute, but such was the case in earlier verions of this code
             #
             # ~~~ Stuff for parallelizing computation of the loss function
             self.all_prior_sigma = torch.tile( torch.cat([ torch.tile(get_std(p),p.shape).flatten() for p in self.models[0].parameters() ]), (self.n_models,1) )
@@ -53,6 +54,7 @@ class SteinEnsemble:
                 return func.functional_call( base_model, (params, buffers), (x,) )
             self.fmodel = fmodel
             self.params, self.buffers = func.stack_module_state(self.models)
+            self.parameters_have_been_updated = False   # ~~~ when true, then it becomes necessary to update self.params and self.buffers
     #
     # ~~~ Compute A and b for which SVGD prescribes replacing the gradients by `gradients = ( A@gradients + b )/n_particles`
     def compute_affine_transform( self, easy_implementation=False ):
@@ -78,8 +80,11 @@ class SteinEnsemble:
         for optimizer in self.optimizers:
             optimizer.zero_grad()
     #
-    # ~~~ Compute the loss function, process the gradients (if using SVGD), and update the parameters
-    def train_step( self, X, y, stein=True, easy_implementation=False, zero_out_grads=True, vectorized=False ):
+    # ~~~ Compute the loss function, *and* process the gradients (if using SVGD)
+    def compute_loss_and_grads( self, X, y, stein=True, easy_implementation=False, vectorized=False ):
+        #
+        # ~~~ Record the fact that the parameters have been updated (so that we know to update `vmap` in the __call__ method)
+        self.parameters_have_been_updated = True
         #
         # ~~~ Compute \grad \ln p(particle) for each particle (particles are NN's)
         if easy_implementation:
@@ -137,24 +142,32 @@ class SteinEnsemble:
                 stein_grads = -( K@log_posterior_grads + sum_grad_info ) / len(self.models) # ~~~ take the negative so that pytorch's optimizer's *maximize* the intended objective
                 for i, model in enumerate(self.models):
                     set_flat_grads( model, stein_grads[i] )
+                return un_normalized_log_posterior.detach() if easy_implementation else un_normalized_log_posteriors.detach().mean()
+        else:
+            return loss.detach() if easy_implementation else losses.detach().mean()
+    #
+    # ~~~ Compute the loss function, process the gradients (if using SVGD), and update the parameters
+    def train_step( self, X, y, stein=True, easy_implementation=False, zero_out_grads=True, vectorized=False ):
+        loss_without_grad = self.compute_loss_and_grads( X, y, stein=stein, easy_implementation=easy_implementation, vectorized=vectorized )
         #
         # ~~~ Do the update
-        for optimizer in self.optimizers:
-            #
-            # ~~~ TODO is it possible to directoly optimize self.params?
-            optimizer.step()
-        if zero_out_grads:
-            self.zero_grad()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
         #
         # ~~~ As far as I can tell, the params used by vmap need to be updated manually like this
-        with torch.no_grad():
-            self.params, self.buffers = func.stack_module_state(self.models)
+        #
+        # ~~~ Return the detached loss, for user's refernece
+        return loss_without_grad
     #
     # ~~~ Forward method for the full ensemble
-    def __call__( self, X, vectorized=True ):
+    def forward( self, X, vectorized=True ):
         if not vectorized:
             return torch.stack([ model(X) for model in self.models ])
         else:
+            if self.parameters_have_been_updated:
+                with torch.no_grad():
+                    self.params, self.buffers = func.stack_module_state(self.models)
+                self.parameters_have_been_updated = False
             return vmap( self.fmodel, in_dims=(0,0,None) )( self.params, self.buffers, X )
 
 
