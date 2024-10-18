@@ -65,7 +65,7 @@ class RPF_kernel_GP:
         self.etas = etas
     #
     # ~~~ Infer a kernel bandwidth from the data heuristically
-    def set_sigma_based_on_data(self,x,y):
+    def set_bandwidth_based_on_data(self,x,y):
         if y is None:
             y = x
         self.bandwidths = self.out_features*[torch.cdist(x,y).median().item()]
@@ -75,7 +75,7 @@ class RPF_kernel_GP:
         #
         # ~~~ Take this as an opportunity to infer a kernel bandwidth, if none was speicied upon initialization
         if self.bandwidths is None:
-            self.set_sigma_based_on_data(x,y)
+            self.set_bandwidth_based_on_data(x,y)
         #
         # ~~~ Compute 'em
         dists = torch.cdist(x,x)
