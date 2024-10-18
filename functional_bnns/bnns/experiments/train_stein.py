@@ -49,6 +49,7 @@ hyperparameter_template = {
     "model" : "univar_NN",
     #
     # ~~~ For training
+    "STEIN" : True,
     "conditional_std" : 0.19,
     "bw" : None,
     "n_Stein_particles" : 100,
@@ -205,7 +206,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
         # ~~~ Training logic
         for X, y in dataloader:
             X, y = X.to(DEVICE), y.to(DEVICE)
-            ensemble.train_step(X,y)
+            ensemble.train_step(X,y,stein=STEIN)
             _ = pbar.update()
         with torch.no_grad():
             predictions = ensemble(X)
