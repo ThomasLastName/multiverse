@@ -3,6 +3,7 @@ import os
 import torch
 import pyreadr                  # ~~~ from https://stackoverflow.com/a/61699417
 import numpy as np
+from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
 from bnns.utils import process_grid_of_unit_cube
 from bnns import __path__
@@ -13,10 +14,24 @@ PATH = os.path.join( __path__[0], "data", "slosh_dat_nj.rda" )
 
 #
 # ~~~ Extract the data as numpy arrays
-DATA = pyreadr.read_r(PATH)     # ~~~ from https://stackoverflow.com/a/61699417
-coords_np  =  DATA["coords"].to_numpy()
-inputs_np  =  DATA["inputs"].to_numpy()
-out_np     =     DATA["out"].to_numpy()
+try:
+    coords_np  =  np.load(os.path.join( __path__[0],"data","slosh_coords_np.npy"))
+    inputs_np  =  np.load(os.path.join( __path__[0],"data","slosh_inputs_np.npy"))
+    out_np     =     np.load(os.path.join( __path__[0],"data","slosh_out_np.npy"))
+except:
+    try:
+        DATA = pyreadr.read_r(PATH)     # ~~~ from https://stackoverflow.com/a/61699417
+    except:
+        my_warn("...")
+    print("")
+    print("    Processing the SLOSH data (this should only need to be done once)")
+    print("")
+    coords_np  =  DATA["coords"].to_numpy()
+    inputs_np  =  DATA["inputs"].to_numpy()
+    out_np     =     DATA["out"].to_numpy()
+    np.save( os.path.join( __path__[0],"data","slosh_coords_np.npy"), coords_np )
+    np.save( os.path.join( __path__[0],"data","slosh_inputs_np.npy"), inputs_np )
+    np.save( os.path.join( __path__[0],"data","slosh_out_np.npy"), out_np )
 
 #
 # ~~~ Compute indices for a train/val/test split (same code as in slosh_70_15_15_centered_pca.py and slosh_70_15_15_standardized_pca.py)
