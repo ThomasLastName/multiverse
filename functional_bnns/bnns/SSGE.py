@@ -25,6 +25,10 @@ from typing import Callable, List, Tuple
 from abc import abstractmethod
 from quality_of_life.my_base_utils import my_warn
 
+#
+# ~~~ Convert a 1D tensor to a 2D column tensor, but leave every other tensor as is
+vertical = lambda x: x.unsqueeze(1) if x.dim()==1 else x
+
 
 class BaseScoreEstimator:
     #
@@ -35,6 +39,7 @@ class BaseScoreEstimator:
     #
     # ~~~ Method that assembles the kernel matrix K
     def gram_matrix( self, x1, x2, sigma ):     # ~~~ e = torch.exp( -((x1.unsqueeze(-2)-x2.unsqueeze(-3)).pow(2).sum(-1)) / (2*sigma**2) ) - torch.exp( -(torch.cdist(x1,x2)/sigma)**2/2 ) \approx 0
+        x1, x2 = vertical(x1), vertical(x2)
         return torch.exp( -(torch.cdist(x1,x2)/sigma)**2/2 )
     #
     # ~~~ Method that gram matrix, as well as, the Jacobian matrices which get averaged when computing \beta
@@ -76,6 +81,7 @@ class BaseScoreEstimator:
         # :return:
         # """
         with torch.no_grad():
+            x1, x2 = vertical(x1), vertical(x2)
             return torch.cdist(x1,x2).median()
     #
     # ~~~ Placeholder method for the content of __call__(...)

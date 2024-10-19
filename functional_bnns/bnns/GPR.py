@@ -40,6 +40,10 @@ def all_matrices_equal(matrix_list):
     first_matrix = matrix_list[0]
     return all(torch.equal(first_matrix, matrix) for matrix in matrix_list)
 
+#
+# ~~~ Convert a 1D tensor to a 2D column tensor, but leave every other tensor as is
+vertical = lambda x: x.unsqueeze(1) if x.dim()==1 else x
+
 
 #
 # ~~~ Main class, with methods for handling all of the linear algebra routines, basically
@@ -68,6 +72,7 @@ class RPF_kernel_GP:
     def set_bandwidth_based_on_data(self,x,y):
         if y is None:
             y = x
+        x, y = vertical(x), vertical(y)
         self.bandwidths = self.out_features*[torch.cdist(x,y).median().item()]
     #
     # ~~~ Build a list of covariance matrices (one for each output) K_{i,j} = kernel(x_i,y_j)
@@ -78,6 +83,7 @@ class RPF_kernel_GP:
             self.set_bandwidth_based_on_data(x,y)
         #
         # ~~~ Compute 'em
+        x, y = vertical(x), vertical(y)
         dists = torch.cdist(x,x)
         list_of_kernel_matrices = [
                     self.scales[j] * torch.exp( -(dists/self.bandwidths[j])**2/2 )
