@@ -89,7 +89,7 @@ class SequentialGaussianBNN(nn.Module):
             z = self.realized_standard_normal[j]    # ~~~ the network's j'th layer, but with IID standard normal weights and biases
             #
             # ~~~ If this layer is just like relu or something, then there aren't any weights; just apply the layer and be done
-            if not isinstance( z, torch.nn.modules.linear.Linear ):
+            if not isinstance( z, nn.modules.linear.Linear ):
                 x = z(x)                            # ~~~ x = layer(x)
             #
             # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
@@ -117,7 +117,7 @@ class SequentialGaussianBNN(nn.Module):
         log_prior = 0.
         for j in range(self.n_layers):
             z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
-            if isinstance( z, torch.nn.modules.linear.Linear ):
+            if isinstance( z, nn.modules.linear.Linear ):
                 post_mean      =    self.model_mean[j]  # ~~~ the trainable (posterior) means of this layer's parameters
                 post_std       =    self.model_std[j]   # ~~~ the trainable (posterior) standard deviations of this layer's parameters
                 prior_mean     =    self.prior_mean[j]  # ~~~ the prior means of this layer's parameters
@@ -135,7 +135,7 @@ class SequentialGaussianBNN(nn.Module):
         log_posterior = 0.
         for j in range(self.n_layers):
             z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
-            if isinstance( z, torch.nn.modules.linear.Linear ):
+            if isinstance( z, nn.modules.linear.Linear ):
                 mean_layer      =    self.model_mean[j] # ~~~ the trainable (posterior) means of this layer's parameters
                 std_layer       =    self.model_std[j]  # ~~~ the trainable (posterior) standard deviations of this layer's parameters
                 sigma_weight    =    self.rho(std_layer.weight)
@@ -223,11 +223,11 @@ class SequentialGaussianBNN(nn.Module):
         self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
     #
     # ~~~ Estimate KL_div( posterior output || the prior output ) using the SSGE, assuming we don't have a forula for the density of the outputs
-    def functional_kl( self, resample_measurement_set=True, n_meas=200 ):
+    def functional_kl( self, resample_measurement_set=True ):
         #
         # ~~~ if `resample_measurement_set==True` then generate a new meausrement set
         if resample_measurement_set:
-            self.sample_new_measurement_set(n=n_meas)
+            self.sample_new_measurement_set()
         #
         # ~~~ Prepare for using SSGE to estimate some of the gradient terms
         with torch.no_grad():
@@ -262,7 +262,7 @@ class SequentialGaussianBNN(nn.Module):
             self.sample_new_measurement_set()
         #
         # ~~~ First, compute the Jacobian at m of the model output with respect to the final layer's parameters (and treating the other layers' parameters as fixed)
-        if not isinstance( self.model_mean[-1] , torch.nn.modules.linear.Linear ):
+        if not isinstance( self.model_mean[-1] , nn.modules.linear.Linear ):
             raise NotImplementedError('Currently, the only case implemented is the the case from the paper where `\beta` is "the set of parameters in the final neural network layer" (bottom of pg. 4 of the paper).')
         #
         # ~~~ In this case, the Jacbian is easy to compute exactly: e.g., the Jacobian of A@whatever w.r.t. A is, simply `whatever`; let's first compute the `whatever` provided it is shaped correctly
