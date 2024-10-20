@@ -83,6 +83,8 @@ class RPF_kernel_GP:
             self.set_bandwidth_based_on_data(x,y)
         #
         # ~~~ Compute 'em
+        if y is None:
+            y = x
         x, y = vertical(x), vertical(y)
         dists = torch.cdist(x,x)
         list_of_kernel_matrices = [
