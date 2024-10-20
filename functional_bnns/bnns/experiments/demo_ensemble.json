@@ -1,5 +1,5 @@
 {
-	"DEVICE": "cuda",
+	"DEVICE": "cpu",
 	"DTYPE": "float",
 	"SEED": 2024,
 	"DATA": "univar_missing_middle_normalized_12",
@@ -7,7 +7,7 @@
 	"STEIN" : true,
 	"CONDITIONAL_STD": 0.19,
 	"BW": null,
-	"N_STEIN_PARTICLES": 100,
+	"N_MODELS": 100,
 	"OPTIMIZER": "Adam",
 	"LR": 0.005,
 	"BATCH_SIZE": 64,
