@@ -217,7 +217,9 @@ pbar.close()
 # ~~~ Afterwards, develop the .gif if applicable
 if data_is_univariate:
     if MAKE_GIF:
-        gif.develop( destination="NN", fps=24 )
+        for j in range(FINAL_FRAME_REPETITIONS):
+            gif.frames.append( gif.frames[-1] )
+        gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
     else:
         if SHOW_DIAGNOSTICS:
@@ -293,10 +295,11 @@ if input_json_filename.startswith("demo"):
     my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
 else:
     output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
-    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=SHOW_DIAGNOSTICS )
     if model_save_dir is not None:
-        # save the model, assuming model_save_dir could be something like `subfolder_of_experiments/model_name.pt`
+        hyperparameters["MODEL_SAVE_DIR"] = model_save_dir
         raise NotImplementedError("TODO")
+    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=SHOW_DIAGNOSTICS )
+
 
 
 #
