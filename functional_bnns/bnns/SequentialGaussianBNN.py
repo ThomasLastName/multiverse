@@ -302,11 +302,24 @@ class SequentialGaussianBNN(nn.Module):
     #
     # ~~~ Compute the mean and standard deviation of a normal distribution approximating q_theta
     def gaussian_kl( self, resample_measurement_set=True, add_stabilizing_noise=True ):
-        mu_0, root_Sigma_0_inv = self.GP.prior_mu_and_Sigma( self.measurement_set, inv=True, flatten=True, cholesky=True )   # ~~~ return the flattened cholesky square roots of the inverses of the covariance matrices
-        mu_theta, Sigma_theta = self.simple_gaussian_approximation( resample_measurement_set=resample_measurement_set )
+        #
+        # ~~~ Get the mean and covariance of (the Gaussian approximation of) the predicted distribution of yhat
+        mu_theta, Sigma_theta = self.simple_gaussian_approximation( resample_measurement_set=False )
         if add_stabilizing_noise:
             Sigma_theta += torch.diag( self.post_GP_eta * torch.ones_like(Sigma_theta.diag()) )
-        return gaussian_kl( mu_theta, torch.linalg.cholesky(Sigma_theta), mu_0, root_Sigma_0_inv )
+        root_Sigma_theta = torch.linalg.cholesky(Sigma_theta)
+        #
+        # ~~~ Get the mean and covariance of the prior distribution of yhat (a Gaussian process)
+        mu_0, root_Sigma_0 = self.GP.prior_mu_and_Sigma( self.measurement_set, inv=False, flatten=True, cholesky=True )
+        Sigma_0_inv = torch.cholesky_inverse(root_Sigma_0)
+        #
+        # ~~~ Apply a formula for the KL divergence KL( N(mu_theta,Sigma_theta) || N(mu_0,Sigma_0) ); see `scripts/gaussian_kl_computations.py`
+        return (
+            (Sigma_0_inv@Sigma_theta).diag().sum()
+            - len(mu_0)
+            + torch.inner( mu_0-mu_theta, (Sigma_0_inv @ (mu_0-mu_theta)) )
+            + 2*root_Sigma_0.diag().log().sum() - 2*root_Sigma_theta.diag().log().sum()
+        )/2
     #
     # ~~~ A helper function that samples a bunch from the predicted posterior distribution
     def posterior_predicted_mean_and_std( self, x_test, n_samples ):

@@ -37,16 +37,6 @@ def log_gaussian_pdf( where, mu, sigma ):
     return marginal_log_probs.sum()
 
 #
-# ~~~ Use Cholesky decompositions to compute the KL divergence N(mu_theta,Sigma_theta) || N(mu_0,Sigma_0) as described here https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Multivariate_normal_distributions
-def gaussian_kl( mu_theta, root_of_Sigma_theta, mu_0, root_of_Sigma_0_inv ):
-    mu_theta = mu_theta.flatten()
-    mu_0 = mu_0.flatten()
-    assert len(mu_theta)==len(mu_0)
-    k = len(mu_0)
-    assert root_of_Sigma_theta.shape==(k,k)==root_of_Sigma_0_inv.shape
-    return ((root_of_Sigma_theta@root_of_Sigma_0_inv).norm()**2 - k + (root_of_Sigma_0_inv@(mu_0-mu_theta)).norm()**2)/2 - root_of_Sigma_0_inv.diag().log().sum() - root_of_Sigma_theta.diag().log().sum()
-
-#
 # ~~~ Define what we want the prior std. to be for each group of model parameters
 def get_std(p):
     if len(p.shape)==1: # ~~~ for the biase vectors, take variance=1/length
