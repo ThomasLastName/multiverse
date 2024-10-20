@@ -23,10 +23,20 @@ except:
     print("    Processing the SLOSH data (this should only need to be done once)")
     print("")
     try:
-        # DATA = pyreadr.read_r(os.path.join(data_folder,"slosh_dat_nj.rda"))     # ~~~ from https://stackoverflow.com/a/61699417
-        coords_np  =  pd.read_csv(os.path.join( data_folder, "slosh_sim_coordinates.csv" )).to_numpy()
-        inputs_np  =  pd.read_csv(os.path.join( data_folder, "slosh_sim_inputs.csv"      )).to_numpy()
-        out_np     =  pd.read_csv(os.path.join( data_folder, "slosh_sim_outputs.csv"     )).to_numpy()
+        try:
+            #
+            # ~~~ First, try the old import for backwards compatibiltiy
+            import pyreadr
+            DATA = pyreadr.read_r(os.path.join( data_folder, "slosh_dat_nj.rda" ))  # ~~~ from https://stackoverflow.com/a/61699417
+            coords_np = DATA["coords"].to_numpy()
+            inputs_np = DATA["inputs"].to_numpy()
+            out_np    =    DATA["out"].to_numpy()
+        except:
+            #
+            # ~~~ Now, try the new method
+            coords_np  =  pd.read_csv(os.path.join( data_folder, "slosh_sim_coordinates.csv" )).to_numpy()
+            inputs_np  =  pd.read_csv(os.path.join( data_folder, "slosh_sim_inputs.csv"      )).to_numpy()
+            out_np     =  pd.read_csv(os.path.join( data_folder, "slosh_sim_outputs.csv"     )).to_numpy()
     except:
         my_warn(f"Unable to load the SLOSH data. Please ensure that the data has been downloaded from https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/7K5O5X and that the .csv files\n    slosh_sim_coordinates.csv\n    slosh_sim_inputs.csv\n    slosh_sim_outputs.csv\nhave all been located in {os.path.join(data_folder)}" )
     np.save( os.path.join( data_folder, "slosh_sim_coordinates.npy" ), coords_np )
