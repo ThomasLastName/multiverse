@@ -258,20 +258,14 @@ def slosh_heatmap( out, inp=None, show=True ):
     #
     # ~~~ Add the coastline, if possible
     try:
-        users_dir = os.getcwd()
+        from bnns import __path__
+        data_folder = os.path.join( __path__[0], "data" )
         try:
             #
             # ~~~ Attempt to load the coastline assuming the folder `ne_10m_coastline` is in the working directory
-            os.chdir("ne_10m_coastline")
-            c = load_coast_coords("ne_10m_coastline.shp")
-            os.chdir(users_dir)
+            c = load_coast_coords(os.path.join( data_folder, "ne_10m_coastline", "ne_10m_coastline.shp" ))
         except FileNotFoundError:
-            #
-            # ~~~ Attempt to load the coastline assuming the working directory is a subdirectory of the `bnns` repo *and* the folder `ne_10m_coastline` is located in bnns/bnns/data
-            os.chdir(os.path.join( find_root_dir_of_repo(), "bnns", "data", "ne_10m_coastline" ))
-            c = load_coast_coords("ne_10m_coastline.shp")
-            os.chdir(users_dir)
-            raise
+            my_warn(f"Could not find `ne_10m_coastline.shp`. In order to plot the coastline, go to https://www.naturalearthdata.com/downloads/10m-physical-vectors/10m-coastline/ and click the `Download coastline` button. Unzip the folder, and move the entire unzipped folder called `ne_10m_coastline` into the data directory {data_folder}.")
         coast_x, coast_y = c[:,0], c[:,1]
         plt.plot( coast_x, coast_y, color="black", linewidth=1 ) #,  label="Coastline" )
         plt.xlim(x.min(),x.max())
