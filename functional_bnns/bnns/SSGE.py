@@ -114,7 +114,7 @@ class SpectralSteinEstimator(BaseScoreEstimator):
             xm = self.samples
             if old:
                 K, K_Jacobians = self.grad_gram( xm, xm, self.sigma )
-                self.avg_jac = K_Jacobians.mean(dim=-3) # [M x D]
+                self.avg_jac = K_Jacobians.mean(dim=0) # [M x D]
             else:
                 K = self.gram_matrix( xm, xm, self.sigma )
                 self.avg_jac = torch.einsum('ij,ijk->ik', K, xm[:, None, :]-xm[None, :, :] ) / (self.sigma**2) / self.M # [M x D]
