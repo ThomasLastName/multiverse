@@ -6,7 +6,7 @@
 
 0. Open the terminal and say `conda env list` to confirm that the code is not present already.
 
-1. (_create an env with standard / easy-to-install packages_) `conda create --name bnns python=3.10 tqdm matplotlib numpy plotly scipy pip` (if desired, you can swap `bnns` for your preferred name).
+1. (_create an env with standard / easy-to-install packages_) `conda create --name bnns python=3.10 tqdm matplotlib numpy pandas plotly scipy pip` (if desired, you can swap `bnns` for your preferred name).
 
 2. (_activate the env for further installs_) `conda activate bnns`.
 

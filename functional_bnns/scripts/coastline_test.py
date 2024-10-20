@@ -6,7 +6,10 @@ from matplotlib import pyplot as plt
 # from plotly import graph_objects as go
 import numpy as np
 import os
-os.chdir( os.path.join(find_root_dir_of_repo(), "bnns", "data" ) )
+from bnns import __path__
+
+data_folder = os.path.join( __path__[0], "data" )
+os.chdir(data_folder)
 
 #
 # ~~~ Plot coastline
@@ -18,7 +21,7 @@ try:
     plt.show()
     os.chdir("..")
 except FileNotFoundError:
-    my_warn("In order to plot the coastline, go to https://www.naturalearthdata.com/downloads/10m-physical-vectors/10m-coastline/ and click the `Download coastline` button. Unzip the folder, and move the unzipped folder called `ne_10m_coastline` into the folder bnns/bnns/data")
+    my_warn(f"In order to plot the coastline, go to https://www.naturalearthdata.com/downloads/10m-physical-vectors/10m-coastline/ and click the `Download coastline` button. Unzip the folder, and move the unzipped folder called `ne_10m_coastline` into the folder {data_folder}")
 
 #
 # ~~~ Get the data
@@ -37,7 +40,10 @@ Z = Z*(Z>0)
 plt.figure(figsize=(9,7))
 plt.contourf( X, Y, Z, cmap="viridis" )
 plt.colorbar(label="Storm Surge Heights")
-plt.plot( coast_x, coast_y, color="black", linewidth=1, label="Coastline" )
+try:
+    plt.plot( coast_x, coast_y, color="black", linewidth=1, label="Coastline" )
+except:
+    pass
 plt.xlim(X.min(),X.max())
 plt.ylim(Y.min(),Y.max())
 plt.xlabel("Longitude")
@@ -52,7 +58,10 @@ plt.show()
 plt.figure(figsize=(9,7))
 plt.scatter( x, y, c=z, cmap="viridis" )
 plt.colorbar(label="Storm Surge Heights")
-plt.plot( coast_x, coast_y, color="black", linewidth=1, label="Coastline" )
+try:
+    plt.plot( coast_x, coast_y, color="black", linewidth=1, label="Coastline" )
+except:
+    pass
 plt.xlim(x.min(),x.max())
 plt.ylim(y.min(),y.max())
 plt.xlabel("Longitude")
@@ -71,7 +80,10 @@ for height, i, j in zip( z, np.searchsorted(grid_x,x), np.searchsorted(grid_y,y)
     image[i,j] = height
 
 plt.imshow( image, cmap="viridis", extent=[x.min(),x.max(),y.min(),y.max()] )
-plt.plot( coast_x, coast_y, color="black", linewidth=1, label="Coastline" )
+try:
+    plt.plot( coast_x, coast_y, color="black", linewidth=1, label="Coastline" )
+except:
+    pass
 plt.xlim(x.min(),x.max())
 plt.ylim(y.min(),y.max())
 plt.xlabel("Longitude")
