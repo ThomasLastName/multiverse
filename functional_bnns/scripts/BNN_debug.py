@@ -39,7 +39,7 @@ NN, BNN = NN.to(DEVICE), BNN.to(DEVICE)
 ## ~~~ Define the data
 ### ~~~
 
-from bnns.data.univar_data.missing_middle import x_train, y_train, x_test, y_test, ground_truth
+from bnns.data.univar_missing_middle import x_train, y_train, x_test, y_test, ground_truth
 x_train, y_train, x_test, y_test = x_train.to(DEVICE), y_train.to(DEVICE), x_test.to(DEVICE), y_test.to(DEVICE)
 
 BNN.prior_forward(x_test)   
