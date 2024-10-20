@@ -48,6 +48,7 @@ class SteinEnsemble(nn.Module):
             # ~~~ Stuff for parallelizing computation of the loss function
             self.all_prior_sigma = torch.tile( torch.cat([ torch.tile(get_std(p),p.shape).flatten() for p in self.models[0].parameters() ]), (self.n_models,1) )
             self.failed_to_vectorize = False    # ~~~ flag if the generic attempt to vectorize the forward pass has failed
+            self.iterative_sum = False          # ~~~ if False, then use einsum for a sub-routine, which is faster but more memory intensive then using an iterative sum
             #
             # ~~~ Weird stuff for parallelizing the forward pass: from https://pytorch.org/tutorials/intermediate/ensembling.html
             base_model = copy.deepcopy(self.models[0])
@@ -59,7 +60,7 @@ class SteinEnsemble(nn.Module):
             self.parameters_have_been_updated = False   # ~~~ when true, then it becomes necessary to update self.params and self.buffers
     #
     # ~~~ Compute A and b for which SVGD prescribes replacing the gradients by `gradients = ( A@gradients + b )/n_particles`
-    def compute_affine_transform( self, naive_implementation=False ):
+    def compute_affine_transform( self, naive_implementation=False, iterative_sum=False ):
         #
         # ~~~ Flatten each model's parameters into a single vector; row-stack those vectors into a matrix (many more columns than rows)
         all_params = flatten_parameters(self.models) # ~~~ TODO can we just params.flatten(dim=?)?
@@ -69,12 +70,22 @@ class SteinEnsemble(nn.Module):
             self.bw = bandwidth_estimator(all_params,all_params)
         #
         # ~~~ Compute the kernel matrix and the "average jacobians"
-        if naive_implementation:
-            K, grads_of_K = kernel_stuff( all_params, all_params, self.bw ) # ~~~ K has shape (len(list_of_models),len(other_list_of_models)); dK has shape (len(list_of_models),len(other_list_of_models),n_parameters_per_model)
-            sum_grad_info = grads_of_K.sum(axis=0)
-        else:
-            K = kernel_matrix( all_params, all_params, self.bw )
-            sum_grad_info = -torch.einsum('ij,ijk->jk', K, all_params[:, None, :]-all_params[None, :, :] ) / (self.bw**2)
+        if not iterative_sum:
+            if naive_implementation:
+                K, grads_of_K = kernel_stuff( all_params, all_params, self.bw ) # ~~~ K has shape (len(list_of_models),len(other_list_of_models)); dK has shape (len(list_of_models),len(other_list_of_models),n_parameters_per_model)
+                sum_grad_info = grads_of_K.sum(axis=0)
+            else:
+                K = kernel_matrix( all_params, all_params, self.bw )
+                sum_grad_info = -torch.einsum('ij,ijk->jk', K, all_params[:, None, :]-all_params[None, :, :] ) / (self.bw**2)
+        #
+        # ~~~ Both non-iterative methods (above) seem to have identical memory footprint, though einsum is faster. This method may be have better or worse memory and/or time efficiency. There's no clear preference
+        if iterative_sum:
+                K = kernel_matrix( all_params, all_params, self.bw )
+                sum_grad_info = torch.zeros_like(all_params)
+                for i in range(all_params.shape[1]):
+                    diff_i = (all_params[:, i].unsqueeze(-1) - all_params[:, i].unsqueeze(-2)) / self.bw**2  # [M x M]
+                    K_Jacobian_i = K * (-diff_i)
+                    sum_grad_info[:, i] = K_Jacobian_i.sum(dim=0)
         return K, sum_grad_info
     #
     # ~~~ Zero out all gradients
@@ -140,7 +151,16 @@ class SteinEnsemble(nn.Module):
                 #
                 # ~~~ TODO use torch.func or, like, vmap or something in place of `get_flat_grads` and `set_flat_grads`
                 log_posterior_grads = torch.stack([ get_flat_grads(model) for model in self.models ]) # ~~~ has shape (n_models,n_params_in_each_model)
-                K, sum_grad_info = self.compute_affine_transform( naive_implementation=naive_implementation )
+                try:
+                    K, sum_grad_info = self.compute_affine_transform( naive_implementation=naive_implementation, iterative_sum=self.iterative_sum )
+                except:
+                    #
+                    # ~~~ In case the the implementation using einsum crashes (presumed due to not enough RAM), then try the more memory-efficient (but slower) impelemntation of the same routine
+                    my_warn("Switching to the slower, but more memory-efficient `self.iterative_sum=True`.")
+                    self.iterative_sum = True
+                    K, sum_grad_info = self.compute_affine_transform( naive_implementation=naive_implementation, iterative_sum=self.iterative_sum )
+                #
+                # ~~~ Apply the affine transform to the gradients
                 stein_grads = -( K@log_posterior_grads + sum_grad_info ) / len(self.models) # ~~~ take the negative so that pytorch's optimizer's *maximize* the intended objective
                 for i, model in enumerate(self.models):
                     set_flat_grads( model, stein_grads[i] )
