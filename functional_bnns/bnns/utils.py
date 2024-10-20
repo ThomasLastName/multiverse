@@ -211,6 +211,12 @@ def set_Dataset_attributes( dataset, device, dtype ):
                 return len(self.original_dataset)
         return ModifiedDataset(dataset)
 
+
+
+### ~~~
+## ~~~ Plotting routines
+### ~~~
+
 #
 # ~~~ Load coastline land coords (Natalie sent me this code, which I just packaged into a function)
 def load_coast_coords(coast_shp_path):
@@ -221,12 +227,6 @@ def load_coast_coords(coast_shp_path):
         coast_coords.append(c)
     coast_coords = np.vstack(coast_coords)
     return coast_coords
-
-
-
-### ~~~
-## ~~~ Plotting routines
-### ~~~
 
 #
 # ~~~ Plot a datapoint from (or a prediction of) the SLOSH dataset as a heatmap
@@ -260,12 +260,7 @@ def slosh_heatmap( out, inp=None, show=True ):
     try:
         from bnns import __path__
         data_folder = os.path.join( __path__[0], "data" )
-        try:
-            #
-            # ~~~ Attempt to load the coastline assuming the folder `ne_10m_coastline` is in the working directory
-            c = load_coast_coords(os.path.join( data_folder, "ne_10m_coastline", "ne_10m_coastline.shp" ))
-        except FileNotFoundError:
-            my_warn(f"Could not find `ne_10m_coastline.shp`. In order to plot the coastline, go to https://www.naturalearthdata.com/downloads/10m-physical-vectors/10m-coastline/ and click the `Download coastline` button. Unzip the folder, and move the entire unzipped folder called `ne_10m_coastline` into the data directory {data_folder}.")
+        c = load_coast_coords(os.path.join( data_folder, "ne_10m_coastline", "ne_10m_coastline.shp" ))
         coast_x, coast_y = c[:,0], c[:,1]
         plt.plot( coast_x, coast_y, color="black", linewidth=1 ) #,  label="Coastline" )
         plt.xlim(x.min(),x.max())
