@@ -97,27 +97,40 @@ class BaseScoreEstimator:
 class SpectralSteinEstimator(BaseScoreEstimator):
     #
     # ~~~ Allow the user to specify eta for numerical stability as well as J for numerical fidelity
-    def __init__( self, samples, eta=None, J=None, sigma=None, h=True, old=False ):
+    def __init__( self, samples, eta=None, J=None, sigma=None, h=True, old=False, iterative_avg=False ):
         self.eta = eta
         self.num_eigs = J
-        self.samples = samples
+        self.samples = vertical(samples)
         self.h = h
         self.M = torch.tensor( samples.size(-2), dtype=samples.dtype, device=samples.device )
         self.sigma = self.heuristic_sigma(self.samples,self.samples) if sigma is None else sigma
-        self.eigen_decomposition(old=old)
+        self.eigen_decomposition( old=old, iterative_avg=iterative_avg )
     #
     # ~~~ NEW
-    def eigen_decomposition(self,old=False):
+    def eigen_decomposition( self, old=False, iterative_avg=False ):
         with torch.no_grad():
             #
             # ~~~ Build the kernel matrix, as well as the associated Jacobians
             xm = self.samples
-            if old:
-                K, K_Jacobians = self.grad_gram( xm, xm, self.sigma )
-                self.avg_jac = K_Jacobians.mean(dim=0) # [M x D]
-            else:
+            #
+            # ~~~ Both non-iterative implementations seem to have the exact same memory footprint, but einsum is a lot faster
+            if not iterative_avg:
+                if old:
+                    K, K_Jacobians = self.grad_gram( xm, xm, self.sigma )
+                    self.avg_jac = K_Jacobians.mean(dim=0) # [M x D]
+                else:
+                    K = self.gram_matrix( xm, xm, self.sigma )
+                    self.avg_jac = torch.einsum('ij,ijk->ik', K, xm[:, None, :]-xm[None, :, :] ) / (self.sigma**2) / self.M # [M x D]
+            #
+            # ~~~ Given M,D = samples.shape, the non-iterative implementation (e.g., using einsum) crashes due to memory footprint when D is large. This iterative implentation is more memory effficient
+            if iterative_avg:
                 K = self.gram_matrix( xm, xm, self.sigma )
-                self.avg_jac = torch.einsum('ij,ijk->ik', K, xm[:, None, :]-xm[None, :, :] ) / (self.sigma**2) / self.M # [M x D]
+                avg_Jac = torch.zeros_like(xm)
+                for i in range(xm.shape[1]):
+                    diff_i = (xm[:, i].unsqueeze(-1) - xm[:, i].unsqueeze(-2)) / self.sigma**2  # [M x M]
+                    K_Jacobian_i = K * (-diff_i)
+                    avg_Jac[:, i] = K_Jacobian_i.mean(dim=0)
+                self.avg_jac = avg_Jac
             #
             # ~~~ Optionally, K += eta*I for numerical stability
             if self.eta is not None:

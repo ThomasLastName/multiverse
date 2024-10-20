@@ -3,7 +3,7 @@ import math
 import torch
 from torch import nn
 from bnns.SSGE import SpectralSteinEstimator as SSGE
-from bnns.utils import log_gaussian_pdf, get_std, gaussian_kl, manual_Jacobian
+from bnns.utils import log_gaussian_pdf, get_std, manual_Jacobian
 from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
@@ -199,7 +199,14 @@ class SequentialGaussianBNN(nn.Module):
                 prior_samples = torch.row_stack([ self.prior_forward(self.measurement_set).flatten() for _ in range(self.prior_M) ])
             #
             # ~~~ Build an SSGE estimator using those samples
-            self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh )
+            try:
+                #
+                # ~~~ First, try the implementation of the linalg routine using einsum
+                self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh )
+            except:
+                #
+                # ~~~ In case that crashes due to not enough RAM, then try the more memory-efficient impelemntation of the same routine using a for loop
+                self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh, iterative_avg=True )
             #
             # ~~~ No longer necessary (?) workaround for a bug in the pytorch source code
             # try:
@@ -304,7 +311,7 @@ class SequentialGaussianBNN(nn.Module):
     def gaussian_kl( self, resample_measurement_set=True, add_stabilizing_noise=True ):
         #
         # ~~~ Get the mean and covariance of (the Gaussian approximation of) the predicted distribution of yhat
-        mu_theta, Sigma_theta = self.simple_gaussian_approximation( resample_measurement_set=False )
+        mu_theta, Sigma_theta = self.simple_gaussian_approximation( resample_measurement_set=resample_measurement_set )
         if add_stabilizing_noise:
             Sigma_theta += torch.diag( self.post_GP_eta * torch.ones_like(Sigma_theta.diag()) )
         root_Sigma_theta = torch.linalg.cholesky(Sigma_theta)
