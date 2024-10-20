@@ -222,16 +222,16 @@ pbar.close()
 #
 # ~~~ Plot the state of the posterior predictive distribution at the end of training
 if data_is_univariate:
-    if not MAKE_GIF:    # ~~~ make a plot now
-        fig,ax = plt.subplots(figsize=(12,6))
-    fig,ax = plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
     if MAKE_GIF:
         for j in range(FINAL_FRAME_REPETITIONS):
-            gif.capture( clear_frame_upon_capture=(j+1==FINAL_FRAME_REPETITIONS) )
+            gif.frames.append( gif.frames[-1] )
         gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
     else:
-        plt.show()
+        if SHOW_DIAGNOSTICS:
+            fig,ax = plt.subplots(figsize=(12,6))
+            fig,ax = plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble )
+            plt.show()
 
 
 
@@ -299,10 +299,11 @@ if input_json_filename.startswith("demo"):
     my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
 else:
     output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
-    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=SHOW_DIAGNOSTICS )
     if model_save_dir is not None:
-        # save the model, assuming model_save_dir could be something like `subfolder_of_experiments/model_name.pt`
+        hyperparameters["MODEL_SAVE_DIR"] = model_save_dir
         raise NotImplementedError("TODO")
+    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=SHOW_DIAGNOSTICS )
+
 
 
 #

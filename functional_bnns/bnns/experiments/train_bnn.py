@@ -59,6 +59,7 @@ hyperparameter_template = {
     "POST_eta"  : 0.5,      # ~~~ `eta` in the SSGE of the posterior score
     "PRIOR_M"   : 4000,     # ~~~ `M` in the SSGE of the prior score
     "POST_M"    : 40,       # ~~~ `M` in the SSGE of the posterior score
+    "POST_GP_eta" : 0.001,  # ~~~ the level of the "stabilizing noise" added to the Gaussian approximation of the posterior distribution if `gaussian_approximation` is True
     "CONDITIONAL_STD" : 0.19,
     "OPTIMIZER" : "Adam",
     "LR" : 0.0005,
@@ -163,6 +164,7 @@ BNN.prior_eta = PRIOR_eta
 BNN.post_eta = POST_eta
 BNN.prior_M = PRIOR_M
 BNN.post_M = POST_M
+BNN.post_GP_eta = POST_GP_eta
 
 
 
@@ -173,8 +175,7 @@ BNN.post_M = POST_M
 #
 # ~~~ The optimizer and dataloader
 dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
-mean_optimizer = Optimizer( BNN.model_mean.parameters(), lr=LR )
-std_optimizer  =  Optimizer( BNN.model_std.parameters(), lr=LR )
+optimizer = Optimizer( BNN.parameters(), lr=LR )
 
 #
 # ~~~ Some naming stuff
@@ -267,9 +268,8 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             # loss.backward()
             #
             # ~~~ Do the gradient-based update
-            for optimizer in (mean_optimizer,std_optimizer):
-                optimizer.step()
-                optimizer.zero_grad()
+            optimizer.step()
+            optimizer.zero_grad()
             #
             # ~~~ Do the projection
             if PROJECT:
@@ -286,11 +286,11 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             #     "prior": f"{log_prior_density.item():<4.4f}",
             #     "like" : f"{log_likelihood_density.item():<4.4f}"
             # }
-            m = X.shape[0]
-            accuracy = -( log_likelihood_density.item() + (m/2)*torch.log(2*torch.pi*BNN.conditional_std) )/2 * BNN.conditional_std/m # ~~~ basically, mse if weights are Gaussian, mae if weights are Laplace, etc. maybe off by a factor of 2 or something
-            to_print = { "conventional loss" : f"{accuracy.item():<4.4f}" }
-            pbar.set_postfix(to_print)
             _ = pbar.update()
+        with torch.no_grad():
+            predictions = torch.stack([ BNN(X,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ])
+            to_print = { "conventional loss" : f"{mse_of_mean(predictions,y):<4.4f}" }
+        pbar.set_postfix(to_print)
         #
         # ~~~ Plotting logic
         if data_is_univariate and MAKE_GIF and (e+1)%HOW_OFTEN==0:
@@ -309,9 +309,10 @@ if data_is_univariate:
         gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
     else:
-        fig,ax = plt.subplots(figsize=(12,6))
-        fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
-        plt.show()
+        if SHOW_DIAGNOSTICS:
+            fig,ax = plt.subplots(figsize=(12,6))
+            fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
+            plt.show()
 
 #
 # ~~~ Validate implementation of the algorithm on the synthetic dataset "bivar_trivial"
@@ -416,9 +417,10 @@ if input_json_filename.startswith("demo"):
     my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
 else:
     output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
-    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=SHOW_DIAGNOSTICS )
     if model_save_dir is not None:
-        # save the model, assuming model_save_dir could be something like `subfolder_of_experiments/model_name.pt`
+        hyperparameters["MODEL_SAVE_DIR"] = model_save_dir
         raise NotImplementedError("TODO")
+    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=SHOW_DIAGNOSTICS )
+
 
 #
