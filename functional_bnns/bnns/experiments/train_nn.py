@@ -264,21 +264,21 @@ with torch.no_grad():
 #
 # ~~~ Compute the desired metrics
 if dropout:
-    hyperparameters["METRIC_mse_of_median"]  =  mse_of_median( predictions, y_test )
-    hyperparameters["METRIC_mse_of_mean"]    =    mse_of_mean( predictions, y_test )
-    hyperparameters["METRIC_mae_of_median"]  =  mae_of_median( predictions, y_test )
-    hyperparameters["METRIC_mae_of_mean"]    =    mae_of_mean( predictions, y_test )
+    hyperparameters["METRIC_rmse_of_median"]      =      rmse_of_median( predictions, y_test )
+    hyperparameters["METRIC_rmse_of_mean"]        =        rmse_of_mean( predictions, y_test )
+    hyperparameters["METRIC_mae_of_median"]       =       mae_of_median( predictions, y_test )
+    hyperparameters["METRIC_mae_of_mean"]         =         mae_of_mean( predictions, y_test )
     hyperparameters["METRIC_max_norm_of_median"]  =  max_norm_of_median( predictions, y_test )
     hyperparameters["METRIC_max_norm_of_mean"]    =    max_norm_of_mean( predictions, y_test )
     for estimator in ("mean","median"):
         show = SHOW_DIAGNOSTICS and ((estimator=="median")==VISUALIZE_DISTRIBUTION_USING_QUANTILES)  # ~~~ i.e., diagnostics are requesed, the prediction type mathces the uncertainty type (mean and std. dev., or median and iqr)
         hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
         hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-        hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=show )
+        hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]                  =   uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=show )
 else:
-    hyperparameters["METRIC_mse"] = mse( NN, x_test, y_test )
-    hyperparameters["METRIC_mae"] = mae( NN, x_test, y_test )
-    hyperparameters["METRIC_max_norm"] = max_norm( NN, x_test, y_test )
+    hyperparameters["METRIC_rmse"]      =      rmse( NN, x_test, y_test )
+    hyperparameters["METRIC_mae"]       =       mae( NN, x_test, y_test )
+    hyperparameters["METRIC_max_norm"]  =  max_norm( NN, x_test, y_test )
 
 #
 # ~~~ Display the results

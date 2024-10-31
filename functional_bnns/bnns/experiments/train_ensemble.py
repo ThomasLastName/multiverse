@@ -215,7 +215,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             _ = pbar.update()
         with torch.no_grad():
             predictions = ensemble(X)
-        pbar.set_postfix({ "mse of mean": f"{mse_of_mean(predictions,y):<4.4f}" })
+        pbar.set_postfix({ "rmse of mean": f"{rmse_of_mean(predictions,y):<4.4f}" })
         #
         # ~~~ Plotting logic
         if data_is_univariate and MAKE_GIF and (e+1)%HOW_OFTEN==0:
@@ -277,16 +277,16 @@ with torch.no_grad():
 
 #
 # ~~~ Compute the desired metrics
-hyperparameters["METRIC_mse_of_median"]  =  mse_of_median( predictions, y_test )
-hyperparameters["METRIC_mse_of_mean"]    =    mse_of_mean( predictions, y_test )
-hyperparameters["METRIC_mae_of_median"]  =  mae_of_median( predictions, y_test )
-hyperparameters["METRIC_mae_of_mean"]    =    mae_of_mean( predictions, y_test )
+hyperparameters["METRIC_rmse_of_median"]      =      rmse_of_median( predictions, y_test )
+hyperparameters["METRIC_rmse_of_mean"]        =        rmse_of_mean( predictions, y_test )
+hyperparameters["METRIC_mae_of_median"]       =       mae_of_median( predictions, y_test )
+hyperparameters["METRIC_mae_of_mean"]         =         mae_of_mean( predictions, y_test )
 hyperparameters["METRIC_max_norm_of_median"]  =  max_norm_of_median( predictions, y_test )
 hyperparameters["METRIC_max_norm_of_mean"]    =    max_norm_of_mean( predictions, y_test )
 for estimator in ("mean","median"):
     hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
     hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-    hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
+    hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]                  =   uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
 
 #
 # ~~~ Print the results
@@ -295,9 +295,6 @@ if SHOW_DIAGNOSTICS:
 
 
 
-### ~~~
-## ~~~ Save the results
-### ~~~
 ### ~~~
 ## ~~~ Save the results
 ### ~~~

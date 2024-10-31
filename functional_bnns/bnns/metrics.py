@@ -7,11 +7,11 @@ from quality_of_life.my_visualization_utils import points_with_curves
 
 #
 # ~~~ Measure MSE of a deterministic model with error=model(x_test)-y_test
-def mse( model, x_test, y_test ):
+def rmse( model, x_test, y_test ):
     with torch.no_grad():
         pred = model(x_test)
         assert pred.shape == y_test.shape
-        return (( pred - y_test )**2).mean().item()
+        return (( pred - y_test )**2).mean().sqrt().item()
 
 #
 # ~~~ Measure MAE of a deterministic model with error=model(x_test)-y_test
@@ -31,11 +31,11 @@ def max_norm( model, x_test, y_test ):
 
 #
 # ~~~ Measure MSE of the predictive median
-def mse_of_median( predictions, y_test ):
+def rmse_of_median( predictions, y_test ):
     with torch.no_grad():
         pred = predictions.median(dim=0).values
         assert pred.shape == y_test.shape
-        return (( pred - y_test )**2).mean().item()
+        return (( pred - y_test )**2).mean().sqrt().item()
 
 #
 # ~~~ Measure MAE of the predictive median 
@@ -55,11 +55,11 @@ def max_norm_of_median( predictions, y_test ):
 
 #
 # ~~~ Measure MSE of the predictive mean
-def mse_of_mean( predictions, y_test ):
+def rmse_of_mean( predictions, y_test ):
     with torch.no_grad():
         pred = predictions.mean(dim=0)
         assert pred.shape == y_test.shape
-        return (( pred - y_test )**2).mean().item()
+        return (( pred - y_test )**2).mean().sqrt().item()
 
 #
 # ~~~ Measure MAE of the predictive mean
