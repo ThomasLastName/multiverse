@@ -50,6 +50,7 @@ hyperparameter_template = {
     #
     # ~~~ For training
     "STEIN" : True,
+	"BAYESIAN" : True,
     "CONDITIONAL_STD" : 0.19,
     "BW" : None,
     "N_MODELS" : 100,
@@ -121,7 +122,7 @@ Optimizer = getattr(optim,OPTIMIZER)    # ~~~ e.g., OPTIMIZER=="Adam" (str) -> O
 try:
     data = import_module(f"bnns.data.{DATA}")   # ~~~ this is equivalent to `import bnns.data.<DATA> as data`
 except:
-    data = import_module(DATA)
+    data = import_module(DATA)                  # ~~~ this is equivalent to `import <DATA> as data` (works if DATA.py is in the cwd or anywhere on the path)
 
 D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=DTYPE )
 D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=DTYPE )
@@ -144,7 +145,7 @@ except:
 try:
     model = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as model`
 except:
-    model = import_module(MODEL)
+    model = import_module(MODEL)                    # ~~~ this is equivalent to `import <MODEL> as model` (works if MODEL.py is in the cwd or anywhere on the path)
 
 NN = model.NN.to( device=DEVICE, dtype=DTYPE )
 
@@ -160,7 +161,7 @@ ensemble = Ensemble(
         architecture = nonredundant_copy_of_module_list(NN),
         n_copies = N_MODELS,
         Optimizer = lambda params: Optimizer( params, lr=LR ),
-        conditional_std = torch.tensor(CONDITIONAL_STD),
+        conditional_std = torch.tensor(CONDITIONAL_STD) if BAYESIAN else None,
         device = DEVICE,
         bw = BW
     )
@@ -181,7 +182,7 @@ if data_is_univariate:
     #
     # ~~~ Define the main plotting routine
     plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
-    def plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble, extra_std=(ensemble.conditional_std if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, title=description_of_the_experiment ):
+    def plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble, extra_std=(CONDITIONAL_STD if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, title=description_of_the_experiment ):
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
@@ -261,7 +262,7 @@ extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )
 def predict(x):
     predictions = ensemble(x)
     if EXTRA_STD:
-        predictions += ensemble.conditional_std*torch.randn_like(predictions)
+        predictions += CONDITIONAL_STD*torch.randn_like(predictions)
     return predictions
 
 with torch.no_grad():
@@ -284,7 +285,8 @@ for estimator in ("mean","median"):
 
 #
 # ~~~ Print the results
-print_dict(hyperparameters)
+if SHOW_DIAGNOSTICS:
+    print_dict(hyperparameters)
 
 
 

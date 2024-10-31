@@ -131,7 +131,7 @@ Optimizer = getattr(optim,OPTIMIZER)    # ~~~ e.g., OPTIMIZER=="Adam" (str) -> O
 try:
     data = import_module(f"bnns.data.{DATA}")   # ~~~ this is equivalent to `import bnns.data.<DATA> as data`
 except:
-    data = import_module(DATA)
+    data = import_module(DATA)                  # ~~~ this is equivalent to `import <DATA> as data` (works if DATA.py is in the cwd or anywhere on the path)
 
 D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=DTYPE )
 D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=DTYPE )
@@ -154,7 +154,7 @@ except:
 try:
     model = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as model`
 except:
-    model = import_module(MODEL)
+    model = import_module(MODEL)                    # ~~~ this is equivalent to `import <MODEL> as model` (works if MODEL.py is in the cwd or anywhere on the path)
 
 BNN = model.BNN.to( device=DEVICE, dtype=DTYPE )
 BNN.conditional_std = torch.tensor(CONDITIONAL_STD)
@@ -197,7 +197,7 @@ if data_is_univariate:
     #
     # ~~~ Define the main plotting routine
     plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
-    def plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, bnn, extra_std=(BNN.conditional_std if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, n_posterior_samples=N_POSTERIOR_SAMPLES, title=description_of_the_experiment, prior=False ):
+    def plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, bnn, extra_std=(CONDITIONAL_STD if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, n_posterior_samples=N_POSTERIOR_SAMPLES, title=description_of_the_experiment, prior=False ):
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
@@ -358,7 +358,7 @@ extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )
 def predict(x):
         predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
         if EXTRA_STD:
-            predictions += BNN.conditional_std*torch.randn_like(predictions)
+            predictions += CONDITIONAL_STD*torch.randn_like(predictions)
         return predictions
 
 with torch.no_grad():
@@ -385,7 +385,7 @@ try:
     def predict(x):
         predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
         if EXTRA_STD:
-            predictions += BNN.conditional_std*torch.randn_like(predictions)
+            predictions += CONDITIONAL_STD*torch.randn_like(predictions)
         return predictions.mean(dim=0,keepdim=True) * S @ V.T
     with torch.no_grad():
         predictions = predict(x_test)
@@ -405,8 +405,8 @@ except:
 
 #
 # ~~~ Print the results
-print_dict(hyperparameters)
-
+if SHOW_DIAGNOSTICS:
+    print_dict(hyperparameters)
 
 
 ### ~~~
