@@ -172,7 +172,12 @@ dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
 
 #
 # ~~~ Some plotting stuff
-description_of_the_experiment = "Stein Neural Network Ensemble"
+if BAYESIAN and STEIN:
+    description_of_the_experiment = "Stein Neural Network Ensemble"
+if BAYESIAN and not STEIN:
+    description_of_the_experiment = "Ensemble Computattion of Posterior Mode"
+if not BAYESIAN:
+    description_of_the_experiment = "Conventional Neural Network Ensemble"
 if data_is_univariate:
     #
     # ~~~ Define some objects used for plotting
