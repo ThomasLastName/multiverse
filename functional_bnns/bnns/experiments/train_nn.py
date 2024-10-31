@@ -117,7 +117,7 @@ Optimizer = getattr(optim,OPTIMIZER)    # ~~~ e.g., OPTIMIZER=="Adam" (str) -> O
 try:
     data = import_module(f"bnns.data.{DATA}")   # ~~~ this is equivalent to `import bnns.data.<DATA> as data`
 except:
-    data = import_module(DATA)
+    data = import_module(DATA)                  # ~~~ this is equivalent to `import <DATA> as data` (works if DATA.py is in the cwd or anywhere on the path)
 
 D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=DTYPE )
 D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=DTYPE )
@@ -134,7 +134,7 @@ except:
 try:
     model = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as model`
 except:
-    model = import_module(MODEL)
+    model = import_module(MODEL)                    # ~~~ this is equivalent to `import <MODEL> as model` (works if MODEL.py is in the cwd or anywhere on the path)
 
 NN = model.NN.to( device=DEVICE, dtype=DTYPE )
 
