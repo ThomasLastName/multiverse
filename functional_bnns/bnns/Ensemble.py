@@ -33,17 +33,18 @@ def flatten_parameters(list_of_models):
 
 loss_fn = nn.MSELoss()
 class SteinEnsemble(nn.Module):
-    def __init__( self, list_of_NNs, Optimizer, conditional_std, bw=None ):
+    def __init__( self, list_of_NNs, Optimizer, conditional_std=None, bw=None ):
         super().__init__()
         with torch.no_grad():
             #
             # ~~~ Establish basic attributes
             self.models = nn.ModuleList(list_of_NNs)        # ~~~ each "particle" is (the parameters of) a neural network
             self.n_models = len(self.models)
-            inferred_device = self.models[0][-1].weight.device
-            self.conditional_std = conditional_std.to(inferred_device)
             self.bw = bw
             self.optimizer = Optimizer(self.parameters())   # ~~~ not entirely necessary to have this as an attribute, but such was the case in earlier verions of this code
+            if conditional_std is not None:
+                inferred_device = self.models[0][-1].weight.device
+                self.conditional_std = conditional_std.to(inferred_device)
             #
             # ~~~ Stuff for parallelizing computation of the loss function
             self.all_prior_sigma = torch.tile( torch.cat([ torch.tile(get_std(p),p.shape).flatten() for p in self.models[0].parameters() ]), (self.n_models,1) )
@@ -93,93 +94,124 @@ class SteinEnsemble(nn.Module):
         for p in self.parameters():
             p.grad = None
     #
+    # ~~~ Compute ln( f_{Y \mid X,W}(w,x_train,y_train) ) for (the weights w of) every particale, i.e., every net in the ensemble
+    def log_likelihood_density( self, X, y, naive_implementation=False, forward_method="bmm" ):
+        #
+        # ~~~ The most transparent implementation is to just loop over the models
+        if naive_implementation:
+            #
+            # ~~~ Loop over [quantity(model) for model in self.models]
+            return torch.stack([ log_gaussian_pdf( where=y, mu=model(X), sigma=self.conditional_std ) for model in self.models ])
+        #
+        # ~~~ A more complicated, but faster implementation computes the log likelihood densities for all models "simultaneously," instead of in a loop
+        else:
+            #
+            # ~~~ Compute the log likelihood densities simultanuously, instead of looping over `model in self.models`
+            where = torch.tile( y, (self.n_models,1,1) )
+            mu    = self( X, method=forward_method )
+            sigma = torch.tile( self.conditional_std, (self.n_models,1,1) )
+            marginal_log_likehoods = -((where-mu)/sigma)**2/2 - torch.log( math.sqrt(2*torch.pi)*sigma )
+            return marginal_log_likehoods.sum(dim=-1).sum(dim=-1)  # ~~~ a vector of length self.n_models
+    #
+    # ~~~ Compute \ln( f_W(w) ) for (the weights w of) every particale, i.e., every net in the ensemble
+    def log_prior_density( self, naive_implementation=False ):
+        #
+        # ~~~ The most transparent implementation is to just loop over the models
+        if naive_implementation:
+            #
+            # ~~~ Loop over [quantity(model) for model in self.models]
+            return torch.stack([ log_prior_density(model) for model in self.models ])
+        #
+        # ~~~ A more complicated, but faster implementation computes the log likelihood densities for all models "simultaneously," instead of in a loop
+        else:
+            #
+            # ~~~ Compute the log priors densities simultanuously, instead of looping over `model in self.models`
+            where = flatten_parameters(self.models)
+            mu    = torch.zeros_like(where)
+            sigma = self.all_prior_sigma
+            marginal_log_priors = -((where-mu)/sigma)**2/2 - torch.log( math.sqrt(2*torch.pi)*sigma )
+            return marginal_log_priors.sum(dim=-1)  # ~~~ a vector of length self.n_models
+    #
     # ~~~ Compute the loss function, *and* process the gradients (if using SVGD)
     def compute_loss_and_grads( self, X, y, stein=True, naive_implementation=False, vectorized_forward=True ):
         #
         # ~~~ Record the fact that the parameters have been updated (so that we know to update `vmap` in the __call__ method)
         self.parameters_have_been_updated = True
         #
-        # ~~~ Compute \grad \ln p(particle) for each particle (particles are NN's)
-        if naive_implementation:
+        # ~~~ If this is just a standard (non-Bayesian) neural network ensemble, then there's not much to do
+        if not hasattr(self,"conditional_std"):
             #
-            # ~~~ Straightforward, easy to read implementation
-            for model in self.models:
-                if not stein:
-                    #
-                    # ~~~ This is an ordinary neural network ensemble
-                    loss = loss_fn(model(X),y) # -log_gaussian_pdf( where=y, mu=model(X), sigma=self.conditional_std )loss_fn( model(X), y )
+            # ~~~ Straightforward, easy to read implementation, just looping over all the models in the ensemble
+            if naive_implementation:
+                losses = []
+                for model in self.models:
+                    loss = loss_fn(model(X),y)
                     loss.backward()
-                else:
-                    #
-                    # ~~~ This is SVGD
-                    log_likelihood = log_gaussian_pdf( where=y, mu=model(X), sigma=self.conditional_std )
-                    log_prior = log_prior_density(model)
-                    un_normalized_log_posterior = log_likelihood + log_prior
-                    un_normalized_log_posterior.backward()
-        else:
+                    losses.append(loss.detach())
+                return torch.stack(losses)
             #
-            # ~~~ More complicated, but faster implementation
-            if stein:
-                #
-                # ~~~ Compute the log likelihood densities simultanuously, instead of looping over `model in self.models`
-                where = torch.tile( y, (self.n_models,1,1) )
-                mu    = self( X, method=("bmm" if vectorized_forward else "naive") )
-                sigma = torch.tile( self.conditional_std, (self.n_models,1,1) )
-                marginal_log_likehoods = -((where-mu)/sigma)**2/2 - torch.log( math.sqrt(2*torch.pi)*sigma )
-                joint_log_likelihoods = marginal_log_likehoods.sum(dim=-1).sum(dim=-1)  # ~~~ a vector of length self.n_models
-                #
-                # ~~~ Compute the log priors densities simultanuously, instead of looping over `model in self.models`
-                where = flatten_parameters(self.models)
-                mu    = torch.zeros_like(where)
-                sigma = self.all_prior_sigma
-                marginal_log_priors = -((where-mu)/sigma)**2/2 - torch.log( math.sqrt(2*torch.pi)*sigma )
-                joint_log_priors = marginal_log_priors.sum(dim=-1)  # ~~~ a vector of length self.n_models
-                un_normalized_log_posteriors = joint_log_likelihoods + joint_log_priors
-                # with torch.no_grad():
-                #     assert torch.allclose(
-                #         un_normalized_log_posteriors,
-                #         torch.stack([ log_gaussian_pdf( where=y, mu=model(X), sigma=self.conditional_std ) + log_prior_density(model) for model in self.models ])
-                #         )
-                un_normalized_log_posteriors.sum().backward()
+            # ~~~ An arguably less readable, but faster implementation computes the loss of all models "simultaneously," instead of in a loop
             else:
-                losses = torch.stack([ loss_fn(model(X),y) for model in self.models ])
-                losses.sum().backward()
+                predictions = self( X, method=("bmm" if vectorized_forward else "naive") )
+                target = torch.tile( y, (self.n_models,1,1) )
+                losses = (( predictions - target )**2/2).sum(dim=2).mean(dim=1)
+                losses.sum().backward() # ~~~ if we took the mean instead of the sum, it would artificially shrink the gradients
+                return losses.detach()
         #
-        # ~~~ Replace the gradients by \widehat{\phi}^*(particle) for each particle (particles are NN's)
-        if stein:
-            with torch.no_grad():
-                #
-                # ~~~ TODO use torch.func or, like, vmap or something in place of `get_flat_grads` and `set_flat_grads`
-                log_posterior_grads = torch.stack([ get_flat_grads(model) for model in self.models ]) # ~~~ has shape (n_models,n_params_in_each_model)
-                try:
-                    K, sum_grad_info = self.compute_affine_transform( naive_implementation=naive_implementation, iterative_sum=self.iterative_sum )
-                except:
+        # ~~~ If this is a Bayesian neural network ensemble, the the loss involves the negative un-normalized log posterior
+        if hasattr(self,"conditional_std"):
+            un_normalized_log_posteriors = self.log_likelihood_density(
+                    X, y,
+                    naive_implementation = naive_implementation,
+                    forward_method       = ("bmm" if vectorized_forward else "naive")
+                ) + self.log_prior_density(
+                    naive_implementation = naive_implementation
+                )    
+            #
+            # ~~~ If just doing an ensemble eseimation of the posterior mode, then all you gotta do is take the negative so that torch.optim will *maximize* un_normalized_log_posteriors
+            if not stein:
+                (-un_normalized_log_posteriors).sum().backward() # ~~~ if we took the mean instead of the sum, it would artificially shrink the gradients
+            #
+            # ~~~ Replace the gradients by \widehat{\phi}^*(particle) for each particle (particles are NN's)
+            if stein:
+                un_normalized_log_posteriors.sum().backward()    # ~~~ if we took the mean instead of the sum, it would artificially shrink the gradients
+                with torch.no_grad():
                     #
-                    # ~~~ In case the the implementation using einsum crashes (presumed due to not enough RAM), then try the more memory-efficient (but slower) impelemntation of the same routine
-                    my_warn("Switching to the slower, but more memory-efficient `self.iterative_sum=True`.")
-                    self.iterative_sum = True
-                    K, sum_grad_info = self.compute_affine_transform( naive_implementation=naive_implementation, iterative_sum=self.iterative_sum )
-                #
-                # ~~~ Apply the affine transform to the gradients
-                stein_grads = -( K@log_posterior_grads + sum_grad_info ) / len(self.models) # ~~~ take the negative so that pytorch's optimizer's *maximize* the intended objective
-                for i, model in enumerate(self.models):
-                    set_flat_grads( model, stein_grads[i] )
-                return un_normalized_log_posterior.detach() if naive_implementation else un_normalized_log_posteriors.detach().mean()
-        else:
-            return loss.detach() if naive_implementation else losses.detach().mean()
+                    # ~~~ TODO use torch.func or, like, vmap or something in place of `get_flat_grads` and `set_flat_grads`
+                    log_posterior_grads = torch.stack([ get_flat_grads(model) for model in self.models ]) # ~~~ has shape (n_models,n_params_in_each_model)
+                    try:
+                        K, sum_grad_info = self.compute_affine_transform(
+                                naive_implementation = naive_implementation,
+                                iterative_sum = self.iterative_sum
+                            )
+                    except:
+                        #
+                        # ~~~ In case the the implementation using einsum crashes (presumed due to not enough RAM), then try the more memory-efficient (but slower) impelemntation of the same routine
+                        my_warn("Switching to the slower, but more memory-efficient `self.iterative_sum=True`.")
+                        self.iterative_sum = True
+                        K, sum_grad_info = self.compute_affine_transform(
+                                naive_implementation = naive_implementation,
+                                iterative_sum = self.iterative_sum
+                            )
+                    #
+                    # ~~~ Apply the affine transform to the gradients
+                    stein_grads = -( K@log_posterior_grads + sum_grad_info ) / len(self.models) # ~~~ take the negative so that pytorch's optimizer class will *maximize* the intended objective
+                    for i, model in enumerate(self.models):
+                        set_flat_grads( model, stein_grads[i] )
+        #
+        # ~~~ Just for the hell of it, return the detached (because we already called backwards) loss values (e.g., for debugging purposes)
+        return un_normalized_log_posteriors.detach()
     #
     # ~~~ Compute the loss function, process the gradients (if using SVGD), and update the parameters
     def train_step( self, X, y, stein=True, naive_implementation=False, vectorized_forward=True ):
-        loss_without_grad = self.compute_loss_and_grads( X, y, stein=stein, naive_implementation=naive_implementation, vectorized_forward=vectorized_forward )
+        losses_without_grad = self.compute_loss_and_grads( X, y, stein=stein, naive_implementation=naive_implementation, vectorized_forward=vectorized_forward )
         #
         # ~~~ Do the update
         self.optimizer.step()
         self.optimizer.zero_grad()
         #
-        # ~~~ As far as I can tell, the params used by vmap need to be updated manually like this
-        #
         # ~~~ Return the detached loss, for user's refernece
-        return loss_without_grad
+        return losses_without_grad
     #
     # ~~~ Forward method for the full ensemble
     def forward( self, X, method="vmap" ):
@@ -193,10 +225,14 @@ class SteinEnsemble(nn.Module):
         #
         # ~~~ Do the forward pass using `vmap`, which is the fastest method, but not compatible with autograd (basically, you want to use this method for prediction): from https://pytorch.org/tutorials/intermediate/ensembling.html
         if method=="vmap":
+            #
+            # ~~~ As far as I can tell, the params used by vmap need to be updated manually like this
             if self.parameters_have_been_updated:
                 with torch.no_grad():
                     self.params, self.buffers = func.stack_module_state(self.models)
                 self.parameters_have_been_updated = False
+            #
+            # ~~~ Use vmap with the up-to-date parameters
             return vmap( self.fmodel, in_dims=(0,0,None) )( self.params, self.buffers, X )
         #
         # ~~~ Do the forward pass using batched matrix multiplication (`torch.bmm`), which is not quite as fast as `vmap`, but is compatible with autograd (basically, you want to use this method for training)
