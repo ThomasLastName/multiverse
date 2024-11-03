@@ -191,7 +191,7 @@ if data_is_univariate:
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
-            predictions = ensemble(grid).squeeze().T
+            predictions = ensemble(grid).squeeze()
         return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, HOW_MANY_INDIVIDUAL_PREDICTIONS, title )
     #
     # ~~~ Plot the state of the posterior predictive distribution upon its initialization

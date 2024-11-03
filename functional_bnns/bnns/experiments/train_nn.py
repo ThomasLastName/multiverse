@@ -176,7 +176,7 @@ if data_is_univariate:
             #
             # ~~~ Draw from the predictive distribuion
             with torch.no_grad():
-                predictions = torch.column_stack([ nn(grid) for _ in range(N_POSTERIOR_SAMPLES) ])
+                predictions = torch.stack([ nn(grid) for _ in range(N_POSTERIOR_SAMPLES) ]).squeeze()
             return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, HOW_MANY_INDIVIDUAL_PREDICTIONS, title )
     #
     # ~~~ Plot the state of the model upon its initialization

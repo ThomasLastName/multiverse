@@ -378,22 +378,22 @@ def plot_gpr(
 def two_standard_deviations( predictions, grid, ax, extra_std, alpha=0.2, how_many_individual_predictions=6, **kwargs ):
     #
     # ~~~ Extract summary stats from `predictions` assuming that each *column* of `predictions` is a sample from the posterior predictive distribution
-    mean = predictions.mean(dim=-1)
-    std  =  predictions.std(dim=-1) + extra_std
+    mean = predictions.mean(dim=0)
+    std  =  predictions.std(dim=0) + extra_std
     lo, hi = mean-2*std, mean+2*std
     #
     # ~~~ Graph the median as a blue curve
-    _, = ax.plot( grid.cpu(), mean.cpu(), label="Posterior Predictive Mean", linestyle="-", linewidth=( 0.7 if how_many_individual_predictions>0 else 0.5 ), color="blue" )
+    _, = ax.plot( grid.cpu(), mean.cpu(), label="Posterior Predictive Mean", linestyle="-", linewidth=( 1.5 if how_many_individual_predictions>0 else 0.5 ), color="blue" )
     #
     # ~~~ Optionally, also graph several of the actual sample NN's as more blue curves (label only the last one)
     if how_many_individual_predictions>0:
-        n_posterior_samples = predictions.shape[-1]
+        n_posterior_samples = predictions.shape[0]
         which_NNs = (np.linspace( 1, n_posterior_samples, min(n_posterior_samples,how_many_individual_predictions), dtype=np.int32 ) - 1).tolist()
         for j in which_NNs:
             if j==max(which_NNs):
-                _, = ax.plot( grid.cpu(), predictions[:,j].cpu(), label="A Sampled Network", linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
+                _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), label="A Sampled Network", linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
             else:
-                _, = ax.plot( grid.cpu(), predictions[:,j].cpu(), linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
+                _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
     #
     # ~~~ Fill in a 95% confidence region
     tittle = "+/- Two Standard Deviations"
@@ -433,20 +433,20 @@ def plot_bnn_mean_and_std(
 def empirical_quantile( predictions, grid, ax, extra_std, alpha=0.2, how_many_individual_predictions=6, **kwargs ):
     #
     # ~~~ Extract summary stats from `predictions` assuming that each *column* of `predictions` is a sample from the posterior predictive distribution
-    lo,med,hi = ( predictions + extra_std*torch.randn_like(predictions) ).quantile( q=torch.Tensor([0.025,0.5,0.975]).to(predictions.device), dim=-1 )
+    lo,med,hi = ( predictions + extra_std*torch.randn_like(predictions) ).quantile( q=torch.Tensor([0.025,0.5,0.975]).to(predictions.device), dim=0 )
     #
     # ~~~ Graph the median as a blue curve
-    _, = ax.plot( grid.cpu(), med.cpu(), label="Posterior Predictive Median", linestyle="-", linewidth=( 0.7 if how_many_individual_predictions>0 else 0.5 ), color="blue" )
+    _, = ax.plot( grid.cpu(), med.cpu(), label="Posterior Predictive Median", linestyle="-", linewidth=( 1.5 if how_many_individual_predictions>0 else 0.5 ), color="blue" )
     #
     # ~~~ Optionally, also graph several of the actual sample NN's as more blue curves (label only the last one)
     if how_many_individual_predictions>0:
-        n_posterior_samples = predictions.shape[-1]
+        n_posterior_samples = predictions.shape[0]
         which_NNs = (np.linspace( 1, n_posterior_samples, min(n_posterior_samples,how_many_individual_predictions), dtype=np.int32 ) - 1).tolist()
         for j in which_NNs:
             if j==max(which_NNs):
-                _, = ax.plot( grid.cpu(), predictions[:,j].cpu(), label="A Sampled Network", linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
+                _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), label="A Sampled Network", linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
             else:
-                _, = ax.plot( grid.cpu(), predictions[:,j].cpu(), linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
+                _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
     #
     # ~~~ Fill in a 95% confidence region
     tittle = "95% Empirical Quantile Interval"

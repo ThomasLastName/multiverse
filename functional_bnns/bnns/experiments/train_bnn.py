@@ -202,7 +202,7 @@ if data_is_univariate:
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
             forward = bnn.prior_forward if prior else bnn
-            predictions = torch.column_stack([ forward(grid,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ])
+            predictions = torch.stack([ forward(grid,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ]).squeeze()
         return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, HOW_MANY_INDIVIDUAL_PREDICTIONS, title )
     #
     # ~~~ Plot the state of the posterior predictive distribution upon its initialization
