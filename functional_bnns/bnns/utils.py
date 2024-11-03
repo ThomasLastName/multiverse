@@ -377,7 +377,7 @@ def plot_gpr(
 # ~~~ Graph the mean +/- two standard deviations
 def two_standard_deviations( predictions, grid, ax, extra_std, alpha=0.2, how_many_individual_predictions=6, **kwargs ):
     #
-    # ~~~ Extract summary stats from `predictions` assuming that each *column* of `predictions` is a sample from the posterior predictive distribution
+    # ~~~ Extract summary stats from `predictions` assuming that each *row* of `predictions` is a sample from the posterior predictive distribution
     mean = predictions.mean(dim=0)
     std  =  predictions.std(dim=0) + extra_std
     lo, hi = mean-2*std, mean+2*std
@@ -432,7 +432,7 @@ def plot_bnn_mean_and_std(
 # ~~~ Graph a symmetric, empirical 95% confidence interval of a model with a median point estimate
 def empirical_quantile( predictions, grid, ax, extra_std, alpha=0.2, how_many_individual_predictions=6, **kwargs ):
     #
-    # ~~~ Extract summary stats from `predictions` assuming that each *column* of `predictions` is a sample from the posterior predictive distribution
+    # ~~~ Extract summary stats from `predictions` assuming that each *row* of `predictions` is a sample from the posterior predictive distribution
     lo,med,hi = ( predictions + extra_std*torch.randn_like(predictions) ).quantile( q=torch.Tensor([0.025,0.5,0.975]).to(predictions.device), dim=0 )
     #
     # ~~~ Graph the median as a blue curve
