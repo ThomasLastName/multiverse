@@ -177,6 +177,7 @@ class SpectralSteinEstimator(BaseScoreEstimator):
         # :return: Eigenfunction at x [N x M]
         # """
         with torch.no_grad():
+            x = vertical(x)
             K_mixed = self.gram_matrix( x, self.samples, self.sigma )
             phi_x =  torch.sqrt(self.M) * K_mixed @ self.eigen_vecs
             phi_x *= 1. / self.eigen_vals
