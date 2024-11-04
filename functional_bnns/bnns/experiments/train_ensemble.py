@@ -10,6 +10,7 @@ from torch import nn, optim
 from tqdm import tqdm, trange
 from matplotlib import pyplot as plt
 from importlib import import_module
+from time import time
 import argparse
 import sys
 
@@ -206,6 +207,7 @@ if data_is_univariate:
 # ~~~ Do the actual training loop
 with support_for_progress_bars():   # ~~~ this just supports green progress bars
     pbar = tqdm( desc=description_of_the_experiment, total=N_EPOCHS*len(dataloader), ascii=' >=' )
+    starting_time = time()
     for e in range(N_EPOCHS):
         #
         # ~~~ Training logic
@@ -224,6 +226,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             # print("captured")
 
 pbar.close()
+ending_time = time()
 
 #
 # ~~~ Plot the state of the posterior predictive distribution at the end of training
@@ -277,12 +280,17 @@ with torch.no_grad():
 
 #
 # ~~~ Compute the desired metrics
-hyperparameters["METRIC_rmse_of_median"]      =      rmse_of_median( predictions, y_test )
-hyperparameters["METRIC_rmse_of_mean"]        =        rmse_of_mean( predictions, y_test )
-hyperparameters["METRIC_mae_of_median"]       =       mae_of_median( predictions, y_test )
-hyperparameters["METRIC_mae_of_mean"]         =         mae_of_mean( predictions, y_test )
-hyperparameters["METRIC_max_norm_of_median"]  =  max_norm_of_median( predictions, y_test )
-hyperparameters["METRIC_max_norm_of_mean"]    =    max_norm_of_mean( predictions, y_test )
+hyperparameters["METRIC_compute_time"] = ending_time - starting_time
+hyperparameters["METRIC_rmse_of_median"]             =      rmse_of_median( predictions, y_test )
+hyperparameters["METRIC_rmse_of_mean"]               =        rmse_of_mean( predictions, y_test )
+hyperparameters["METRIC_mae_of_median"]              =       mae_of_median( predictions, y_test )
+hyperparameters["METRIC_mae_of_mean"]                =         mae_of_mean( predictions, y_test )
+hyperparameters["METRIC_max_norm_of_median"]         =  max_norm_of_median( predictions, y_test )
+hyperparameters["METRIC_max_norm_of_mean"]           =    max_norm_of_mean( predictions, y_test )
+hyperparameters["METRIC_median_energy_score"]        =      energy_scores( predictions, y_test ).median().item()
+hyperparameters["METRIC_coverage"]                   =  aggregate_covarge( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES )
+hyperparameters["METRIC_median_avg_inverval_score"]  =      avg_interval_score_of_response_features( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES ).median().item()
+
 for estimator in ("mean","median"):
     hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
     hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )

@@ -5,6 +5,12 @@ from bnns.utils import iqr, cor, univar_poly_fit
 from quality_of_life.my_base_utils          import my_warn
 from quality_of_life.my_visualization_utils import points_with_curves
 
+
+
+### ~~~
+## ~~~ All metrics with a `predictions` argument assume predictions.shape==( N_POSTERIOR_SAMPLES, n_test, n_out_features )
+### ~~~
+
 #
 # ~~~ Measure MSE of a deterministic model with error=model(x_test)-y_test
 def rmse( model, x_test, y_test ):
@@ -76,6 +82,15 @@ def max_norm_of_mean( predictions, y_test ):
         pred = predictions.mean(dim=0)
         assert pred.shape == y_test.shape
         return ( pred - y_test ).abs().max().item()
+
+#
+# ~~~ Compute what would be the middle (50% percentile) line of the box plots in figure 4 of the SLOSH paper
+def median_norm_error( predictions, y_test ):
+    n_posterior_samples = predictions.shape[0]
+    residuals = predictions - torch.tile( y_test, (n_posterior_samples,1,1) )
+    errors = residuals.norm(dim=-1)                     # ~~~ has shape (N_POSTERIOR_SAMPLES,n_test)
+    rMSE_of_the_posterior_samples = errors.norm(dim=-0) # ~~~ figure 4 in the SLOSH paper shows a box plot of these
+    return rMSE_of_the_posterior_samples.meadian()      # ~~~ this is the middle line of said box plot
 
 # #
 # # ~~~ Measure MSE of the predictive median relative 
@@ -164,7 +179,47 @@ def uncertainty_vs_proximity( predictions, quantile_uncertainty, x_test, x_train
             my_warn(f"The OLS fit (R^2 {R_squared_of_OLS:.4}) was outperformed by a higher degree polynomial fit (R^2 {max(R_squared_coefficients):.4}). Using either beta_1 from OLS or the correlation may result in an inaccurate quantification of the relation. Please check the plot returned by the `show=True` argument.")
         return slope_in_OLS, cor(uncertainty,proximity)
 
+#
+# ~~~ Compute the interval score for all predictions "averaged over the spatial domain" (dim=1) instead of over the testing dataset (dim=0)
+def avg_interval_score_of_response_features( predictions, y_test, quantile_uncertainty, alpha=0.95 ):
+    with torch.no_grad():
+        if quantile_uncertainty:
+            lo, hi = predictions.quantile( q=torch.Tensor([ (1-alpha)/2, alpha+(1-alpha)/2 ]).to(predictions.device), dim=0 )
+        else:
+            point_estimate = predictions.mean(dim=0)
+            std_of_pt_ests = predictions.std(dim=0)
+            lo, hi = point_estimate-2*std_of_pt_ests, point_estimate+2*std_of_pt_ests
+        assert lo.shape == hi.shape == y_test.shape
+        interval_scores_for_each_feature_for_each_test_case = (hi-lo) + (2/alpha)*(lo-y_test)*(y_test<lo) + (2/alpha)*(y_test-hi)*(y_test>hi)
+        avgs_among_output_features = interval_scores_for_each_feature_for_each_test_case.mean(dim=1)
+        return avgs_among_output_features   # ~~~ figure 8b in the SLOSH paper is a a box+whisker plot of these n_test values
 
-# the ones from the SLOSH paper
+#
+# ~~~ Compute energy scores
+def energy_scores( predictions, y_test ):
+    with torch.no_grad():
+        n_test, n_out_features = y_test.shape
+        es = []
+        #
+        # ~~~ Apply equation (14) of the SLOSH paper to each of the n_test test cases
+        for j,Y in enumerate(y_test):
+            Y_tilde = predictions[:,j,:]    # ~~~ has shape (N_POSTERIOR_SAMPLES, n_out_features)
+            Y = Y.reshape( 1, n_out_features )
+            es.append(
+                torch.cdist(Y_tilde,Y).mean() - (1/2)*torch.cdist(Y_tilde,Y_tilde).mean()
+            )
+        return torch.stack(es)
 
-
+#
+# ~~~ Compute the interval score for all predictions "averaged over the spatial domain" (dim=1) instead of over the testing dataset (dim=0)
+def aggregate_covarge( predictions, y_test, quantile_uncertainty, alpha=0.95 ):
+    with torch.no_grad():
+        if quantile_uncertainty:
+            lo, hi = predictions.quantile( q=torch.Tensor([ (1-alpha)/2, alpha+(1-alpha)/2 ]).to(predictions.device), dim=0 )
+        else:
+            point_estimate = predictions.mean(dim=0)
+            std_of_pt_ests = predictions.std(dim=0)
+            lo, hi = point_estimate-2*std_of_pt_ests, point_estimate+2*std_of_pt_ests
+        assert lo.shape == hi.shape == y_test.shape
+        true_data_is_in_confidence_interval = (lo<y_test) * (y_test<hi)
+        return true_data_is_in_confidence_interval.float().mean().item()

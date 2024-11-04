@@ -10,6 +10,7 @@ from torch import nn, optim
 from tqdm import tqdm, trange
 from matplotlib import pyplot as plt
 from importlib import import_module
+from time import time
 import argparse
 import sys
 
@@ -49,6 +50,7 @@ hyperparameter_template = {
     #
     # ~~~ For training
     "GAUSSIAN_APPROXIMATION" : True,    # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
+    "APPPROXIMATE_GAUSSIAN_MEAN" : True,# ~~~ whether to compute exactly, or approximately, the mean from eq'n (14) in https://arxiv.org/pdf/2312.17199
     "FUNCTIONAL" : False,   # ~~~ whether or to do functional training or (if False) BBB
     "N_MC_SAMPLES" : 20,    # ~~~ expectations (in the variational loss) are estimated as an average of this many Monte-Carlo samples
     "PROJECT" : True,       # ~~~ if True, use projected gradient descent; else use the weird thing from the paper
@@ -239,6 +241,7 @@ BNN.measurement_set = x_train
 # ~~~ Start the training loop
 with support_for_progress_bars():   # ~~~ this just supports green progress bars
     pbar = tqdm( desc=description_of_the_experiment, total=N_EPOCHS*len(dataloader), ascii=' >=' )
+    starting_time = time()
     for e in range(N_EPOCHS):
         #
         # ~~~ Training logic
@@ -247,20 +250,17 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             for j in range(N_MC_SAMPLES):
                 #
                 # ~~~ Compute the gradient of the loss function
-                if FUNCTIONAL:
-                    if GAUSSIAN_APPROXIMATION:
-                        log_posterior_density = BNN.gaussian_kl( resample_measurement_set=False, add_stabilizing_noise=True )
-                        log_prior_density = torch.tensor(0.)
-                    else:
-                        log_posterior_density, log_prior_density = BNN.functional_kl(resample_measurement_set=False)
-                else:
-                    BNN.sample_from_standard_normal()   # ~~~ draw a new Monte-Carlo sample for estimating the integrals as an MC average
-                    log_posterior_density   =   BNN.log_posterior_density()
-                    log_prior_density       =   BNN.log_prior_density()
+                BNN.sample_from_standard_normal()   # ~~~ draw a new MC sample for estimating the integrals
+                if not FUNCTIONAL:
+                    kl_div = BNN.weight_kl()
+                if FUNCTIONAL and not GAUSSIAN_APPROXIMATION:
+                    kl_div = BNN.functional_kl()
+                if FUNCTIONAL and GAUSSIAN_APPROXIMATION:
+                    kl_div = BNN.gaussian_kl(approximate_mean=APPPROXIMATE_GAUSSIAN_MEAN)
             #
             # ~~~ Add the the likelihood term and differentiate
             log_likelihood_density = BNN.log_likelihood_density(X,y)
-            negative_ELBO = ( log_posterior_density - log_prior_density - log_likelihood_density )/N_MC_SAMPLES
+            negative_ELBO = ( kl_div - log_likelihood_density )/N_MC_SAMPLES
             negative_ELBO.backward()
             #
             # ~~~ This would be training based only on the data:
@@ -299,6 +299,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             # print("captured")
 
 pbar.close()
+ending_time = time()
 
 #
 # ~~~ Plot the state of the posterior predictive distribution at the end of training
@@ -352,8 +353,6 @@ if data.__name__ == "bnns.data.bivar_trivial":
 # ~~~ Compute the posterior predictive distribution on the testing dataset
 x_train, y_train  =  convert_Dataset_to_Tensors(D_train)
 x_test, y_test    =    convert_Dataset_to_Tensors( D_test if final_test else D_val )
-interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
-extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )
 
 def predict(x):
         predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
@@ -363,18 +362,34 @@ def predict(x):
 
 with torch.no_grad():
     predictions = predict(x_test)
+
+try:
+    interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
+    extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )        
     predictions_on_interpolary_grid = predict(interpolary_grid)
     predictions_on_extrapolary_grid = predict(extrapolary_grid)
+except AttributeError:
+    my_warn(f"Could import `extrapolary_grid` or `interpolary_grid` from bnns.data.{data}. For the best assessment of the quality of the UQ, please define these variables in the data file (no labels necessary)")
 
 #
 # ~~~ Compute the desired metrics
-hyperparameters["METRIC_rmse_of_mean"]      =      rmse_of_mean( predictions, y_test )
-hyperparameters["METRIC_mae_of_mean"]       =       mae_of_mean( predictions, y_test )
-hyperparameters["METRIC_max_norm_of_mean"]  =  max_norm_of_mean( predictions, y_test )
+hyperparameters["METRIC_compute_time"] = ending_time - starting_time
+hyperparameters["METRIC_rmse_of_median"]             =      rmse_of_median( predictions, y_test )
+hyperparameters["METRIC_rmse_of_mean"]               =        rmse_of_mean( predictions, y_test )
+hyperparameters["METRIC_mae_of_median"]              =       mae_of_median( predictions, y_test )
+hyperparameters["METRIC_mae_of_mean"]                =         mae_of_mean( predictions, y_test )
+hyperparameters["METRIC_max_norm_of_median"]         =  max_norm_of_median( predictions, y_test )
+hyperparameters["METRIC_max_norm_of_mean"]           =    max_norm_of_mean( predictions, y_test )
+hyperparameters["METRIC_median_energy_score"]        =       energy_scores( predictions, y_test ).median().item()
+hyperparameters["METRIC_coverage"]                   =   aggregate_covarge( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES )
+hyperparameters["METRIC_median_avg_inverval_score"]  =  avg_interval_score_of_response_features( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES ).median().item()
 for estimator in ("mean","median"):
-    hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
-    hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-    hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]    =    uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
+    hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"] = uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
+    try:
+        hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+        hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
+    except NameError:
+        pass
 
 #
 # ~~~ For the SLOSH dataset, run all the same metrics on the unprocessed data (the actual heatmaps)
@@ -393,14 +408,20 @@ try:
         predictions_on_extrapolary_grid = predict(extrapolary_grid)
     #
     # ~~~ Compute the desired metrics
-    hyperparameters["METRIC_unprocessed_rmse_of_mean"]      =      rmse_of_mean( predictions, Y )
-    hyperparameters["METRIC_unprocessed_mae_of_mean"]       =       mae_of_mean( predictions, Y )
-    hyperparameters["METRIC_unprocessed_max_norm_of_mean"]  =  max_norm_of_mean( predictions, Y )
+    hyperparameters["METRIC_unprocessed_rmse_of_mean"]                =        rmse_of_mean( predictions, Y )
+    hyperparameters["METRIC_unprocessed_rmse_of_median"]              =      rmse_of_median( predictions, Y )
+    hyperparameters["METRIC_unprocessed_mae_of_mean"]                 =         mae_of_mean( predictions, Y )
+    hyperparameters["METRIC_unprocessed_mae_of_median"]               =       mae_of_median( predictions, Y )
+    hyperparameters["METRIC_unprocessed_max_norm_of_mean"]            =    max_norm_of_mean( predictions, Y )
+    hyperparameters["METRIC_unprocessed_max_norm_of_median"]          =  max_norm_of_median( predictions, Y )
+    hyperparameters["METRIC_unproccessed_coverage"]                   =   aggregate_covarge( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES )
+    hyperparameters["METRIC_unproccessed_median_energy_score"]        =       energy_scores( predictions, Y ).median().item()
+    hyperparameters["METRIC_unproccessed_median_avg_inverval_score"]  =       avg_interval_score_of_response_features( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES ).median().item()
     for estimator in ("mean","median"):
         hyperparameters[f"METRIC_unprocessed_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
         hyperparameters[f"METRIC_unprocessed_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
         hyperparameters[f"METRIC_unprocessed_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]                  =   uncertainty_vs_accuracy( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
-except:
+except AttributeError:
     pass
 
 #

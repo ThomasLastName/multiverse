@@ -10,6 +10,7 @@ from torch import nn, optim
 from tqdm import tqdm, trange
 from matplotlib import pyplot as plt
 from importlib import import_module
+from time import time
 import argparse
 import sys
 
@@ -189,6 +190,7 @@ if data_is_univariate:
 
 with support_for_progress_bars():   # ~~~ this just supports green progress bars
     pbar = tqdm( desc=description_of_the_experiment, total=N_EPOCHS*len(dataloader), ascii=' >=' )
+    starting_time = time()
     for e in range(N_EPOCHS):
         #
         # ~~~ The actual training logic (totally conventional, hopefully familiar)
@@ -212,6 +214,7 @@ with support_for_progress_bars():   # ~~~ this just supports green progress bars
             gif.capture()   # ~~~ save a picture of the current plot (whatever plt.show() would show)
 
 pbar.close()
+ending_time = time()
 
 #
 # ~~~ Afterwards, develop the .gif if applicable
@@ -250,31 +253,42 @@ if data.__name__ == "bnns.data.bivar_trivial" and SHOW_DIAGNOSTICS:
 #
 # ~~~ Compute the posterior predictive distribution on the testing dataset
 x_train, y_train  =  convert_Dataset_to_Tensors(D_train)
-x_test, y_test    =    convert_Dataset_to_Tensors( D_test if final_test else D_val )
-interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
-extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )
+x_test,  y_test   =  convert_Dataset_to_Tensors(D_test if final_test else D_val)
 
 predict = lambda points: torch.stack([ NN(points) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ]) if dropout else NN(points)
 
 with torch.no_grad():
     predictions = predict(x_test)
+
+try:
+    interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
+    extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )        
     predictions_on_interpolary_grid = predict(interpolary_grid)
     predictions_on_extrapolary_grid = predict(extrapolary_grid)
+except AttributeError:
+    my_warn(f"Could import `extrapolary_grid` or `interpolary_grid` from bnns.data.{data}. For the best assessment of the quality of the UQ, please define these variables in the data file (no labels necessary)")
 
 #
 # ~~~ Compute the desired metrics
+hyperparameters["METRIC_compute_time"] = ending_time - starting_time
 if dropout:
-    hyperparameters["METRIC_rmse_of_median"]      =      rmse_of_median( predictions, y_test )
-    hyperparameters["METRIC_rmse_of_mean"]        =        rmse_of_mean( predictions, y_test )
-    hyperparameters["METRIC_mae_of_median"]       =       mae_of_median( predictions, y_test )
-    hyperparameters["METRIC_mae_of_mean"]         =         mae_of_mean( predictions, y_test )
-    hyperparameters["METRIC_max_norm_of_median"]  =  max_norm_of_median( predictions, y_test )
-    hyperparameters["METRIC_max_norm_of_mean"]    =    max_norm_of_mean( predictions, y_test )
+    hyperparameters["METRIC_rmse_of_median"]             =      rmse_of_median( predictions, y_test )
+    hyperparameters["METRIC_rmse_of_mean"]               =        rmse_of_mean( predictions, y_test )
+    hyperparameters["METRIC_mae_of_median"]              =       mae_of_median( predictions, y_test )
+    hyperparameters["METRIC_mae_of_mean"]                =         mae_of_mean( predictions, y_test )
+    hyperparameters["METRIC_max_norm_of_median"]         =  max_norm_of_median( predictions, y_test )
+    hyperparameters["METRIC_max_norm_of_mean"]           =    max_norm_of_mean( predictions, y_test )
+    hyperparameters["METRIC_median_energy_score"]        =       energy_scores( predictions, y_test ).median().item()
+    hyperparameters["METRIC_coverage"]                   =   aggregate_covarge( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES )
+    hyperparameters["METRIC_median_avg_inverval_score"]  =  avg_interval_score_of_response_features( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES ).median().item()
     for estimator in ("mean","median"):
         show = SHOW_DIAGNOSTICS and ((estimator=="median")==VISUALIZE_DISTRIBUTION_USING_QUANTILES)  # ~~~ i.e., diagnostics are requesed, the prediction type mathces the uncertainty type (mean and std. dev., or median and iqr)
-        hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
-        hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-        hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]                  =   uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=show )
+        hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]  =  uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=show )
+        try:
+            hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+            hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
+        except NameError:
+            pass
 else:
     hyperparameters["METRIC_rmse"]      =      rmse( NN, x_test, y_test )
     hyperparameters["METRIC_mae"]       =       mae( NN, x_test, y_test )
