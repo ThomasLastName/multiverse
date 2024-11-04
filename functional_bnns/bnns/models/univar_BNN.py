@@ -12,3 +12,16 @@ BNN = SequentialGaussianBNN(
         nn.ReLU(),
         nn.Linear(100, 1)
     )
+
+def generate_meas_set(self=BNN):
+    eps = .1
+    random_interpolary_grid = torch.rand(80,) * 2*(1+eps) - (1+eps)
+    self.measurement_set = torch.cat([
+            random_interpolary_grid.to(
+                    device = self.last_seen_x.device,
+                    dtype  =  self.last_seen_x.dtype
+                ),
+            self.last_seen_x
+        ]) if hasattr(self,"last_seen_x") else random_interpolary_grid
+
+BNN.sample_new_measurement_set = generate_meas_set

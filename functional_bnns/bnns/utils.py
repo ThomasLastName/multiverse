@@ -50,15 +50,16 @@ def get_std(p):
 
 #
 # ~~~ Compute the (appropriately shaped) Jacobian of the final layer of a nerural net (I came up with the formula for the Jacobian, and chat-gpt came up with the generalized vectorized pytorch implementation)
-def manual_Jacobian( inputs_to_the_final_layer, number_of_output_features ):
+def manual_Jacobian( inputs_to_the_final_layer, number_of_output_features, bias=False ):
     V = inputs_to_the_final_layer
     batch_size, width_of_the_final_layer = V.shape
     total_number_of_predictions = batch_size * number_of_output_features
     I = torch.eye( number_of_output_features, dtype=V.dtype, device=V.device)
     tiled_I = I.repeat( batch_size, 1 )
     tiled_V = V.repeat_interleave( number_of_output_features, dim=0 )
-    result = tiled_I.unsqueeze(-1) * tiled_V.unsqueeze(1)
-    return result.view( total_number_of_predictions, -1 )
+    Jac_wrt_weights = ( tiled_I.unsqueeze(-1) * tiled_V.unsqueeze(1) ).view( total_number_of_predictions, -1 )
+    Jac_wrt_biases  =  torch.tile( torch.eye(number_of_output_features), (batch_size,1) ).to( device=Jac_wrt_weights.device, dtype=Jac_wrt_weights.dtype )
+    return Jac_wrt_weights if not bias else torch.column_stack([ Jac_wrt_weights, Jac_wrt_biases ])
 
 #
 # ~~~ Compute the slope and intercept in linear regression
@@ -103,7 +104,7 @@ def univar_poly_fit( x, y, degree=1 ):
 
 #
 # ~~~ Start with a grid of points in the unit cube, and then transform it to the desired bounds, includeing some exaggeration of the bounds
-def process_grid_of_unit_cube( grid_of_unit_cube, bounds, extrapolation_percent=0.05 ):
+def process_grid_of_unit_cube( grid_of_unit_cube, bounds, extrapolation_percent=0.05, split=True ):
     lo = bounds[:,0].clone()
     hi = bounds[:,1].clone()
     range = hi-lo
@@ -118,8 +119,7 @@ def process_grid_of_unit_cube( grid_of_unit_cube, bounds, extrapolation_percent=
             torch.all( grid<=bounds[:,1], dim=1 ),
             torch.all( grid>=bounds[:,0], dim=1 )
         ))]
-    return extrapolary_grid, interpolary_grid
-
+    return (extrapolary_grid, interpolary_grid) if split else grid
 
 #
 # ~~~ Draw uniform random samples from the convex hull of `points` with shape (n_points,d)

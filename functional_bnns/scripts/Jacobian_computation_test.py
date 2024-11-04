@@ -16,9 +16,7 @@ number_of_output_features = NN[-1].out_features # ~~~ for slosh nets, 49719
 torch.manual_seed(2024)
 for _ in trange(100, desc="Using a handwritten formula" ):
     V = torch.randn( batch_size, number_of_input_features )
-    for j in range(len(NN)-1):
-        V = NN[j](V)
-    final_J_manual = manual_Jacobian(V,number_of_output_features)
+    final_J_manual = manual_Jacobian( NN[:-1](V), number_of_output_features )
 
 
 #
