@@ -1,16 +1,18 @@
 
 import math
 import numpy as np
+import pandas as pd
 import torch
 from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
 
 import os
 import pytz
+from glob import glob
 from datetime import datetime
 from matplotlib import pyplot as plt
 import fiona
 from quality_of_life.ansi import bcolors
-from quality_of_life.my_base_utils import process_for_saving, my_warn
+from quality_of_life.my_base_utils import process_for_saving, my_warn, json_to_dict
 try:
     from quality_of_life.my_base_utils import buffer
 except:
@@ -159,6 +161,44 @@ def sample_from_convex_hull( points, n_samples, noise=0.):
 ### ~~~
 ## ~~~ Non-math non-plotting stuff (e.g., data processing)
 ### ~~~
+
+#
+# ~~~ A standard early stopping rule (https://stackoverflow.com/a/73704579/11595884)
+class EarlyStopper:
+    def __init__( self, patience=1, delta=0.01 ):
+        self.patience = patience
+        self.delta = delta
+        self.counter = 0
+        self.max_count = 0
+        self.min_val_loss = float('inf')
+    def __call__(self,val_loss):
+        rel_val_loss = val_loss/self.min_val_loss - 1   # ~~~ ( val_loss - self.min_val_loss )/self.min_val_loss
+        if rel_val_loss < 0:
+            self.min_val_loss = val_loss
+            self.counter = 0
+        elif rel_val_loss > self.delta:
+            self.counter += 1
+            self.max_count = max( self.counter, self.max_count )
+            if self.counter >= self.patience:
+                return True
+        return False
+
+#
+# ~~~ Load all the .json files in a directory to data frame
+def load_filtered_json_files( directory ):
+    json_files = glob(os.path.join(directory,'*.json'))
+    all_dicts = [ json_to_dict(json) for json in json_files ]
+    #
+    # ~~~ Remove from each dictionary any key/value pair where the value is a list, as pandas doesn't like those
+    all_filtered_dicts = [
+            {
+                k:v
+                for k,v in dict.items()
+                if not isinstance(v,list)
+            }
+            for dict in all_dicts
+        ]
+    return pd.DataFrame(all_filtered_dicts)
 
 #
 # ~~~ Generate a .json filename based on the current datetime
