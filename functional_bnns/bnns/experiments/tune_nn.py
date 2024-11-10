@@ -1,71 +1,16 @@
 
 import os
 import argparse
+from glob import glob
+from time import time
 from subprocess import run
-import numpy as np
 from bnns.utils import generate_json_filename
-from quality_of_life.my_base_utils import dict_to_json, my_warn
-from quality_of_life.ansi import bcolors
+from quality_of_life.my_base_utils import dict_to_json, json_to_dict
 
 
 
 ### ~~~
-## ~~~ Define the hyperparameters and problem structure
-### ~~~
-
-#
-# ~~~ Define all hyperparmeters *including* even the ones not to be tuned
-TO_BE_TUNED = "placeholder value"
-hyperparameter_template = {
-    #
-    # ~~~ Misc.
-    "DEVICE" : "cuda",
-    "dtype" : "float",
-    "seed" : 2024,
-    #
-    # ~~~ Which problem
-    "data" : "univar_missing_middle_normalized_12",
-    "model" : TO_BE_TUNED,
-    #
-    # ~~~ For training
-    "Optimizer" : "Adam",
-    "lr" : TO_BE_TUNED,
-    "batch_size" : TO_BE_TUNED,
-    "n_epochs" : TO_BE_TUNED,
-    "n_MC_samples" : 1,                     # ~~~ relevant for droupout
-    #
-    # ~~~ For visualization
-    "make_gif" : False,
-    "how_often" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
-    "initial_frame_repetitions" : 24,       # ~~~ for how many frames should the state of initialization be rendered
-    "final_frame_repetitions" : 48,         # ~~~ for how many frames should the state after training be rendered
-    "how_many_individual_predictions" : 6,  # ~~~ how many posterior predictive samples to plot
-    "visualize_bnn_using_quantiles" : True, # ~~~ for dropout, if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
-    "n_posterior_samples" : 100,            # ~~~ for dropout, how many samples to use to make the empirical distributions for plotting
-    #
-    # ~~~ For metrics and visualization
-    "n_posterior_samples_evaluation" : 1000,
-    "show_diagnostics" : False
-}
-
-
-#
-# ~~~ Values that we want to test for each one TO_BE_TUNED
-LR = np.linspace( 1e-5, 1e-2, 25 )
-N_EPOCHS = [ int(obj) for obj in np.linspace( 500, 20000, 25 ) ]
-BATCH_SIZE = [ 10, 20, 50, 100 ]
-ARCHITECTURE = [
-        "univar_NN",            # ~~~ 2 hidden layers, 100 neurons each
-        "univar_NN_300_300",    # ~~~ 2 hidden layers, 300 neurons each
-        "univar_NN_500_500",    # ~~~ 2 hidden layers, 500 neurons each
-        "univar_NN_750_750",    # ~~~ 2 hidden layers, 750 neurons each
-        "univar_NN_1000_1000"   # ~~~ 2 hidden layers, 1000 neurons each
-    ]
-
-
-
-### ~~~
-## ~~~ Search over the hyperparameter grid with the defined problem structure
+## ~~~ Assume that the folder `folder_name` is already populated with the .json files for which we want to run `python train_<algorithm>.py --json file_from_folder.json`
 ### ~~~ 
 
 #
@@ -73,67 +18,98 @@ ARCHITECTURE = [
 parser = argparse.ArgumentParser()
 parser.add_argument( '--folder_name', type=str, required=True )
 parser.add_argument( '--save_trained_models', action=argparse.BooleanOptionalAction )
+parser.add_argument( '--hours', type=float )
 args = parser.parse_args()
 folder_name = args.folder_name
-save_trained_models = (args.save_trained_models is not None)
+save_trained_models = True if (args.save_trained_models is None) else args.save_trained_models
+hours = args.hours if (args.hours is not None) else float("inf")
 
 #
-# ~~~ Create the folder `folder_name` as a subdirectory of `bnns.experiments`
-note = False
-try:
-    os.mkdir(folder_name)
-except FileExistsError:
-    folder_is_empty = len(os.listdir(folder_name))==0
-    if not folder_is_empty:
-        note = True
-        my_warn(f"Folder {folder_name} already exists. The .json files from this experiement will be added to a non-empty folder.")
+# ~~~ Load all the json files in `folder_name` that start with "RUN_THIS"
+list_of_json_filenames_in_folder = glob(os.path.join( folder_name, "*.json" ))
+filenames_only = [ os.path.split(f)[1] for f in list_of_json_filenames_in_folder ]
+sorted_list_of_filenames_starting_with_RUN_THIS = sorted(
+        [ f for f in filenames_only if f.startswith("RUN_THIS") ],
+        key = lambda x: int(x.split('_')[2].split('.')[0])
+    )
+N = int( sorted_list_of_filenames_starting_with_RUN_THIS[-1][len("RUN_THIS_"):].strip(".json") )    # ~~~ e.g., if sorted_list_of_filenames_starting_with_RUN_THIS[-1]=="RUN_THIS_199.json", then N==199
 
-#
-# ~~~ Create the folder `folder_name/experimental_models`
-if save_trained_models:
-    try:
-        os.mkdir(os.path.join(folder_name,"experimental_models"))
-    except FileExistsError:
-        folder_is_empty = len(os.listdir(folder_name))==0
-        if not folder_is_empty:
-            note = True
-            my_warn(f"Folder `{folder_name}/experimental_models` already exists. The .json files from this experiement will be added to a non-empty folder.")
+# #
+# # ~~~ For `hours` hours, run the remaining experiments
+# start_time = time()
+# minutes_since_start_time = 0.
+# while minutes_since_start_time*60 < hours:
+#     #
+#     # ~~~ Load the .json file sorted_list_of_filenames_starting_with_RUN_THIS[0]
+#     experiment_filename = sorted_list_of_filenames_starting_with_RUN_THIS.pop(0)
+#     count = int( experiment_filename[len("RUN_THIS_"):].strip(".json") )    # ~~~ e.g., if sorted_list_of_filenames_starting_with_RUN_THIS[-1]=="RUN_THIS_62.json", then count==62
+#     experiment_filename = os.path.join( folder_name, experiment_filename )
+#     hyperparameter_dict = json_to_dict(experiment_filename)
+#     #
+#     # ~~~ Create a new .json file to store the results
+#     tag = generate_json_filename( message=f"EXPERIMENT {count}/{N}" )
+#     result_filename = os.path.join( folder_name, tag )
+#     dict_to_json( hyperparameter_dict, result_filename, verbose=False )
+#     #
+#     # ~~~ Infer which training script to run, based on the hyperparameters
+#     if any( key=="GAUSSIAN_APPROXIMATION" for key in hyperparameter_dict.keys() ):
+#         algorithm = "bnn"
+#     elif any( key=="STEIN" for key in hyperparameter_dict.keys() ):
+#         algorithm = "ensemble"
+#     else:
+#         algorithm = "nn"
+#     #
+#     # ~~~ Run the training script on that dictionary of hyperparameters
+#     command = f"python train_{algorithm}.py --json {result_filename} --overwrite_json"
+#     if save_trained_models:
+#         command += f" --model_save_dir {os.path.join( folder_name, 'experimental_models' )}"
+#     output = run( command, shell=True )
+#     #
+#     # ~~~ Break out of the loop if there was an error in `train_nn.py`
+#     if not output.returncode==0:
+#         break
+#     #
+#     # ~~~ Delete the .json file that prescribed the experiment now run
+#     os.remove(experiment_filename)
+#     #
+#     # ~~~ Record how long we've been at it
+#     minutes_since_start_time = (time()-start_time)/60
+#     #
+#     # ~~~ Perfectionist, superficial formatting of output
+#     print("")
 
-#
-# ~~~ Perfectionist, superficial formatting of output
-if not note:
-    print("")
+# results = load_filtered_json_files(folder_name)
+# model_mapping = {model: idx for idx, model in enumerate(results["model"].unique())}
+# results["model_encoded"] = results["model"].map(model_mapping)
+# results.groupby(["model_encoded", "n_epochs"]).mean(numeric_only=True)
 
-#
-# ~~~ Loop over the hyperparameter grid
-N = len(LR)*len(N_EPOCHS)*len(BATCH_SIZE)*len(ARCHITECTURE)
-count = 0
-for lr in LR:
-    for n_epochs in N_EPOCHS:
-        for batch_size in BATCH_SIZE:
-            for architecture in ARCHITECTURE:
-                #
-                # ~~~ Specify the specific values of the hyperparameters TO_BE_TUNED
-                hyperparameter_template["lr"] = lr
-                hyperparameter_template["n_epochs"] = n_epochs
-                hyperparameter_template["batch_size" ] = batch_size
-                hyperparameter_template["model"] = architecture
-                #
-                # ~~~ Save the hyperparameters to a .json file
-                count += 1
-                tag = generate_json_filename(message=f"EXPERIMENT {count}/{N}" + bcolors.ENDC + f": lr={lr}, e={n_epochs}, b={batch_size}, model={architecture}")
-                json_filename = os.path.join(folder_name,tag)
-                dict_to_json( hyperparameter_template, json_filename, verbose=False )
-                #
-                # ~~~ Run the training script on that dictionary of hyperparameters
-                basic_command = f"python train_nn.py --json {json_filename} --overwrite_json"
-                if save_trained_models:
-                    basic_command += f" --model_save_dir {os.path.join(folder_name,'experimental_models',tag)}"
-                output = run( basic_command, shell=True )
-                #
-                # ~~~ Break out of the loop if there was an error in `train_nn.py`
-                if not output.returncode==0:
-                    break
-                #
-                # ~~~ Perfectionist, superficial formatting of output
-                print("")
+# import seaborn as sns
+# import matplotlib.pyplot as plt
+
+# # Reset index to get a clean DataFrame for plotting
+# mean_results = results.groupby(["model_encoded", "n_epochs"]).mean(numeric_only=True).reset_index()
+
+# plt.figure(figsize=(10, 6))
+# sns.lineplot(data=mean_results, x='n_epochs', y='METRIC_mse', hue='model_encoded', marker='o')
+# plt.title('rMSE across Different Models and Epochs')
+# plt.xlabel('Number of Epochs')
+# plt.ylabel('Mean rMSE')
+# plt.legend(title='Model')
+# plt.show()
+
+
+# def load_a_model(i):
+#     architecture = results.loc[i,"MODEL"]
+#     model_save_dir = results.loc[i,"MODEL_SAVE_DIR"]
+#     json_filename = results.loc[i,"filname"]
+#     import torch
+#     from importlib import import_module
+#     file_where_model_is_defined = import_module(f"bnns.models.{architecture}")
+#     model = file_where_model_is_defined.NN
+#     model.load_state_dict(torch.load(os.path.join(
+#         model_save_dir,
+#         json_filename.strip(".json") + ".pth"
+#     )))
+#     return model
+# 
+# load_a_model(0)
