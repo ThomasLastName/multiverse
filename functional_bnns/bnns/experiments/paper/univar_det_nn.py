@@ -69,6 +69,7 @@ ARCHITECTURE = [
 # ~~~ Create and populate a folder for the hyperparameter search
 try:
     os.mkdir(folder_name)
+    os.mkdir( os.path.join( folder_name, "experimental_models" ))
     #
     # ~~~ Loop over the hyperparameter grid, saving each one to a .json file `RUN_THIS_<count>.json`
     count = 1
@@ -85,10 +86,10 @@ try:
             dict_to_json( hyperparameter_template, json_filename, verbose=False )
             count += 1
     print("")
-    print(f"    Successfully created and populted the folder {folder_name}")
-    print(f"    To run an hour of hyperparameter search: `python tuning_loop.py --folder_name {folder_name} --hours 1`")
+    print("    Successfully created and populted the folder with .json files.")
+    print("    To run an hour of hyperparameter search, navigate to the directory of `tuning_loop.py` and say:")
     print("")
+    print(f"`python tuning_loop.py --folder_name {folder_name} --hours 1`")
 except:
     raise
-
 

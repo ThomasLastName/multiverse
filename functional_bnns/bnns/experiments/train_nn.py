@@ -54,6 +54,7 @@ hyperparameter_template = {
     "EARLY_STOPPING" : True,
     "DELTA": 0.05,
     "PATIENCE" : 20,
+    "STRIDE" : 30,
     "N_MC_SAMPLES" : 1,                     # ~~~ relevant for droupout
     #
     # ~~~ For visualization
@@ -209,7 +210,6 @@ for n_epochs in CHECKPOINTS:
 
 train_loss_curve = []
 val_loss_curve = []
-stride = 30
 last_checkpoint = 0
 starting_time = time()
 
@@ -316,7 +316,7 @@ for n_epochs in CHECKPOINTS:
             if model_save_dir is not None:
                 model_save_path = os.path.join(
                         model_save_dir,
-                        output_json_filename.strip(".json")+".pth"
+                        os.path.split(output_json_filename.strip(".json"))[1] + ".pth"
                     )
                 hyperparameters["MODEL_SAVE_PATH"] = model_save_path
                 torch.save(
