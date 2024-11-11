@@ -38,7 +38,7 @@ N = int( sorted_list_of_filenames_starting_with_RUN_THIS[-1][len("RUN_THIS_"):].
 # ~~~ For `hours` hours, run the remaining experiments
 start_time = time()
 minutes_since_start_time = 0.
-while minutes_since_start_time < hours*60:
+while (minutes_since_start_time < hours*60) and len(sorted_list_of_filenames_starting_with_RUN_THIS)>0:
     #
     # ~~~ Load the .json file sorted_list_of_filenames_starting_with_RUN_THIS[0]
     experiment_filename = sorted_list_of_filenames_starting_with_RUN_THIS.pop(0)

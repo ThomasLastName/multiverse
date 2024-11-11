@@ -212,6 +212,7 @@ train_loss_curve = []
 val_loss_curve = []
 last_checkpoint = 0
 starting_time = time()
+first_round = True
 
 decided_to_stop_early = False   # ~~~ not yet, anyway
 if EARLY_STOPPING:
@@ -310,9 +311,17 @@ for n_epochs in CHECKPOINTS:
         if input_json_filename.startswith("demo"):
             my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
         else:
+            #
+            # ~~~ Put together the output json filename
             output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
+            if first_round:
+                first_round = False
+                if overwrite_json:
+                    os.remove(input_json_filename)
             output_json_filename = process_for_saving(output_json_filename)
             hyperparameters["filname"] = output_json_filename
+            #
+            # ~~~ Ok, now actually save the results
             if model_save_dir is not None:
                 model_save_path = os.path.join(
                         model_save_dir,
@@ -326,7 +335,6 @@ for n_epochs in CHECKPOINTS:
             dict_to_json(
                     hyperparameters,
                     output_json_filename,
-                    override = overwrite_json,
                     verbose = SHOW_DIAGNOSTICS
                 )
         #
