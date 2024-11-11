@@ -256,7 +256,7 @@ for n_epochs in CHECKPOINTS:
                                 train_loss_curve.append( loss.item() )
                                 val_loss_curve.append( loss_fn(NN(x_test),y_test).item() )
                                 if EARLY_STOPPING:
-                                    decided_to_stop_early = early_stopper(avg(val_loss_curve[-stride:]))
+                                    decided_to_stop_early = early_stopper(avg(val_loss_curve[-STRIDE:]))
                                     if decided_to_stop_early:
                                         break
             last_checkpoint = n_epochs
