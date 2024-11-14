@@ -206,7 +206,7 @@ except TypeError:
 assert isinstance(CHECKPOINTS,list)
 for n_epochs in CHECKPOINTS:
     assert isinstance(n_epochs,int)
-    assert n_epochs>0
+    assert n_epochs>=0
 
 train_loss_curve = []
 val_loss_curve = []
