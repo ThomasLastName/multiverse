@@ -68,7 +68,8 @@ hyperparameter_template = {
     #
     # ~~~ For metrics and visualization
     "N_POSTERIOR_SAMPLES_EVALUATION" : 1000,
-    "SHOW_DIAGNOSTICS" : True
+    "SHOW_DIAGNOSTICS" : True,
+    "SHOW_PLOT" : True
 }
 
 #
@@ -351,14 +352,14 @@ if data_is_univariate:
         gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
     else:
-        if SHOW_DIAGNOSTICS:
+        if SHOW_PLOT:
             fig,ax = plt.subplots(figsize=(12,6))
             fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
             plt.show()
 
 #
 # ~~~ Validate implementation of the algorithm on the synthetic dataset "bivar_trivial"
-if data.__name__ == "bnns.data.bivar_trivial" and SHOW_DIAGNOSTICS:
+if data.__name__ == "bnns.data.bivar_trivial" and SHOW_PLOT:
     from bnns.data.univar_missing_middle import x_test, y_test
     fig,ax = plt.subplots(figsize=(12,6))
     plt.plot( x_test.cpu(), y_test.cpu(), "--", color="green" )
