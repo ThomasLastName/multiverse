@@ -351,11 +351,10 @@ if data_is_univariate:
             gif.frames.append( gif.frames[-1] )
         gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
-    else:
-        if SHOW_PLOT:
-            fig,ax = plt.subplots(figsize=(12,6))
-            fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
-            plt.show()
+    if SHOW_PLOT:
+        fig,ax = plt.subplots(figsize=(12,6))
+        fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
+        plt.show()
 
 #
 # ~~~ Validate implementation of the algorithm on the synthetic dataset "bivar_trivial"

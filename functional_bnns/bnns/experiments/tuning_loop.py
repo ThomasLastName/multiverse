@@ -17,8 +17,8 @@ from quality_of_life.my_base_utils import dict_to_json, json_to_dict
 # ~~~ Gather metadata
 parser = argparse.ArgumentParser()
 parser.add_argument( '--folder_name', type=str, required=True )
-parser.add_argument( '--save_trained_models', action=argparse.BooleanOptionalAction )
-parser.add_argument( '--hours', type=float )
+parser.add_argument( '--save_trained_models', action=argparse.BooleanOptionalAction )   # ~~~ default to True if unspecified
+parser.add_argument( '--hours', type=float )    # ~~~ default to float("inf") if unspecified
 args = parser.parse_args()
 folder_name = args.folder_name
 save_trained_models = True if (args.save_trained_models is None) else args.save_trained_models
@@ -46,7 +46,7 @@ while (minutes_since_start_time < hours*60) and len(sorted_list_of_filenames_sta
     experiment_filename = os.path.join( folder_name, experiment_filename )
     hyperparameter_dict = json_to_dict(experiment_filename)
     #
-    # ~~~ Create a new .json file to store the results
+    # ~~~ Create a new .json file (with a different name) to store the results
     print("")
     tag = generate_json_filename( message=f"EXPERIMENT {count}/{N}" )
     print("")
@@ -76,40 +76,3 @@ while (minutes_since_start_time < hours*60) and len(sorted_list_of_filenames_sta
     #
     # ~~~ Record how long we've been at it
     minutes_since_start_time = (time()-start_time)/60
-
-
-# results = load_filtered_json_files(folder_name)
-# model_mapping = {model: idx for idx, model in enumerate(results["model"].unique())}
-# results["model_encoded"] = results["model"].map(model_mapping)
-# results.groupby(["model_encoded", "n_epochs"]).mean(numeric_only=True)
-
-# import seaborn as sns
-# import matplotlib.pyplot as plt
-
-# # Reset index to get a clean DataFrame for plotting
-# mean_results = results.groupby(["model_encoded", "n_epochs"]).mean(numeric_only=True).reset_index()
-
-# plt.figure(figsize=(10, 6))
-# sns.lineplot(data=mean_results, x='n_epochs', y='METRIC_mse', hue='model_encoded', marker='o')
-# plt.title('rMSE across Different Models and Epochs')
-# plt.xlabel('Number of Epochs')
-# plt.ylabel('Mean rMSE')
-# plt.legend(title='Model')
-# plt.show()
-
-
-# def load_a_model(i):
-#     architecture = results.loc[i,"MODEL"]
-#     model_save_dir = results.loc[i,"MODEL_SAVE_DIR"]
-#     json_filename = results.loc[i,"filname"]
-#     import torch
-#     from importlib import import_module
-#     file_where_model_is_defined = import_module(f"bnns.models.{architecture}")
-#     model = file_where_model_is_defined.NN
-#     model.load_state_dict(torch.load(os.path.join(
-#         model_save_dir,
-#         json_filename.strip(".json") + ".pth"
-#     )))
-#     return model
-# 
-# load_a_model(0)
