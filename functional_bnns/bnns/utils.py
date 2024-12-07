@@ -9,6 +9,7 @@ import os
 import pytz
 from glob import glob
 from datetime import datetime
+from importlib import import_module
 from matplotlib import pyplot as plt
 import fiona
 from quality_of_life.ansi import bcolors
@@ -199,6 +200,33 @@ def load_filtered_json_files( directory ):
             for dict in all_dicts
         ]
     return pd.DataFrame(all_filtered_dicts)
+
+#
+# ~~~ Load a trained model, based on the string `architecture` that points to the file where the model is defined
+def load_trained_model( architecture:str, state_dict_path ):
+    #
+    # ~~~ Load the untrained model
+    file_where_model_is_defined = import_module(f"bnns.models.{architecture}")  # ~~~ e.g., architecture=="my_model" points to a file `my_model.py` in the `models` folder
+    try:
+        model = file_where_model_is_defined.BNN
+    except:
+        model = file_where_model_is_defined.NN
+    #
+    # ~~~ Update the parameters to their trained values
+    model.load_state_dict(torch.load(state_dict_path))
+    return model
+
+#
+# ~~~ Load a trained model, based on the dataframe of results you get from hyperparameter search
+def load_trained_model_from_dataframe( results_dataframe, i ):
+    #
+    # ~~~ Load the untrained model
+    architecture = results_dataframe.loc[i,"MODEL"]
+    state_dict_path = os.path.join(
+        results_dataframe.loc[i,"MODEL_SAVE_DIR"],
+        results_dataframe.loc[i,"filname"].strip(".json") + ".pth"
+    )
+    return load_trained_model( architecture, state_dict_path )
 
 #
 # ~~~ Generate a .json filename based on the current datetime
