@@ -4,7 +4,7 @@ import os
 import torch
 import numpy as np
 from quality_of_life.my_base_utils import dict_to_json
-from bnns.experiements.paper.univar_det_nn import folder_name
+from bnns.experiments.paper.univar_det_nn import folder_name
 
 
 
@@ -55,11 +55,11 @@ hyperparameter_template = {
 # ~~~ Values that we want to test, for each one EXPLORE_DURING_TUNING
 LR = np.linspace( 1e-5, 1e-2, 15 )
 ARCHITECTURE = [
-        "univar_NN",            # ~~~ 2 hidden layers, 100 neurons each
-        "univar_NN_300_300",    # ~~~ 2 hidden layers, 300 neurons each
-        "univar_NN_500_500",    # ~~~ 2 hidden layers, 500 neurons each
-        "univar_NN_750_750",    # ~~~ 2 hidden layers, 750 neurons each
-        "univar_NN_1000_1000"   # ~~~ 2 hidden layers, 1000 neurons each
+        "univar_NN",                    # ~~~ 2 hidden layers, 100 neurons each
+        "univar_NN.univar_NN_300_300",  # ~~~ 2 hidden layers, 300 neurons each
+        "univar_NN.univar_NN_500_500",  # ~~~ 2 hidden layers, 500 neurons each
+        "univar_NN.univar_NN_750_750",  # ~~~ 2 hidden layers, 750 neurons each
+        "univar_NN.univar_NN_1000_1000" # ~~~ 2 hidden layers, 1000 neurons each
     ]
 DATA = [    # ~~~ two different train/val splits of the same data
         "univar_missing_middle_normalized_12",
