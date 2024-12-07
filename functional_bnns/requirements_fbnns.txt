@@ -1,0 +1,9 @@
+pytorch
+matplotlib
+tqdm
+numpy
+scipy
+plotly
+pyreadr
+fiona
+quality_of_life @ git+https://github.com/ThomasLastName/quality-of-life
