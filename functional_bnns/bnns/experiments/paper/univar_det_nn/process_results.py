@@ -24,7 +24,7 @@ results = load_filtered_json_files(folder_name)
 ## ~~~ Select the results
 #### ~~~
 
-mean_results = results.groupby(["MODEL", "n_epochs"]).mean(numeric_only=True).reset_index()
+mean_results = results.groupby(["DATA"]).mean(numeric_only=True).reset_index()
 
 import seaborn as sns
 import matplotlib.pyplot as plt
