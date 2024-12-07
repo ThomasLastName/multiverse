@@ -36,6 +36,12 @@ I believe, the complete list of required dependencies, excluding the standard li
 
 If desired, the dependencies on `plotly` and `quality_of_life` could be removed.
 
+Once you've activated the desired virtual env, you can install the dependencies by running the following command inside the `functional_bnns/` directory:
+
+```
+pip install -r requirements_fbnns.txt
+```
+
 # Usage
 
 In order to run a test, the procedure is as follows. In order to specify hyperparameters, put a `.json` file containing hyperparameter values for the experiment that you want to run in the `experiments` folder.
