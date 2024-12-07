@@ -112,7 +112,7 @@ def median_norm_error( predictions, y_test ):
 
 #
 # ~~~ Measure strength of the relation "predictive uncertainty (std. dev. / iqr)" ~ "accuracy (MSE of the predictive mean / predictive median)"
-def uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty, quantile_accuracy, show=True ):
+def uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty, quantile_accuracy, show=True, verbose=True ):
     with torch.no_grad():
         uncertainty = iqr(predictions,dim=0) if quantile_uncertainty else predictions.std(dim=0)
         point_estimate = predictions.median(dim=0).values  if quantile_accuracy else predictions.mean(dim=0)
@@ -140,13 +140,13 @@ def uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty, quantile
                 )
         slope_in_OLS = fits[0][1][0]
         R_squared_of_OLS = R_squared_coefficients[0]
-        if (max(R_squared_coefficients) > R_squared_of_OLS+0.1):
+        if (max(R_squared_coefficients) > R_squared_of_OLS+0.1) and verbose:
             my_warn(f"The OLS fit (R^2 {R_squared_of_OLS:.4}) was outperformed by a higher degree polynomial fit (R^2 {max(R_squared_coefficients):.4}). Using either beta_1 from OLS or the correlation may result in an inaccurate quantification of the relation. Please check the plot returned by the `show=True` argument.")
         return slope_in_OLS, cor(uncertainty,accuracy)
 
 #
 # ~~~ Measure strength of the relation "predictive uncertainty (std. dev.)" ~ "distance from training points"
-def uncertainty_vs_proximity( predictions, quantile_uncertainty, x_test, x_train, show=True, title="Uncertainty vs Proximity to Data (with Polynomial Fits)" ):
+def uncertainty_vs_proximity( predictions, quantile_uncertainty, x_test, x_train, show=True, title="Uncertainty vs Proximity to Data (with Polynomial Fits)", verbose=True ):
     with torch.no_grad():
         uncertainty = iqr(predictions,dim=0) if quantile_uncertainty else predictions.std(dim=0)
         proximity = torch.cdist( x_test.reshape(x_test.shape[0],-1), x_train.reshape(x_train.shape[0],-1) ).min(dim=1).values
@@ -175,9 +175,17 @@ def uncertainty_vs_proximity( predictions, quantile_uncertainty, x_test, x_train
                 )
         slope_in_OLS = fits[0][1][0]
         R_squared_of_OLS = R_squared_coefficients[0]
-        if (max(R_squared_coefficients) > R_squared_of_OLS+0.1):
+        if (max(R_squared_coefficients) > R_squared_of_OLS+0.1) and verbose:
             my_warn(f"The OLS fit (R^2 {R_squared_of_OLS:.4}) was outperformed by a higher degree polynomial fit (R^2 {max(R_squared_coefficients):.4}). Using either beta_1 from OLS or the correlation may result in an inaccurate quantification of the relation. Please check the plot returned by the `show=True` argument.")
         return slope_in_OLS, cor(uncertainty,proximity)
+
+#
+# ~~~ Measure how heterognenous the posterior predictive distribution is, i.e., how much spread we witness in the uncertainty levels for different inputs
+def uncertainty_spread( predictions, quantile_uncertainty ):
+    with torch.no_grad():
+        uncertainty = iqr(predictions,dim=0) if quantile_uncertainty else predictions.std(dim=0)
+        all_uncertainty_levels = uncertainty.flatten()
+        return ( all_uncertainty_levels.max() - all_uncertainty_levels.min() ).item()
 
 #
 # ~~~ Compute the interval score for all predictions "averaged over the spatial domain" (dim=1) instead of over the testing dataset (dim=0)
