@@ -1,40 +1,41 @@
 # Setup
 
-## Setup steps using anaconda
+**IMPORTANT: At this time, `git` is a prerequisite for installation.**
 
-(without anaconda, just make sure you have the prerequisite packages installed)
+## Setup steps using anaconda and git
 
 0. Open the terminal and say `conda env list` to confirm that the code is not present already.
 
-1. (_create an env with standard / easy-to-install packages_) `conda create --name bnns python=3.10 tqdm matplotlib numpy pandas plotly scipy pip` (if desired, you can swap `bnns` for your preferred name).
+1. (_create an env with standard / easy-to-install packages_) `conda create --name bnns python=3.10 matplotlib tqdm numpy scipy pandas pip` (if desired, you can swap `bnns` for your preferred name).
 
 2. (_activate the env for further installs_) `conda activate bnns`.
 
-3. (_install pytorch_) This may depend on whether you want cuda, and on your conda channels. The simplest approach is: first try `conda install pytorch`. If that doesn't work (probably because channels) then try instead `pip install torch`.
+3. (_install pytorch_) This dependency is intentionally left to the user to be installed manually, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility. Additionally, it may depend on your conda channels. The simplest installation (which is not CUDA-compatible) is to try the command `conda install pytorch`. If that doesn't work (probably because of channels) then commanding `pip install torch` while the environment is active shuold still work, although using `conda` is preferable because it reduces the likelihood of conflicts.
 
-4. (_install this code_) Navigate to wherever you want (e.g., the Documents folder), and clone this repo there. Then (mimicing [the SEPIA installation guidelines](https://sepia-lanl.readthedocs.io/en/latest/#installation)), "from the command line, while in the [the root depository of this repository], use the following command to install [bnns]:" `pip install -e .` "The -e flag signals developer mode, meaning that if you update the code from Github, your installation will automatically take those changes into account without requiring re-installation."
+4. (_install this repository as a package_) Navigate to wherever you want (e.g., the Documents folder), and clone this reppository there. Then, mimicing [the SEPIA installation guidelines](https://sepia-lanl.readthedocs.io/en/latest/#installation), "from the command line, while in the [the directory where this repository's `setup.py` file is located], use the following command to install [bnns]:" `pip install -e .`. From [the SEPIA installation guidelines](https://sepia-lanl.readthedocs.io/en/latest/#installation), "the -e flag signals developer mode, meaning that if you update the code from Github, your installation will automatically take those changes into account without requiring re-installation."
 
-5. (_verify installation_) Try running one of the python files, e.g., `python scripts/SSGE_multivar_demo.py`, which should create a .gif of some histograms.
+6. (_verify installation_) Try running one of the python files, e.g., `python scripts\SSGE_univar_demo.py`, which should create an plot with several curves.
 
 
-## Dependencies
+## Minimal setup instructions using git
 
-Well, you need pytorch and matplotlib and such.
-Perhaps non-trivially you need tqdm.
-**Most notably,** you need my helper utils https://github.com/ThomasLastName/quality_of_life which you just need clone to anywhere on the path for your python environment (I got the impression from Natalie that y'all are allowed clone repos off the internet to your lanl devices? You need this repo)
+1. (_have python already set up_) Simply put, have python on your machine. Optionally, this may include setting up a virtual environment for this repository and its dependencies, which most programmers would opt to do. The above **Setup steps using anaconda and git** walk you through the process of setting up such an environment using `conda`.
+2. (_have pytorch already installed_) This dependency is intentionally left to the user to be installed manually, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility.
+3. (_install this repository as a package_) This step is identical as in the **Setup steps using anaconda and git**.
 
-I believe, the complete list of required dependencies, excluding the standard library (e.g., `typing`) is:
-- [ ] pytorch
-- [ ] matplotlib
-- [ ] tqdm
-- [ ] numpy
-- [ ] scipy
-- [ ] plotly
-- [ ] pyreadr
-- [ ] fiona
-- [ ] https://github.com/ThomasLastName/quality-of-life (this repo has its own dependencies, but I believe it is sufficient to run this repo with only the above packages installed; I believe "the required parts" of this repo depend only on the same 5 packages as above and the standard python library).
+## Dependencies (installation thereof is handled by the setup instructions)
 
-If desired, the dependencies on `plotly` and `quality_of_life` could be removed.
+Please note that if you follow either of the setup instructions above, then these dependencies will be installed automatically **with the exception of pytorch, as explained above**. The dependencies are lister here merely for the sake of completeness and transparency. 
+- [ ] pytorch (main machine learning library)
+- [ ] matplotlib (for creating images)
+- [ ] tqdm (for progress bars)
+- [ ] numpy (used for a little bit of data processing)
+- [ ] scipy (practically not used at all)
+- [ ] pandas (used for data manipulation)
+- [ ] fiona (used for one plotting routine)
+- [ ] https://github.com/ThomasLastName/quality-of-life (primarily used for creating `gif`'s; this repo has its own dependencies, but "the required parts" of this repo depend only on the other packages in this list, and the standard python library).
+
+From a development standpoint, reducing the list of dependencies would be very doable.
 
 # Usage
 
@@ -89,12 +90,17 @@ In that case, the python scripts which run experiments all attempt to `import my
 Additionally, within that file `my_brand_new_architecture.py`, you must define a pytorch model: either called `BNN` or called `NN` depending on the experiment that is being run
 
 
+# Paper
+
+TODO
+
+
 # Contributors
 
  - The code for SSGE was adapted from the repo https://github.com/AntixK/Spectral-Stein-Gradient
 
 
+# Contribution Guidelines
 
-# TODO
+TODO
 
-See the Issues tab.

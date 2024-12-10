@@ -3,7 +3,6 @@ from quality_of_life.my_base_utils import find_root_dir_of_repo, my_warn
 from quality_of_life.my_scipy_utils import extend_to_grid
 from bnns.utils import load_coast_coords, slosh_heatmap
 from matplotlib import pyplot as plt
-# from plotly import graph_objects as go
 import numpy as np
 import os
 from bnns import __path__

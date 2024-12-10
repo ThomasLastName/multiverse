@@ -13,6 +13,11 @@ setup(
     description = 'Package intended for testing (but not optimized for deploying) varions BNN algorithms',
     packages = find_packages(),    
     install_requires = [
+        "maplotlib",
+        "tqdm",
+        "numpy",
+        "scipy",
+        "pandas",
         "fiona",    # ~~~ for loading data in .shp format
         "quality_of_life @ git+https://github.com/ThomasLastName/quality-of-life.git"
     ]
