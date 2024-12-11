@@ -275,7 +275,7 @@ def load_trained_model_from_dataframe( results_dataframe, i ):
     #
     # ~~~ Load the untrained model
     architecture = results_dataframe.iloc[i].MODEL
-    state_dict_path = results_dataframe.iloc[i].MODEL_SAVE_PATH
+    state_dict_path = results_dataframe.iloc[i].STATE_DICT_PATH
     return load_trained_model( architecture, state_dict_path )
 
 #

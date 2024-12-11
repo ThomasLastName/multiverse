@@ -370,11 +370,11 @@ while keep_training:
             #
             # ~~~ Ok, now actually save the results
             if model_save_dir is not None:
-                model_save_path = os.path.join(
+                state_dict_path = os.path.join(
                         model_save_dir,
                         os.path.split(output_json_filename.strip(".json"))[1] + ".pth"
                     )
-                hyperparameters["MODEL_SAVE_PATH"] = state_dict_path
+                hyperparameters["STATE_DICT_PATH"] = state_dict_path
                 torch.save(
                         NN.state_dict(),
                         state_dict_path
