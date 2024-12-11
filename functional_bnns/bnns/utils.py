@@ -239,6 +239,22 @@ def load_filtered_json_files( directory ):
     return pd.DataFrame(all_filtered_dicts)
 
 #
+# ~~~ Get the dataframe.iloc[i,"arg"] for all the arguments `args`
+def get_attributes_from_row_i(dataframe,i,*args):
+    return [
+            dataframe.iloc[i][arg]
+            for arg in args
+        ]
+
+#
+# ~~~ Filter a dataframe by multiple attributes
+def filter_by_attributes(dataframe,**kwargs):
+    filtered_results = dataframe
+    for key, value in kwargs.items():
+        filtered_results = filtered_results[ filtered_results[key]==value ]
+    return filtered_results
+
+#
 # ~~~ Load a trained model, based on the string `architecture` that points to the file where the model is defined
 def load_trained_model( architecture:str, state_dict_path ):
     #

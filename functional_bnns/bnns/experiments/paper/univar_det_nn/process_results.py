@@ -2,6 +2,7 @@
 
 from bnns.experiments.paper.univar_det_nn import folder_name
 from bnns.utils import load_filtered_json_files
+from quality_of_life.my_base_utils import json_to_dict
 
 
 
