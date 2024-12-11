@@ -18,7 +18,7 @@ import os
 
 #
 # ~~~ Package-specific utils
-from bnns.utils import plot_nn, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, generate_json_filename, set_Dataset_attributes, EarlyStopper
+from bnns.utils import plot_nn, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, generate_json_filename, set_Dataset_attributes, non_negative_list, EarlyStopper
 from bnns.metrics import *
 
 #
@@ -198,19 +198,8 @@ if data_is_univariate:
             gif.capture( clear_frame_upon_capture=(j+1==INITIAL_FRAME_REPETITIONS) )
 
 #
-# ~~~ Support N_EPOCHS to be a list of integers
-try:
-    CHECKPOINTS = list(N_EPOCHS)
-except TypeError:
-    CHECKPOINTS = [N_EPOCHS]
-except:
-    raise
-
-assert isinstance(CHECKPOINTS,list)
-for n_epochs in CHECKPOINTS:
-    assert isinstance(n_epochs,int)
-    assert n_epochs>=0
-
+# ~~~ Establish some variables used for training
+CHECKPOINTS = non_negative_list(N_EPOCHS)   # ~~~ supports N_EPOCHS to be a list of integers
 train_loss_curve = []
 val_loss_curve = []
 last_checkpoint = 0
@@ -329,7 +318,7 @@ for n_epochs in CHECKPOINTS:
                 if overwrite_json:
                     os.remove(input_json_filename)
             output_json_filename = process_for_saving(output_json_filename)
-            hyperparameters["filname"] = output_json_filename
+            hyperparameters["filename"] = output_json_filename
             #
             # ~~~ Ok, now actually save the results
             if model_save_dir is not None:
@@ -361,7 +350,7 @@ if data_is_univariate:
         gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
     if SHOW_PLOT:
-        fig,ax = plt.subplots(figsize=(12,6))
+        fig, ax = plt.subplots(figsize=(12,6))
         fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
         plt.show()
 

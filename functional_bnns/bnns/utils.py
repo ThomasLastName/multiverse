@@ -164,25 +164,62 @@ def sample_from_convex_hull( points, n_samples, noise=0.):
 ### ~~~
 
 #
+# ~~~ Convert x to [x] if x isn't a list to begin with, then verify the type of each item of x, along with any other user-specified requirement
+def convert_to_list_and_check_items( x, classes, other_requirement=lambda*args:True ):
+    #
+    # ~~~ Convert x to a list (if x is already a list, this has no effect)
+    try:
+        X = list(x)
+    except TypeError:
+        X = [x]
+    except:
+        raise
+    assert isinstance(X,list), "Unexpected error: both list(x) and [x] failed to create a list out of x."
+    #
+    # ~~~ Verify the type of each item in the list
+    for item in X:
+        assert isinstance(item,classes)
+        assert other_requirement(item), "The user supplied check was not satisfied."
+    #
+    # ~~~ Return the list whose items all meet the type and other requirements
+    return X
+
+#
+# ~~~ Convert x to [x] if x isn't a list to begin with, then verify the type of each item of x, along with any other user-specified requirement
+def non_negative_list( x, integer_only=False ):
+    return convert_to_list_and_check_items(
+            x = x,
+            classes = int if integer_only else (int,float),
+            other_requirement = lambda item: item>=0
+        )
+
+#
 # ~~~ A standard early stopping rule (https://stackoverflow.com/a/73704579/11595884)
 class EarlyStopper:
-    def __init__( self, patience=1, delta=0.01 ):
+    def __init__( self, patience=20, delta=0.05 ):
         self.patience = patience
         self.delta = delta
         self.counter = 0
         self.max_count = 0
         self.min_val_loss = float('inf')
     def __call__(self,val_loss):
-        rel_val_loss = val_loss/self.min_val_loss - 1   # ~~~ ( val_loss - self.min_val_loss )/self.min_val_loss
-        if rel_val_loss < 0:
+        #
+        # ~~~ If the validation loss is decreasing, reset the counter
+        if val_loss <= self.min_val_loss:
             self.min_val_loss = val_loss
             self.counter = 0
-        elif rel_val_loss > self.delta:
+        #
+        # ~~~ If the current val_loss is "more than delta worse" relative to min_val_loss, increment the counter    
+        rel_val_loss = val_loss/self.min_val_loss - 1   # ~~~ `== ( val_loss - self.min_val_loss ) / self.min_val_loss` except that's less numerically stable
+        if rel_val_loss > self.delta:
             self.counter += 1
             self.max_count = max( self.counter, self.max_count )
-            if self.counter >= self.patience:
-                return True
-        return False
+        #
+        # ~~~ Stop iff max_count >= patience
+        if self.max_count >= self.patience:
+            return True
+        else:
+            return False
 
 #
 # ~~~ Load all the .json files in a directory to data frame
@@ -221,11 +258,8 @@ def load_trained_model( architecture:str, state_dict_path ):
 def load_trained_model_from_dataframe( results_dataframe, i ):
     #
     # ~~~ Load the untrained model
-    architecture = results_dataframe.loc[i,"MODEL"]
-    state_dict_path = os.path.join(
-        results_dataframe.loc[i,"MODEL_SAVE_DIR"],
-        results_dataframe.loc[i,"filname"].strip(".json") + ".pth"
-    )
+    architecture = results_dataframe.iloc[i].MODEL
+    state_dict_path = results_dataframe.iloc[i].MODEL_SAVE_PATH
     return load_trained_model( architecture, state_dict_path )
 
 #
