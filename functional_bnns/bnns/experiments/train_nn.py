@@ -5,12 +5,14 @@
 
 #
 # ~~~ Standard packages
+import numpy as np
 import torch
 from torch import nn, optim
 from tqdm import tqdm
 from statistics import mean as avg
 from matplotlib import pyplot as plt
 from importlib import import_module
+from itertools import product
 from time import time
 import argparse
 import sys
@@ -199,60 +201,102 @@ if data_is_univariate:
 
 #
 # ~~~ Establish some variables used for training
-CHECKPOINTS = non_negative_list(N_EPOCHS)   # ~~~ supports N_EPOCHS to be a list of integers
+N_EPOCHS = non_negative_list( N_EPOCHS, integer_only=True ) # ~~~ supports N_EPOCHS to be a list of integers
+STRIDE   = non_negative_list(  STRIDE,  integer_only=True ) # ~~~ supports STRIDE to be a list of integers
+PATIENCE = non_negative_list( PATIENCE, integer_only=True ) # ~~~ supports PATIENCE to be a list of integers
+DELTA    = non_negative_list( DELTA )                       # ~~~ supports DELTA to be a list of integers
+assert np.diff(N_EPOCHS+[N_EPOCHS[-1]+1]).min()>0, "The given sequence N_EPOCHS is not strictly increasing."
 train_loss_curve = []
 val_loss_curve = []
-last_checkpoint = 0
+total_iterations = 0
+epochs_completed_so_far = 0
+target_epochs = N_EPOCHS.pop(0)
 starting_time = time()
 first_round = True
-
-decided_to_stop_early = False   # ~~~ not yet, anyway
+keep_training = True
 if EARLY_STOPPING:
-    early_stopper = EarlyStopper( delta=DELTA, patience=PATIENCE )
+    #
+    # ~~~ Define all len(PATIENCE)*len(DELTA)*len(STRIDE) stopping conditions
+    stride_patience_and_delta_stopping_conditions = [
+            [
+                EarlyStopper( patience=patience, delta=delta )
+                for delta, patience in product(DELTA,PATIENCE)
+            ]
+            for _ in STRIDE
+        ]
 
-for n_epochs in CHECKPOINTS:
-    if not decided_to_stop_early:
-        with support_for_progress_bars():   # ~~~ this just supports green progress bars
-            pbar = tqdm( desc=description_of_the_experiment, total=n_epochs, initial=last_checkpoint, ascii=' >=' )
-            for e in range(n_epochs-last_checkpoint):
-                # ~~~ 
+while keep_training:
+    with support_for_progress_bars():   # ~~~ with green progress bars
+        stopped_early = False
+        pbar = tqdm( desc=description_of_the_experiment, total=target_epochs*len(dataloader), initial=epochs_completed_so_far*len(dataloader), ascii=' >=' )
+        for e in range( target_epochs - epochs_completed_so_far ):
+            # ~~~ 
+            #
+            ### ~~~
+            ## ~~~ Main Loop
+            ### ~~~
+            #
+            # ~~~ The actual training logic (totally conventional, hopefully familiar)
+            for X, y in dataloader:
+                X, y = X.to(DEVICE), y.to(DEVICE)
+                if not dropout:
+                    loss = loss_fn(NN(X),y)
+                if dropout:
+                    #
+                    # ~~~ If the network has dropout, optionally, average over multiple samples
+                    loss = 0.
+                    for _ in range(N_MC_SAMPLES):
+                        loss += loss_fn(NN(X),y)/N_MC_SAMPLES
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+                pbar.set_postfix({ "loss": f"{loss.item():<4.4f}" })
+                _ = pbar.update()
                 #
-                ### ~~~
-                ## ~~~ Main Loop
-                ### ~~~
-                #
-                # ~~~ The actual training logic (totally conventional, hopefully familiar)
-                if not decided_to_stop_early:
-                    for X, y in dataloader:
-                        X, y = X.to(DEVICE), y.to(DEVICE)
-                        if dropout:
-                            loss = 0.
-                            for _ in range(N_MC_SAMPLES):
-                                loss += loss_fn(NN(X),y)/N_MC_SAMPLES
-                        else:
-                            loss = loss_fn(NN(X),y)
-                        loss.backward()
-                        optimizer.step()
-                        optimizer.zero_grad()
-                        pbar.set_postfix({ "loss": f"{loss.item():<4.4f}" })
-                        _ = pbar.update()
-                        if (pbar.n+1)%HOW_OFTEN==0:
-                            #
-                            # ~~~ Plotting logic
-                            if data_is_univariate and MAKE_GIF:
-                                fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
-                                gif.capture()   # ~~~ save a picture of the current plot (whatever plt.show() would show)
-                            #
-                            # ~~~ Record a little diagnostic info
-                            with torch.no_grad():
-                                train_loss_curve.append( loss.item() )
-                                val_loss_curve.append( loss_fn(NN(x_test),y_test).item() )
-                                if EARLY_STOPPING:
-                                    decided_to_stop_early = early_stopper(avg(val_loss_curve[-STRIDE:]))
-                                    if decided_to_stop_early:
-                                        break
-            last_checkpoint = n_epochs
-            pbar.close()
+                # ~~~ Every so often, do some additional stuff, too...
+                if (pbar.n+1)%HOW_OFTEN==0:
+                    #
+                    # ~~~ Plotting logic
+                    if data_is_univariate and MAKE_GIF:
+                        fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
+                        gif.capture()   # ~~~ save a picture of the current plot (whatever plt.show() would show)
+                    #
+                    # ~~~ Record a little diagnostic info
+                    with torch.no_grad():
+                        train_loss_curve.append( loss.item() )
+                        val_loss_curve.append( loss_fn(NN(x_test),y_test).item() )
+                    #
+                    # ~~~ Assess whether or not any new stopping condition is triggered (although, training won't stop until *every* stopping condition is triggered)
+                    if EARLY_STOPPING:
+                        for i, stride in enumerate(STRIDE):
+                            patience_and_delta_stopping_conditions = stride_patience_and_delta_stopping_conditions[i]
+                            moving_avg_of_val_loss = avg(val_loss_curve[-stride:])
+                            for j, early_stopper in enumerate(patience_and_delta_stopping_conditions):
+                                stopped_early = early_stopper(moving_avg_of_val_loss)
+                                if stopped_early:
+                                    patience, delta = early_stopper.patience, early_stopper.delta
+                                    del patience_and_delta_stopping_conditions[j]
+                                    if all( len(lst)==0 for lst in stride_patience_and_delta_stopping_conditions ):
+                                        keep_training = False
+                                    break   # ~~~ break out of the loop over early stoppers
+                            if stopped_early:
+                                break       # ~~~ break out of the loop over strides
+                    if stopped_early:
+                        break               # ~~~ break out of the loop over batches
+            if stopped_early:
+                break                       # ~~~ break out of the loop over epochs
+        total_iterations = pbar.n
+        pbar.close()
+        epochs_completed_so_far += e        # ~~~ if stopped_early in the middle if the very first epoch, then epochs_completed_so_far remains 0
+        #
+        # ~~~ If we reached the target number of epochs, then update `target_epochs` and do not record any early stopping hyperparameters
+        if not stopped_early:
+            epochs_completed_so_far += 1
+            patience, delta, stride = None, None, None
+            try:
+                target_epochs = N_EPOCHS.pop(0)
+            except IndexError:
+                keep_training = False
         # ~~~
         #
         ### ~~~
@@ -269,13 +313,17 @@ for n_epochs in CHECKPOINTS:
             predictions_on_interpolary_grid = predict(interpolary_grid)
             predictions_on_extrapolary_grid = predict(extrapolary_grid)
         except AttributeError:
-            my_warn(f"Could import `extrapolary_grid` or `interpolary_grid` from bnns.data.{data}. For the best assessment of the quality of the UQ, please define these variables in the data file (no labels necessary)")
+            my_warn(f"Could import `extrapolary_grid` or `interpolary_grid` from bnns.data.{data} nor from just {data}. For the best assessment of the quality of the UQ, please define these variables in the data file (no labels necessary)")
         except:
             raise
         #
         # ~~~ Compute the desired metrics
-        hyperparameters["n_epochs"] = pbar.n/len(dataloader)
+        hyperparameters["total_iter"] = total_iterations/len(dataloader)
+        hyperparameters["epochs_completed"] = epochs_completed_so_far
         hyperparameters["compute_time"] = time() - starting_time
+        hyperparameters["patience"] = patience
+        hyperparameters["delta"] = delta
+        hyperparameters["stride"] = stride
         hyperparameters["val_loss_curve"] = val_loss_curve
         hyperparameters["train_loss_curve"] = train_loss_curve
         if dropout:
@@ -326,10 +374,10 @@ for n_epochs in CHECKPOINTS:
                         model_save_dir,
                         os.path.split(output_json_filename.strip(".json"))[1] + ".pth"
                     )
-                hyperparameters["MODEL_SAVE_PATH"] = model_save_path
+                hyperparameters["MODEL_SAVE_PATH"] = state_dict_path
                 torch.save(
                         NN.state_dict(),
-                        model_save_path
+                        state_dict_path
                     )
             dict_to_json(
                     hyperparameters,
