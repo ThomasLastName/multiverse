@@ -225,18 +225,20 @@ if EARLY_STOPPING:
             for _ in STRIDE
         ]
 
+#
+# ~~~ Start the training loop
 while keep_training:
     with support_for_progress_bars():   # ~~~ with green progress bars
         stopped_early = False
         pbar = tqdm( desc=description_of_the_experiment, total=target_epochs*len(dataloader), initial=epochs_completed_so_far*len(dataloader), ascii=' >=' )
+        # ~~~ 
+        #
+        ### ~~~
+        ## ~~~ Main Loop
+        ### ~~~
+        #
+        # ~~~ The actual training logic (totally conventional, hopefully familiar)
         for e in range( target_epochs - epochs_completed_so_far ):
-            # ~~~ 
-            #
-            ### ~~~
-            ## ~~~ Main Loop
-            ### ~~~
-            #
-            # ~~~ The actual training logic (totally conventional, hopefully familiar)
             for X, y in dataloader:
                 X, y = X.to(DEVICE), y.to(DEVICE)
                 if not dropout:
@@ -247,10 +249,18 @@ while keep_training:
                     loss = 0.
                     for _ in range(N_MC_SAMPLES):
                         loss += loss_fn(NN(X),y)/N_MC_SAMPLES
+                #
+                # ~~~ Do the gradient-based update
                 loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()
-                pbar.set_postfix({ "loss": f"{loss.item():<4.4f}" })
+                #
+                # ~~~ Report a moving average of train_loss as well as val_loss in the progress bar
+                if len(train_loss_curve)>0:
+                    pbar_info = { "train_loss": f"{ avg(train_loss_curve[-min(STRIDE):]) :<4.4f}" }
+                    if len(val_loss_curve)>0:
+                        pbar_info["val_loss"] = f"{ avg(val_loss_curve[-min(STRIDE):]) :<4.4f}"
+                    pbar.set_postfix(pbar_info)
                 _ = pbar.update()
                 #
                 # ~~~ Every so often, do some additional stuff, too...
@@ -258,7 +268,7 @@ while keep_training:
                     #
                     # ~~~ Plotting logic
                     if data_is_univariate and MAKE_GIF:
-                        fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
+                        fig,ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
                         gif.capture()   # ~~~ save a picture of the current plot (whatever plt.show() would show)
                     #
                     # ~~~ Record a little diagnostic info
@@ -353,6 +363,41 @@ while keep_training:
             hyperparameters["METRIC_rmse"]      =      rmse( NN, x_test, y_test )
             hyperparameters["METRIC_mae"]       =       mae( NN, x_test, y_test )
             hyperparameters["METRIC_max_norm"]  =  max_norm( NN, x_test, y_test )
+    #
+    # ~~~ For the SLOSH dataset, run all the same metrics on the unprocessed data, as well (the actual heatmaps)
+    try:
+        S = data.s_truncated.to( device=DEVICE, dtype=DTYPE )
+        V = data.V_truncated.to( device=DEVICE, dtype=DTYPE )
+        Y = data.unprocessed_y_test.to( device=DEVICE, dtype=DTYPE )
+        def predict(x):
+            predictions = torch.stack([ NN(x) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ]) if dropout else NN(x)
+            return predictions * S @ V.T
+        with torch.no_grad():
+            predictions = predict(x_test)
+            predictions_on_interpolary_grid = predict(interpolary_grid)
+            predictions_on_extrapolary_grid = predict(extrapolary_grid)
+        #
+        # ~~~ Compute the desired metrics
+        if dropout:
+            hyperparameters["METRIC_unprocessed_rmse_of_mean"]                =        rmse_of_mean( predictions, Y )
+            hyperparameters["METRIC_unprocessed_rmse_of_median"]              =      rmse_of_median( predictions, Y )
+            hyperparameters["METRIC_unprocessed_mae_of_mean"]                 =         mae_of_mean( predictions, Y )
+            hyperparameters["METRIC_unprocessed_mae_of_median"]               =       mae_of_median( predictions, Y )
+            hyperparameters["METRIC_unprocessed_max_norm_of_mean"]            =    max_norm_of_mean( predictions, Y )
+            hyperparameters["METRIC_unprocessed_max_norm_of_median"]          =  max_norm_of_median( predictions, Y )
+            hyperparameters["METRIC_unproccessed_coverage"]                   =   aggregate_covarge( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES )
+            hyperparameters["METRIC_unproccessed_median_energy_score"]        =       energy_scores( predictions, Y ).median().item()
+            hyperparameters["METRIC_unproccessed_median_avg_inverval_score"]  =       avg_interval_score_of_response_features( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES ).median().item()
+            for estimator in ("mean","median"):
+                hyperparameters[f"METRIC_unprocessed_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+                hyperparameters[f"METRIC_unprocessed_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
+                hyperparameters[f"METRIC_unprocessed_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]                  =   uncertainty_vs_accuracy( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
+        else:
+                hyperparameters["METRIC_unprocessed_rmse"]      =      rmse( predict, x_test, Y )
+                hyperparameters["METRIC_unprocessed_mae"]       =       mae( predict, x_test, Y )
+                hyperparameters["METRIC_unprocessed_max_norm"]  =  max_norm( predict, x_test, Y )
+    except AttributeError:
+        pass
         #
         # ~~~ Save the results
         if input_json_filename.startswith("demo"):
@@ -397,9 +442,9 @@ if data_is_univariate:
             gif.frames.append( gif.frames[-1] )
         gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
-    if SHOW_PLOT:
-        fig, ax = plt.subplots(figsize=(12,6))
-        fig, ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
+    elif SHOW_PLOT:
+        fig,ax = plt.subplots(figsize=(12,6))
+        fig,ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
         plt.show()
 
 #
