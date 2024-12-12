@@ -30,11 +30,11 @@ hyperparameter_template = {
     "OPTIMIZER" : "Adam",
     "LR" : EXPLORE_DURING_TUNING,
     "BATCH_SIZE" : 64,
-    "N_EPOCHS" : [ (j+1)*1000 for j in range(10) ],
-    "EARLY_STOPPING" : False,
-    "DELTA": 0.05,
-    "PATIENCE" : 20,
-    "STRIDE" : 30,
+    "N_EPOCHS" : 15000,
+    "EARLY_STOPPING" : True,
+    "DELTA": [0.05,0.1],
+    "PATIENCE" : [20,50],
+    "STRIDE" : [20,50],
     "N_MC_SAMPLES" : 1,                     # ~~~ relevant for droupout
     #
     # ~~~ For visualization
@@ -55,16 +55,19 @@ hyperparameter_template = {
 # ~~~ Values that we want to test, for each one EXPLORE_DURING_TUNING
 LR = np.linspace( 1e-5, 1e-2, 10 )
 ARCHITECTURE = [
-        "univar_NN_dropout",                                    # ~~~ 2 hidden layers, 100 neurons each, droptout 0.4
-        "univar_NN_dropout.univar_NN_300_300_dropout_20",       # ~~~ 2 hidden layers, 300 neurons each, droptout 0.2
-        "univar_NN_dropout.univar_NN_300_300_dropout_40",       # ~~~ 2 hidden layers, 300 neurons each, droptout 0.4
-        "univar_NN_dropout.univar_NN_300_300_dropout_60",       # ~~~ 2 hidden layers, 300 neurons each, droptout 0.6
-        "univar_NN_dropout.univar_NN_600_600_dropout_20",       # ~~~ 2 hidden layers, 600 neurons each, droptout 0.2
-        "univar_NN_dropout.univar_NN_600_600_dropout_40",       # ~~~ 2 hidden layers, 600 neurons each, droptout 0.4
-        "univar_NN_dropout.univar_NN_600_600_dropout_60",       # ~~~ 2 hidden layers, 600 neurons each, droptout 0.6
+        "univar_NN_dropout",                                # ~~~ 2 hidden layers, 100 neurons each, droptout 0.4
+        "univar_NN_dropout.univar_NN_300_300_dropout_20",   # ~~~ 2 hidden layers, 300 neurons each, droptout 0.2
+        "univar_NN_dropout.univar_NN_300_300_dropout_40",   # ~~~ 2 hidden layers, 300 neurons each, droptout 0.4
+        "univar_NN_dropout.univar_NN_300_300_dropout_60",   # ~~~ 2 hidden layers, 300 neurons each, droptout 0.6
+        "univar_NN_dropout.univar_NN_600_600_dropout_20",   # ~~~ 2 hidden layers, 600 neurons each, droptout 0.2
+        "univar_NN_dropout.univar_NN_600_600_dropout_40",   # ~~~ 2 hidden layers, 600 neurons each, droptout 0.4
+        "univar_NN_dropout.univar_NN_600_600_dropout_60",   # ~~~ 2 hidden layers, 600 neurons each, droptout 0.6
         "univar_NN_dropout.univar_NN_300_300_300_dropout_20",   # ~~~ 3 hidden layers, 300 neurons each, droptout 0.2
         "univar_NN_dropout.univar_NN_300_300_300_dropout_40",   # ~~~ 3 hidden layers, 300 neurons each, droptout 0.4
         "univar_NN_dropout.univar_NN_300_300_300_dropout_60"    # ~~~ 3 hidden layers, 300 neurons each, droptout 0.6
+        "univar_NN_dropout.univar_NN_600_600_600_dropout_20",   # ~~~ 3 hidden layers, 600 neurons each, droptout 0.2
+        "univar_NN_dropout.univar_NN_600_600_600_dropout_40",   # ~~~ 3 hidden layers, 600 neurons each, droptout 0.4
+        "univar_NN_dropout.univar_NN_600_600_600_dropout_60"    # ~~~ 3 hidden layers, 600 neurons each, droptout 0.6
     ]
 DATA = [    # ~~~ two different train/val splits of the same data
         "univar_missing_middle_normalized_12",
