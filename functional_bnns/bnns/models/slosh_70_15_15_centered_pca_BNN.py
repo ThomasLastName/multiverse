@@ -2,7 +2,7 @@
 import torch
 from torch import nn
 from bnns.SequentialGaussianBNN import SequentialGaussianBNN
-from bnns.data.slosh_70_15_15_cheap_centered_pca import r  # ~~~ the number of principal components: the output dimension of the NN
+from bnns.data.slosh_70_15_15_centered_pca import r  # ~~~ the number of principal components: the output dimension of the NN
 torch.manual_seed(2024)
 
 BNN = SequentialGaussianBNN(
