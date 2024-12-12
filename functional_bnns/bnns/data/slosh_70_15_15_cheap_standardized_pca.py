@@ -13,6 +13,8 @@ PATH = os.path.join( root, "functional_bnns", "bnns", "data" )
 
 #
 # ~~~ Generate U, s, V, and r
+avg_out = np.mean(out_np,axis=0)
+std_out = np.std(out_np,axis=0) + 1e-10
 try:
     #
     # ~~~ Load the processed data
@@ -23,7 +25,7 @@ try:
 except:
     #
     # ~~~ Load the unprocessed data
-    data_matrix = torch.from_numpy( (out_np - np.mean(out_np,axis=0)) / (np.std(out_np,axis=0)+1e-10) )
+    data_matrix = torch.from_numpy( (out_np-avg_out)/std_out )
     #
     # ~~~ Process the data (do SVD)
     print("Computing principal components...")
@@ -50,6 +52,8 @@ y_val = U_truncated[idx_val]
 unprocessed_y_train = torch.from_numpy(out_np[idx_train])
 unprocessed_y_test = torch.from_numpy(out_np[idx_test])
 unprocessed_y_val = torch.from_numpy(out_np[idx_val])
+avg_out = torch.from_numpy(avg_out)
+std_out = torch.from_numpy(std_out)
 
 #
 # ~~~ Finally, package as objects of class torch.utils.data.Dataset
