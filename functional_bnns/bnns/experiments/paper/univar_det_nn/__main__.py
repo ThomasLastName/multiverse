@@ -30,11 +30,11 @@ hyperparameter_template = {
     "OPTIMIZER" : "Adam",
     "LR" : EXPLORE_DURING_TUNING,
     "BATCH_SIZE" : 64,
-    "N_EPOCHS" : [ 1000, 2500, 5000, 7500, 10000 ],
-    "EARLY_STOPPING" : False,
-    "DELTA": 0.05,
-    "PATIENCE" : 20,
-    "STRIDE" : 30,
+    "N_EPOCHS" : 15000,
+    "EARLY_STOPPING" : True,
+    "DELTA": [0.05, 0.075, 0.1],
+    "PATIENCE" : [20, 30, 40, 50],
+    "STRIDE" : [20, 30, 40, 50],
     "N_MC_SAMPLES" : 1,                     # ~~~ relevant for droupout
     #
     # ~~~ For visualization
@@ -51,24 +51,31 @@ hyperparameter_template = {
     "SHOW_DIAGNOSTICS" : False,
     "SHOW_PLOT" : False
 }
+
 #
 # ~~~ Values that we want to test, for each one EXPLORE_DURING_TUNING
 LR = np.linspace( 1e-5, 1e-2, 15 )
 ARCHITECTURE = [
-        "univar_NN",                    # ~~~ 2 hidden layers, 100 neurons each
-        "univar_NN.univar_NN_300_300",  # ~~~ 2 hidden layers, 300 neurons each
-        "univar_NN.univar_NN_500_500",  # ~~~ 2 hidden layers, 500 neurons each
-        "univar_NN.univar_NN_750_750",  # ~~~ 2 hidden layers, 750 neurons each
-        "univar_NN.univar_NN_1000_1000" # ~~~ 2 hidden layers, 1000 neurons each
+        "univar_NN",                        # ~~~ 2 hidden layers, 100 neurons each
+        "univar_NN.univar_NN_300_300",      # ~~~ 2 hidden layers, 300 neurons each
+        "univar_NN.univar_NN_500_500",      # ~~~ 2 hidden layers, 500 neurons each
+        "univar_NN.univar_NN_750_750",      # ~~~ 2 hidden layers, 750 neurons each
+        "univar_NN.univar_NN_1000_1000",    # ~~~ 2 hidden layers, 1000 neurons each
+        "univar_NN.univar_NN_300_300_300",      # ~~~ 3 hidden layers, 300 neurons each
+        "univar_NN.univar_NN_500_500_500",      # ~~~ 3 hidden layers, 500 neurons each
+        "univar_NN.univar_NN_750_750_750",      # ~~~ 3 hidden layers, 750 neurons each
+        "univar_NN.univar_NN_1000_1000_1000"    # ~~~ 3 hidden layers, 1000 neurons each
     ]
 DATA = [    # ~~~ two different train/val splits of the same data
         "univar_missing_middle_normalized_12",
-        "univar_missing_middle_normalized_12_cross_fold",
+        "univar_missing_middle_normalized_12_cross_fold"
     ]
+
 #
 # ~~~ Create and populate a folder for the hyperparameter search
 os.mkdir(folder_name)
 os.mkdir( os.path.join( folder_name, "experimental_models" ))
+
 #
 # ~~~ Loop over the hyperparameter grid, saving each one to a .json file called `RUN_THIS_<count>.json`
 count = 1
@@ -86,6 +93,7 @@ for lr in LR:
             json_filename = os.path.join(folder_name,tag)
             dict_to_json( hyperparameter_template, json_filename, verbose=False )
             count += 1
+
 print("")
 print(f"Successfully created and populted the folder {folder_name} with {count-1} .json files. To run an hour of hyperparameter search, navigate to the directory of `tuning_loop.py` and say:")
 print("")
