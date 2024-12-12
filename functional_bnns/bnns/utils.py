@@ -157,6 +157,17 @@ def sample_from_convex_hull( points, n_samples, noise=0.):
 #     assert convex_weights.shape == ( math.comb(res+d-1,res), d) # ~~~ https://en.wikipedia.org/wiki/Stars_and_bars_(combinatorics)#Theorem_two
 #     return convex_weights if weights_only else convex_weights@points
 
+#
+# ~~~ Apply the exact formula for KL( N(mu_0,diag(sigma_0**2)) || N(mu_1,diag(sigma_1**2)) ) (https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Multivariate_normal_distributions)
+def diagonal_gaussian_kl( mu_0, sigma_0, mu_1, sigma_1 ):
+    assert mu_0.shape == mu_1.shape == sigma_0.shape == sigma_1.shape, "Shape assumptions violated."
+    assert sigma_0.abs().min()>0 and sigma_1.abs().min()>0, "Variance must be positive."
+    return (1/2)*(
+            ((sigma_0/sigma_1)**2).sum()                # ~~~ the diagonal case of "tr(Sigma_1^{-1}Sigma_0)"
+            - mu_0.numel()                              # ~~~ what wikipedia calls "k"
+            + (((mu_1-mu_0)/sigma_1)**2).sum()          # ~~~ the diagonal case of "(mu_0-mu_1)^TSigma_1^{-1}(mu_0-mu_1)" potentially numerically unstble if mu_0\approx\mu_1 and \sigma_1 is small
+        ) + sigma_1.log().sum() - sigma_0.log().sum()   # ~~~ the diagonal case of "log(|Sigma_1|/|Sigma_0|)"
+
 
 
 ### ~~~

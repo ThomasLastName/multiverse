@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.func import jacrev, functional_call
 from bnns.SSGE import SpectralSteinEstimator as SSGE
-from bnns.utils import log_gaussian_pdf, get_std, manual_Jacobian
+from bnns.utils import log_gaussian_pdf, diagonal_gaussian_kl, get_std, manual_Jacobian
 from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
@@ -160,8 +160,22 @@ class SequentialGaussianBNN(nn.Module):
         return log_posterior
     #
     # ~~~ Compute the kl divergence between posterior and prior distributions over the network weights
-    def weight_kl(self):
-        return self.log_posterior_density() - self.log_prior_density()
+    def weight_kl( self, exact_formula=False ):
+        if not exact_formula:
+            return self.log_posterior_density() - self.log_prior_density()
+        else:
+            kl_div = 0.
+            #
+            # ~~~ Because the weights and biases are mutually independent, the entropy is *additive* like log-density (https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Properties)
+            for j in range(self.n_layers):
+                post_mean      =    self.model_mean[j]  # ~~~ the trainable (posterior) means of this layer's parameters
+                post_std       =    self.model_std[j]   # ~~~ the trainable (posterior) standard deviations of this layer's parameters
+                prior_mean     =    self.prior_mean[j]  # ~~~ the prior means of this layer's parameters
+                prior_std      =    self.prior_std[j]   # ~~~ the prior standard deviations of this layer's parameters
+                if isinstance( post_mean, nn.modules.linear.Linear ):
+                    kl_div += diagonal_gaussian_kl( mu_0=post_mean.weight, sigma_0=post_std.weight, mu_1=prior_mean.weight, sigma_1=prior_std.weight )
+                    kl_div += diagonal_gaussian_kl(  mu_0=post_mean.bias,   sigma_0=post_std.bias,   mu_1=prior_mean.bias,   sigma_1=prior_std.bias  )
+            return kl_div
     # ~~~
     #
     ### ~~~
@@ -226,14 +240,6 @@ class SequentialGaussianBNN(nn.Module):
                 #
                 # ~~~ In case that crashes due to not enough RAM, then try the more memory-efficient (but slower) impelemntation of the same routine using a for loop
                 self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh, iterative_avg=True )
-            #
-            # ~~~ No longer necessary (?) workaround for a bug in the pytorch source code
-            # try:
-            #     self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh )
-            # except RuntimeError:
-            #     self.use_eigh = False
-            #     my_warn("Due to a bug in the pytorch source code, BNN.use_eigh has been set to False")
-            #     self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, h=self.use_eigh )
     #
     # ~~~ Generate a fresh grid of several "points like our model's inputs" from the input domain
     def sample_new_measurement_set(self,n=200):
@@ -334,26 +340,6 @@ class SequentialGaussianBNN(nn.Module):
             mu_theta = self( self.measurement_set, resample_weights=False ).flatten() - J_beta @ theta_beta_minus_m_beta   # ~~~ solving for the mean of the paper's eq'n (14) by subtracting J_beta(theta_beta-m_beta) from the paper's equation (12)
             Sigma_theta = (S_beta_sqrt*J_beta) @ (S_beta_sqrt*J_beta).T
         return mu_theta, Sigma_theta
-        # #
-        # # ~~~ In this case, the Jacbian is easy to compute exactly: e.g., the Jacobian of A@whatever w.r.t. A is, simply `whatever`; let's first compute the `whatever`
-        # J_beta = self.measurement_set
-        # for j in range(self.n_layers-1):        # ~~~ stop before feeding it into the final layer
-        #     J_beta = self.model_mean[j](J_beta) # ~~~ since the Jacobian is computed at the mean, it does not depend on self.realized_standard_normal
-        # #
-        # # ~~~ The Jacobian of A@whatever+b w.r.t. (A,b) is, simply `column_stack(whatever,1)`
-        # if self.model_mean[-1].bias is not None:    # ~~~ only stack with 1's if there is a bias term
-        #     J_beta = torch.column_stack([
-        #             J_beta,
-        #             torch.ones( J_beta.shape[0], 1, device=self.measurement_set.device, dtype=self.measurement_set.dtype )
-        #         ])
-        # S_diag = torch.column_stack([
-        #         self.rho(self.model_std[-1].weight),
-        #         self.rho(self.model_std[-1].bias)
-        #     ]) if self.model_std[-1].bias else self.rho(self.model_std[-1].weight)
-        # theta_beta_minus_m_beta = S_diag * torch.column_stack([z.weight,z.bias])   # ~~~ theta_beta = mu+sigma*z is sampled as theta_sampled = mu+sigma*z_sampled
-        # mu_theta = self( self.measurement_set, resample_weights=False ) - J_beta @ theta_beta_minus_m_beta.T # ~~~ solving for the mean of the approximating normal distribution when using f on the LHS of the paper's equation (12)
-        # Sigma_theta = J_beta @ S_diag.squeeze().diag() @ J_beta.T
-        # return mu_theta, Sigma_theta
     #
     # ~~~ Compute the mean and standard deviation of a normal distribution approximating q_theta
     def gaussian_kl( self, resample_measurement_set=True, add_stabilizing_noise=True, approximate_mean=False ):
