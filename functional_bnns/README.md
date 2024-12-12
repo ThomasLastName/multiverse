@@ -1,3 +1,35 @@
+# Summary
+
+This package fulfills a need for reliable, modular, general, and efficient open source implementations of Bayesian neural networks (BNNs) beyond only Bayess-by-backprop (BBB) with normally distributed weights.
+
+Many high quality implementations of BBB exist.
+However, BBB is only one of many possible ways to train a BNN, and the normal distribution is not sacred, either.
+We sought to answer the question of whether or not BBB deserves its status as the default method to train a BNN, which it appears to have been awarded prematurely.
+Many different algorithms exist for training a BNN, other than BBB.
+However, high quality open source implementations exist only of BBB, and not of most other training methods.
+The prevalence of BBB above all other training methods can perhaps be attributed merely to the availability of software.
+This package exists in order to provide implementations of a wide variety of methods for training BNNs *at a sufficient level of quality* to support rigorously testing and comparing the performance of each method.
+
+The training methods implemented in this package are:
+ - Bayes-by-backprop (BBB)
+ - SVGD
+ - The original fBNN method
+ - Gaussian approximation
+ - fSVGD
+
+as well as, for the sake of comparison,
+ - Deterministic neural networks
+ - Neural networks with dropout
+ - Conventional neural network ensembles
+ - Conventional Gaussian process regression
+
+The BNN structures implemented in this package are:
+ - Mutually independent normally distributed weights
+ - Mutually independent uniformly distributed weights
+
+In addition to impelementations of each of the above training methods, this package also provides infrastructure for testing the performance of each method, including a pipeline for hyperparameter tuning and model evaluation.
+
+
 # Setup
 
 **IMPORTANT: At this time, `git` is a prerequisite for installation.**
