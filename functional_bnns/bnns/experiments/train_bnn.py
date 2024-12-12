@@ -5,21 +5,25 @@
 
 #
 # ~~~ Standard packages
+import numpy as np
 import torch
 from torch import nn, optim
-from tqdm import tqdm, trange
+from tqdm import tqdm
+from statistics import mean as avg
 from matplotlib import pyplot as plt
 from importlib import import_module
+from itertools import product
 from time import time
 import argparse
 import sys
+import os
 
 #
 # ~~~ The guts of the model
 from bnns.SequentialGaussianBNN import SequentialGaussianBNN
 #
 # ~~~ Package-specific utils
-from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, set_Dataset_attributes, generate_json_filename
+from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, set_Dataset_attributes, generate_json_filename, non_negative_list, EarlyStopper
 from bnns.metrics import *
 
 #
@@ -52,7 +56,6 @@ hyperparameter_template = {
     "GAUSSIAN_APPROXIMATION" : True,    # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
     "APPPROXIMATE_GAUSSIAN_MEAN" : True,# ~~~ whether to compute exactly, or approximately, the mean from eq'n (14) in https://arxiv.org/pdf/2312.17199
     "FUNCTIONAL" : False,   # ~~~ whether or to do functional training or (if False) BBB
-    "N_MC_SAMPLES" : 20,    # ~~~ expectations (in the variational loss) are estimated as an average of this many Monte-Carlo samples
     "PROJECT" : True,       # ~~~ if True, use projected gradient descent; else use the weird thing from the paper
     "PROJECTION_TOL" : 1e-6,# ~~~ for numerical reasons, project onto [PROJECTION_TOL,Inf), rather than onto [0,Inft)
     "PRIOR_J"   : 100,      # ~~~ `J` in the SSGE of the prior score
@@ -67,6 +70,11 @@ hyperparameter_template = {
     "LR" : 0.0005,
     "BATCH_SIZE" : 64,
     "N_EPOCHS" : 200,
+    "EARLY_STOPPING" : True,
+    "DELTA": 0.05,
+    "PATIENCE" : 20,
+    "STRIDE" : 30,
+    "N_MC_SAMPLES" : 1,
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
@@ -80,7 +88,8 @@ hyperparameter_template = {
     # ~~~ For metrics and visualization
     "EXTRA_STD" : True,
     "N_POSTERIOR_SAMPLES_EVALUATION" : 1000,# ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
-	"SHOW_DIAGNOSTICS" : True
+	"SHOW_DIAGNOSTICS" : True,
+    "SHOW_PLOT" : True
 }
 
 #
@@ -139,12 +148,8 @@ D_train = set_Dataset_attributes( data.D_train, device=DEVICE, dtype=DTYPE )
 D_test  =  set_Dataset_attributes( data.D_test, device=DEVICE, dtype=DTYPE )
 D_val   =   set_Dataset_attributes( data.D_val, device=DEVICE, dtype=DTYPE ) # ~~~ for hyperparameter evaulation and such, use the validation set instead of the "true" test set
 data_is_univariate = (D_train[0][0].numel()==1)
-
-try:
-    scale = data.scale
-    CONDITIONAL_STD /= scale
-except:
-    pass
+x_train, y_train   =   convert_Dataset_to_Tensors(D_train)
+x_test,  y_test    =   convert_Dataset_to_Tensors(D_test if final_test else D_val)
 
 try:
     grid = data.grid.to( device=DEVICE, dtype=DTYPE )
@@ -191,13 +196,9 @@ if GAUSSIAN_APPROXIMATION:
 #
 # ~~~ Some plotting stuff
 if data_is_univariate:
-    #
-    # ~~~ Define some objects used for plotting
     green_curve =  data.y_test.cpu().squeeze()
     x_train_cpu = data.x_train.cpu()
     y_train_cpu = data.y_train.cpu().squeeze()
-    #
-    # ~~~ Define the main plotting routine
     plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
     def plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, bnn, extra_std=(CONDITIONAL_STD if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, n_posterior_samples=N_POSTERIOR_SAMPLES, title=description_of_the_experiment, prior=False ):
         #
@@ -216,13 +217,6 @@ if data_is_univariate:
             gif.capture( clear_frame_upon_capture=(j+1==INITIAL_FRAME_REPETITIONS) )
 
 #
-# ~~~ Define some objects for recording the hisorty of training
-metrics = ( "ELBO", "post", "prior", "like" )
-history = {}
-for metric in metrics:
-    history[metric] = []
-
-#
 # ~~~ Define how to project onto the constraint set
 if PROJECT:
     BNN.rho = lambda x:x
@@ -233,87 +227,276 @@ if PROJECT:
     projection_step(BNN)
 
 #
-# ~~~ Define the measurement set for functional training
-x_train, _ = convert_Dataset_to_Tensors(D_train)
-BNN.measurement_set = x_train
+# ~~~ Establish some variables used for training
+N_EPOCHS = non_negative_list( N_EPOCHS, integer_only=True ) # ~~~ supports N_EPOCHS to be a list of integers
+STRIDE   = non_negative_list(  STRIDE,  integer_only=True ) # ~~~ supports STRIDE to be a list of integers
+PATIENCE = non_negative_list( PATIENCE, integer_only=True ) # ~~~ supports PATIENCE to be a list of integers
+DELTA    = non_negative_list( DELTA )                       # ~~~ supports DELTA to be a list of integers
+assert np.diff(N_EPOCHS+[N_EPOCHS[-1]+1]).min()>0, "The given sequence N_EPOCHS is not strictly increasing."
+train_loss_curve = []
+val_loss_curve = []
+train_likelihood_curve = []
+val_likelihood_curve = []
+kl_div_curve = []
+train_acc_curve = []
+val_acc_curve = []
+total_iterations = 0
+epochs_completed_so_far = 0
+target_epochs = N_EPOCHS.pop(0)
+starting_time = time()
+first_round = True
+keep_training = True
+if EARLY_STOPPING:
+    #
+    # ~~~ Define all len(PATIENCE)*len(DELTA)*len(STRIDE) stopping conditions
+    stride_patience_and_delta_stopping_conditions = [
+            [
+                EarlyStopper( patience=patience, delta=delta )
+                for delta, patience in product(DELTA,PATIENCE)
+            ]
+            for _ in STRIDE
+        ]
 
 #
 # ~~~ Start the training loop
-with support_for_progress_bars():   # ~~~ this just supports green progress bars
-    pbar = tqdm( desc=description_of_the_experiment, total=N_EPOCHS*len(dataloader), ascii=' >=' )
-    starting_time = time()
-    for e in range(N_EPOCHS):
+while keep_training:
+    with support_for_progress_bars():   # ~~~ this just supports green progress bars
+        stopped_early = False
+        pbar = tqdm( desc=description_of_the_experiment, total=target_epochs*len(dataloader), initial=epochs_completed_so_far*len(dataloader), ascii=' >=' )
+        # ~~~ 
         #
-        # ~~~ Training logic
-        for X, y in dataloader:
-            X, y = X.to(DEVICE), y.to(DEVICE)
-            for j in range(N_MC_SAMPLES):
+        ### ~~~
+        ## ~~~ Main Loop
+        ### ~~~
+        #
+        # ~~~ The actual training logic (see train_nn.py for a simpler analogy)
+        for e in range( target_epochs - epochs_completed_so_far ):
+            for X, y in dataloader:
+                X, y = X.to(DEVICE), y.to(DEVICE)
+                for j in range(N_MC_SAMPLES):
+                    #
+                    # ~~~ Compute the gradient of the loss function
+                    BNN.sample_from_standard_normal()   # ~~~ draw a new MC sample for estimating the integrals
+                    if not FUNCTIONAL:
+                        kl_div = BNN.weight_kl()
+                    if FUNCTIONAL and not GAUSSIAN_APPROXIMATION:
+                        kl_div = BNN.functional_kl()
+                    if FUNCTIONAL and GAUSSIAN_APPROXIMATION:
+                        kl_div = BNN.gaussian_kl(approximate_mean=APPPROXIMATE_GAUSSIAN_MEAN)
                 #
-                # ~~~ Compute the gradient of the loss function
-                BNN.sample_from_standard_normal()   # ~~~ draw a new MC sample for estimating the integrals
-                if not FUNCTIONAL:
-                    kl_div = BNN.weight_kl()
-                if FUNCTIONAL and not GAUSSIAN_APPROXIMATION:
-                    kl_div = BNN.functional_kl()
-                if FUNCTIONAL and GAUSSIAN_APPROXIMATION:
-                    kl_div = BNN.gaussian_kl(approximate_mean=APPPROXIMATE_GAUSSIAN_MEAN)
-            #
-            # ~~~ Add the the likelihood term and differentiate
-            log_likelihood_density = BNN.log_likelihood_density(X,y)
-            negative_ELBO = ( kl_div - log_likelihood_density )/N_MC_SAMPLES
-            negative_ELBO.backward()
-            #
-            # ~~~ This would be training based only on the data:
-            # loss = -BNN.log_likelihood_density(X,y)
-            # loss.backward()
-            #
-            # ~~~ Do the gradient-based update
-            optimizer.step()
-            optimizer.zero_grad()
-            #
-            # ~~~ Do the projection
-            if PROJECT:
-                projection_step(BNN)
-            #
-            # ~~~ Record some diagnostics
-            # history["ELBO"].append( -negative_ELBO.item())
-            # history["post"].append( log_posterior_density.item())
-            # history["prior"].append(log_prior_density.item())
-            # history["like"].append( log_likelihood_density.item())
-            # to_print = {
-            #     "ELBO" : f"{-negative_ELBO.item():<4.4f}",
-            #     "post" : f"{log_posterior_density.item():<4.4f}",
-            #     "prior": f"{log_prior_density.item():<4.4f}",
-            #     "like" : f"{log_likelihood_density.item():<4.4f}"
-            # }
-            _ = pbar.update()
-        with torch.no_grad():
-            predictions = torch.stack([ BNN(X,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ])
-            to_print = { "rmse_of_mean" : f"{rmse_of_mean(predictions,y):<4.4f}" }
-        pbar.set_postfix(to_print)
+                # ~~~ Add the the likelihood term and differentiate
+                log_likelihood_density = BNN.log_likelihood_density(X,y)
+                negative_ELBO = ( kl_div - log_likelihood_density )/N_MC_SAMPLES
+                #
+                # ~~~ Do the gradient-based update
+                negative_ELBO.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+                #
+                # ~~~ Do the projection
+                if PROJECT:
+                    projection_step(BNN)
+                #
+                # ~~~ Report a moving average of train_loss as well as val_loss in the progress bar
+                if len(train_loss_curve)>0:
+                    pbar_info = { "train_loss": f"{ avg(train_loss_curve[-min(STRIDE):]) :<4.4f}" }
+                    if len(val_loss_curve)>0:
+                        pbar_info["val_loss"] = f"{ avg(val_loss_curve[-min(STRIDE):]) :<4.4f}"
+                    if len(val_acc_curve)>0:
+                        pbar_info["val_acc"] = f"{ avg(val_acc_curve[-min(STRIDE):]) :<4.4f}"
+                    pbar.set_postfix(pbar_info)
+                _ = pbar.update()
+                #
+                # ~~~ Every so often, do some additional stuff, too...
+                if (pbar.n+1)%HOW_OFTEN==0:
+                    #
+                    # ~~~ Plotting logic
+                    if data_is_univariate and MAKE_GIF and (e+1)%HOW_OFTEN==0:
+                        fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
+                        gif.capture()
+                    #
+                    # ~~~ Record a little diagnostic info
+                    with torch.no_grad():
+                        train_loss_curve.append(negative_ELBO.item())
+                        train_likelihood_curve.append(log_likelihood_density.item())
+                        kl_div_curve.append(kl_div.item())
+                        val_lik = BNN.log_likelihood_density(x_test,y_test)
+                        val_likelihood_curve.append(val_lik.item())
+                        val_loss_curve.append(kl_div.item()-val_lik.item())
+                        predictions_train = torch.stack([ BNN(X,resample_weights=True) for _ in range(20) ])
+                        predictions_val   = torch.stack([ BNN(x_test,resample_weights=True) for _ in range(20) ])
+                        train_acc_curve.append(rmse_of_mean( predictions_train, y ))
+                        val_acc_curve.append(rmse_of_mean( predictions_val, y_test ))
+                    #
+                    # ~~~ Assess whether or not any new stopping condition is triggered (although, training won't stop until *every* stopping condition is triggered)
+                    if EARLY_STOPPING:
+                        for i, stride in enumerate(STRIDE):
+                            patience_and_delta_stopping_conditions = stride_patience_and_delta_stopping_conditions[i]
+                            moving_avg_of_val_loss = avg(val_loss_curve[-stride:])
+                            for j, early_stopper in enumerate(patience_and_delta_stopping_conditions):
+                                stopped_early = early_stopper(moving_avg_of_val_loss)
+                                if stopped_early:
+                                    patience, delta = early_stopper.patience, early_stopper.delta
+                                    del patience_and_delta_stopping_conditions[j]
+                                    if all( len(lst)==0 for lst in stride_patience_and_delta_stopping_conditions ):
+                                        keep_training = False
+                                    break   # ~~~ break out of the loop over early stoppers
+                            if stopped_early:
+                                break       # ~~~ break out of the loop over strides
+                    if stopped_early:
+                        break               # ~~~ break out of the loop over batches
+            if stopped_early:
+                break                       # ~~~ break out of the loop over epochs
+        total_iterations = pbar.n
+        pbar.close()
+        epochs_completed_so_far += e
         #
-        # ~~~ Plotting logic
-        if data_is_univariate and MAKE_GIF and (e+1)%HOW_OFTEN==0:
-            fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
-            gif.capture()
-            # print("captured")
-
-pbar.close()
-ending_time = time()
+        # ~~~ If we reached the target number of epochs, then update `target_epochs` and do not record any early stopping hyperparameters
+        if not stopped_early:
+            epochs_completed_so_far += 1
+            patience, delta, stride = None, None, None
+            try:
+                target_epochs = N_EPOCHS.pop(0)
+            except IndexError:
+                keep_training = False
+        # ~~~
+        #
+        ### ~~~
+        ## ~~~ Metrics (evaluate the model at this checkpoint, and save the results)
+        ### ~~~
+        #
+        # ~~~ Compute the posterior predictive distribution on the testing dataset
+        def predict(x):
+                predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
+                if EXTRA_STD:
+                    predictions += CONDITIONAL_STD*torch.randn_like(predictions)
+                return predictions
+        with torch.no_grad():
+            predictions = predict(x_test)
+        try:
+            interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
+            extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )
+            predictions_on_interpolary_grid = predict(interpolary_grid)
+            predictions_on_extrapolary_grid = predict(extrapolary_grid)
+        except AttributeError:
+            my_warn(f"Could import `extrapolary_grid` or `interpolary_grid` from bnns.data.{data}. For the best assessment of the quality of the UQ, please define these variables in the data file (no labels necessary)")
+        #
+        # ~~~ Compute the desired metrics
+        hyperparameters["total_iter"] = total_iterations/len(dataloader)
+        hyperparameters["epochs_completed"] = epochs_completed_so_far
+        hyperparameters["compute_time"] = time() - starting_time
+        hyperparameters["patience"] = patience
+        hyperparameters["delta"] = delta
+        hyperparameters["stride"] = stride
+        hyperparameters["val_loss_curve"] = val_loss_curve
+        hyperparameters["train_loss_curve"] = train_loss_curve
+        hyperparameters["val_acc_curve"] = val_acc_curve
+        hyperparameters["train_acc_curve"] = train_acc_curve
+        hyperparameters["val_lik_curve"] = val_likelihood_curve
+        hyperparameters["train_lik_curve"] = train_likelihood_curve
+        hyperparameters["kl_div_curve"] = kl_div_curve
+        hyperparameters["METRIC_rmse_of_median"]             =      rmse_of_median( predictions, y_test )
+        hyperparameters["METRIC_rmse_of_mean"]               =        rmse_of_mean( predictions, y_test )
+        hyperparameters["METRIC_mae_of_median"]              =       mae_of_median( predictions, y_test )
+        hyperparameters["METRIC_mae_of_mean"]                =         mae_of_mean( predictions, y_test )
+        hyperparameters["METRIC_max_norm_of_median"]         =  max_norm_of_median( predictions, y_test )
+        hyperparameters["METRIC_max_norm_of_mean"]           =    max_norm_of_mean( predictions, y_test )
+        hyperparameters["METRIC_median_energy_score"]        =       energy_scores( predictions, y_test ).median().item()
+        hyperparameters["METRIC_coverage"]                   =   aggregate_covarge( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES )
+        hyperparameters["METRIC_median_avg_inverval_score"]  =  avg_interval_score_of_response_features( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES ).median().item()
+        for use_quantiles in (True,False):
+            show = SHOW_DIAGNOSTICS and (use_quantiles==VISUALIZE_DISTRIBUTION_USING_QUANTILES)  # ~~~ i.e., diagnostics are requesed, the prediction type mathces the uncertainty type (mean and std. dev., or median and iqr)
+            tag = "quantile" if use_quantiles else "pm2_std"
+            hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{tag}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{tag}"]  =  uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=use_quantiles, show=show, verbose=SHOW_DIAGNOSTICS )
+            try:
+                hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{tag}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{tag}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, use_quantiles, extrapolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation", verbose=SHOW_DIAGNOSTICS )
+                hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{tag}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{tag}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, use_quantiles, interpolary_grid, x_train, show=show, title="Uncertainty vs Proximity to Data Within the Region of Interpolation", verbose=SHOW_DIAGNOSTICS )
+                hyperparameters[f"METRIC_extrapolation_uncertainty_spread_{tag}"]  =  uncertainty_spread( predictions_on_extrapolary_grid, use_quantiles )
+                hyperparameters[f"METRIC_interpolation_uncertainty_spread_{tag}"]  =  uncertainty_spread( predictions_on_interpolary_grid, use_quantiles )
+            except NameError:
+                pass    # ~~~ the user was already warned "Could import `extrapolary_grid` or `interpolary_grid` from bnns.data.{data}."
+            except:
+                raise
+        #
+        # ~~~ For the SLOSH dataset, run all the same metrics on the unprocessed data (the actual heatmaps)
+        try:
+            S = data.s_truncated.to( device=DEVICE, dtype=DTYPE )
+            V = data.V_truncated.to( device=DEVICE, dtype=DTYPE )
+            Y = data.unprocessed_y_test.to( device=DEVICE, dtype=DTYPE )
+            def predict(x):
+                predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
+                if EXTRA_STD:
+                    predictions += CONDITIONAL_STD*torch.randn_like(predictions)
+                return predictions.mean(dim=0,keepdim=True) * S @ V.T
+            with torch.no_grad():
+                predictions = predict(x_test)
+                predictions_on_interpolary_grid = predict(interpolary_grid)
+                predictions_on_extrapolary_grid = predict(extrapolary_grid)
+            #
+            # ~~~ Compute the desired metrics
+            hyperparameters["METRIC_unprocessed_rmse_of_mean"]                =        rmse_of_mean( predictions, Y )
+            hyperparameters["METRIC_unprocessed_rmse_of_median"]              =      rmse_of_median( predictions, Y )
+            hyperparameters["METRIC_unprocessed_mae_of_mean"]                 =         mae_of_mean( predictions, Y )
+            hyperparameters["METRIC_unprocessed_mae_of_median"]               =       mae_of_median( predictions, Y )
+            hyperparameters["METRIC_unprocessed_max_norm_of_mean"]            =    max_norm_of_mean( predictions, Y )
+            hyperparameters["METRIC_unprocessed_max_norm_of_median"]          =  max_norm_of_median( predictions, Y )
+            hyperparameters["METRIC_unproccessed_coverage"]                   =   aggregate_covarge( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES )
+            hyperparameters["METRIC_unproccessed_median_energy_score"]        =       energy_scores( predictions, Y ).median().item()
+            hyperparameters["METRIC_unproccessed_median_avg_inverval_score"]  =       avg_interval_score_of_response_features( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES ).median().item()
+            for estimator in ("mean","median"):
+                hyperparameters[f"METRIC_unprocessed_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
+                hyperparameters[f"METRIC_unprocessed_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
+                hyperparameters[f"METRIC_unprocessed_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]                  =   uncertainty_vs_accuracy( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
+        except AttributeError:
+            pass
+        #
+        # ~~~ Save the results
+        if input_json_filename.startswith("demo"):
+            my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
+        else:
+            #
+            # ~~~ Put together the output json filename
+            output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
+            if first_round:
+                first_round = False
+                if overwrite_json:
+                    os.remove(input_json_filename)
+            output_json_filename = process_for_saving(output_json_filename)
+            hyperparameters["filename"] = output_json_filename
+            #
+            # ~~~ Ok, now actually save the results
+            if model_save_dir is not None:
+                state_dict_path = os.path.join(
+                        model_save_dir,
+                        os.path.split(output_json_filename.strip(".json"))[1] + ".pth"
+                    )
+                hyperparameters["STATE_DICT_PATH"] = state_dict_path
+                torch.save(
+                        BNN.state_dict(),
+                        state_dict_path
+                    )
+            dict_to_json(
+                    hyperparameters,
+                    output_json_filename,
+                    verbose = SHOW_DIAGNOSTICS
+                )
+        #
+        # ~~~ Display the results
+        if SHOW_DIAGNOSTICS:
+            print_dict(hyperparameters)
 
 #
-# ~~~ Plot the state of the posterior predictive distribution at the end of training
+# ~~~ Afterwards, develop the .gif or plot the trained model, if applicable
 if data_is_univariate:
     if MAKE_GIF:
         for j in range(FINAL_FRAME_REPETITIONS):
             gif.frames.append( gif.frames[-1] )
         gif.develop( destination=description_of_the_experiment, fps=24 )
         plt.close()
-    else:
-        if SHOW_DIAGNOSTICS:
-            fig,ax = plt.subplots(figsize=(12,6))
-            fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
-            plt.show()
+    elif SHOW_PLOT:
+        fig,ax = plt.subplots(figsize=(12,6))
+        fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
+        plt.show()
 
 #
 # ~~~ Validate implementation of the algorithm on the synthetic dataset "bivar_trivial"
@@ -330,119 +513,3 @@ if data.__name__ == "bnns.data.bivar_trivial":
     ax.grid()
     fig.tight_layout()
     plt.show()
-
-
-
-### ~~~
-## ~~~ Debugging diagnostics
-### ~~~
-
-# def plot( metric, window_size=N_EPOCHS/50 ):
-#     plt.plot( moving_average(history[metric],int(window_size)) )
-#     plt.grid()
-#     plt.tight_layout()
-#     plt.show()
-
-
-
-### ~~~
-## ~~~ Metrics (evaluate the trained model)
-### ~~~
-
-#
-# ~~~ Compute the posterior predictive distribution on the testing dataset
-x_train, y_train  =  convert_Dataset_to_Tensors(D_train)
-x_test, y_test    =    convert_Dataset_to_Tensors( D_test if final_test else D_val )
-
-def predict(x):
-        predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
-        if EXTRA_STD:
-            predictions += CONDITIONAL_STD*torch.randn_like(predictions)
-        return predictions
-
-with torch.no_grad():
-    predictions = predict(x_test)
-
-try:
-    interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
-    extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )        
-    predictions_on_interpolary_grid = predict(interpolary_grid)
-    predictions_on_extrapolary_grid = predict(extrapolary_grid)
-except AttributeError:
-    my_warn(f"Could import `extrapolary_grid` or `interpolary_grid` from bnns.data.{data}. For the best assessment of the quality of the UQ, please define these variables in the data file (no labels necessary)")
-
-#
-# ~~~ Compute the desired metrics
-hyperparameters["METRIC_compute_time"] = ending_time - starting_time
-hyperparameters["METRIC_rmse_of_median"]             =      rmse_of_median( predictions, y_test )
-hyperparameters["METRIC_rmse_of_mean"]               =        rmse_of_mean( predictions, y_test )
-hyperparameters["METRIC_mae_of_median"]              =       mae_of_median( predictions, y_test )
-hyperparameters["METRIC_mae_of_mean"]                =         mae_of_mean( predictions, y_test )
-hyperparameters["METRIC_max_norm_of_median"]         =  max_norm_of_median( predictions, y_test )
-hyperparameters["METRIC_max_norm_of_mean"]           =    max_norm_of_mean( predictions, y_test )
-hyperparameters["METRIC_median_energy_score"]        =       energy_scores( predictions, y_test ).median().item()
-hyperparameters["METRIC_coverage"]                   =   aggregate_covarge( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES )
-hyperparameters["METRIC_median_avg_inverval_score"]  =  avg_interval_score_of_response_features( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES ).median().item()
-for estimator in ("mean","median"):
-    hyperparameters[f"METRIC_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"] = uncertainty_vs_accuracy( predictions, y_test, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
-    try:
-        hyperparameters[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
-        hyperparameters[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-    except NameError:
-        pass
-
-#
-# ~~~ For the SLOSH dataset, run all the same metrics on the unprocessed data (the actual heatmaps)
-try:
-    S = data.s_truncated.to( device=DEVICE, dtype=DTYPE )
-    V = data.V_truncated.to( device=DEVICE, dtype=DTYPE )
-    Y = data.unprocessed_y_test.to( device=DEVICE, dtype=DTYPE )
-    def predict(x):
-        predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
-        if EXTRA_STD:
-            predictions += CONDITIONAL_STD*torch.randn_like(predictions)
-        return predictions.mean(dim=0,keepdim=True) * S @ V.T
-    with torch.no_grad():
-        predictions = predict(x_test)
-        predictions_on_interpolary_grid = predict(interpolary_grid)
-        predictions_on_extrapolary_grid = predict(extrapolary_grid)
-    #
-    # ~~~ Compute the desired metrics
-    hyperparameters["METRIC_unprocessed_rmse_of_mean"]                =        rmse_of_mean( predictions, Y )
-    hyperparameters["METRIC_unprocessed_rmse_of_median"]              =      rmse_of_median( predictions, Y )
-    hyperparameters["METRIC_unprocessed_mae_of_mean"]                 =         mae_of_mean( predictions, Y )
-    hyperparameters["METRIC_unprocessed_mae_of_median"]               =       mae_of_median( predictions, Y )
-    hyperparameters["METRIC_unprocessed_max_norm_of_mean"]            =    max_norm_of_mean( predictions, Y )
-    hyperparameters["METRIC_unprocessed_max_norm_of_median"]          =  max_norm_of_median( predictions, Y )
-    hyperparameters["METRIC_unproccessed_coverage"]                   =   aggregate_covarge( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES )
-    hyperparameters["METRIC_unproccessed_median_energy_score"]        =       energy_scores( predictions, Y ).median().item()
-    hyperparameters["METRIC_unproccessed_median_avg_inverval_score"]  =       avg_interval_score_of_response_features( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES ).median().item()
-    for estimator in ("mean","median"):
-        hyperparameters[f"METRIC_unprocessed_extrapolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_extrapolary_grid, (estimator=="median"), extrapolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Outside the Region of Interpolation" )
-        hyperparameters[f"METRIC_unprocessed_interpolation_uncertainty_vs_proximity_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_proximity_cor_{estimator}"]  =  uncertainty_vs_proximity( predictions_on_interpolary_grid, (estimator=="median"), interpolary_grid, x_train, show=SHOW_DIAGNOSTICS, title="Uncertainty vs Proximity to Data Within the Region of Interpolation" )
-        hyperparameters[f"METRIC_unprocessed_uncertainty_vs_accuracy_slope_{estimator}"], hyperparameters[f"METRIC_uncertainty_vs_accuracy_cor_{estimator}"]                  =   uncertainty_vs_accuracy( predictions, Y, quantile_uncertainty=VISUALIZE_DISTRIBUTION_USING_QUANTILES, quantile_accuracy=(estimator=="median"), show=SHOW_DIAGNOSTICS )
-except AttributeError:
-    pass
-
-#
-# ~~~ Print the results
-if SHOW_DIAGNOSTICS:
-    print_dict(hyperparameters)
-
-
-
-### ~~~
-## ~~~ Save the results
-### ~~~
-
-if input_json_filename.startswith("demo"):
-    my_warn(f'Results are not saved when the hyperparameter json filename starts with "demo" (in this case `{input_json_filename}`)')
-else:
-    output_json_filename = input_json_filename if overwrite_json else generate_json_filename()
-    if model_save_dir is not None:
-        hyperparameters["MODEL_SAVE_DIR"] = model_save_dir
-        raise NotImplementedError("TODO")
-    dict_to_json( hyperparameters, output_json_filename, override=overwrite_json, verbose=SHOW_DIAGNOSTICS )
-
-
-#
