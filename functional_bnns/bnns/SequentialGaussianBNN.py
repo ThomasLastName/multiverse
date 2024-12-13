@@ -173,8 +173,8 @@ class SequentialGaussianBNN(nn.Module):
                 prior_mean     =    self.prior_mean[j]  # ~~~ the prior means of this layer's parameters
                 prior_std      =    self.prior_std[j]   # ~~~ the prior standard deviations of this layer's parameters
                 if isinstance( post_mean, nn.modules.linear.Linear ):
-                    kl_div += diagonal_gaussian_kl( mu_0=post_mean.weight, sigma_0=post_std.weight, mu_1=prior_mean.weight, sigma_1=prior_std.weight )
-                    kl_div += diagonal_gaussian_kl(  mu_0=post_mean.bias,   sigma_0=post_std.bias,   mu_1=prior_mean.bias,   sigma_1=prior_std.bias  )
+                    kl_div += diagonal_gaussian_kl( mu_0=post_mean.weight, sigma_0=self.rho(post_std.weight), mu_1=prior_mean.weight, sigma_1=prior_std.weight )
+                    kl_div += diagonal_gaussian_kl(  mu_0=post_mean.bias,   sigma_0=self.rho(post_std.bias),   mu_1=prior_mean.bias,   sigma_1=prior_std.bias  )
             return kl_div
     # ~~~
     #
