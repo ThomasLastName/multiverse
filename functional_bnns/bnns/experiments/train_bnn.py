@@ -100,6 +100,9 @@ if hasattr(sys,"ps1"):
     #
     # ~~~ If this is an interactive (not srcipted) session, i.e., we are directly typing/pasting in the commands (I do this for debugging), then use the demo json name
     input_json_filename = "demo_bnn.json"
+    model_save_dir = None
+    final_test = False
+    overwrite_json = False
 else:
     #
     # ~~~ Use argparse to extract the file name `my_hyperparmeters.json` from `python train_bnn.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
@@ -230,6 +233,12 @@ if PROJECT:
                 p.data = torch.clamp( p.data, min=PROJECTION_TOL )
     projection_step(BNN)
 
+# if not PROJECT:
+#     def projection_step(BNN):
+#         with torch.no_grad():
+#             for p in BNN.model_std.parameters():
+#                 p.data = torch.log( 1 + torch.exp(p.data) )
+
 #
 # ~~~ Establish some variables used for training
 N_EPOCHS = non_negative_list( N_EPOCHS, integer_only=True ) # ~~~ supports N_EPOCHS to be a list of integers
@@ -337,14 +346,21 @@ while keep_training:
                         kl_div = BNN.functional_kl()
                     if FUNCTIONAL and GAUSSIAN_APPROXIMATION:
                         kl_div = BNN.gaussian_kl(approximate_mean=APPPROXIMATE_GAUSSIAN_MEAN)
+                    #
+                    # ~~~ Add the the likelihood term and differentiate
+                    log_likelihood_density = BNN.log_likelihood_density(X,y)
+                    alpha, beta = decide_weights( b=b, n_batches=n_batches, X=X, D_train=D_train )
+                    negative_ELBO = ( alpha*kl_div - beta*log_likelihood_density )/N_MC_SAMPLES
+                    negative_ELBO.backward()
                 #
-                # ~~~ Add the the likelihood term and differentiate
-                log_likelihood_density = BNN.log_likelihood_density(X,y)
-                alpha, beta = decide_weights( b=b, n_batches=n_batches, X=X, D_train=D_train )
-                negative_ELBO = ( alpha*kl_div - beta*log_likelihood_density )/N_MC_SAMPLES
+                # ~~~ In Blundell et al. (https://arxiv.org/abs/1505.05424), the chain rule is implemented manually (this is necessary since pytorch doesn't allow in-place operations on the parameters to be included in the graph)
+                # if not PROJECT:
+                #     with torch.no_grad():
+                #         for p in BNN.model_std.parameters():
+                #             p.data  = torch.log( torch.exp(p.data)-1 )  # ~~~ now the parameters are \rho = \ln(\exp(\sigma)-1) instead of \sigma
+                #             p.grad /= ( 1 + torch.exp(-p.data) )        # ~~~ now the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
                 #
-                # ~~~ Do the gradient-based update
-                negative_ELBO.backward()
+                # ~~~ Update the parameters according to the gradient
                 optimizer.step()
                 optimizer.zero_grad()
                 #
@@ -366,7 +382,7 @@ while keep_training:
                 if (pbar.n+1)%HOW_OFTEN==0:
                     #
                     # ~~~ Plotting logic
-                    if data_is_univariate and MAKE_GIF and (e+1)%HOW_OFTEN==0:
+                    if data_is_univariate and MAKE_GIF:
                         fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
                         gif.capture()
                     #
