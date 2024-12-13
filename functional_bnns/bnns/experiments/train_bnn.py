@@ -185,6 +185,7 @@ BNN.post_GP_eta = POST_GP_eta
 # ~~~ The optimizer and dataloader
 dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
 n_batches = len(dataloader)
+n_params = sum( p.numel() for p in BNN.model_mean.parameters() )
 optimizer = Optimizer( BNN.parameters(), lr=LR )
 
 #
@@ -278,7 +279,7 @@ elif WEIGHTING=="Sun in principle": # (EQUIVALENT TO THE "standard" WEIGHTING BE
     def decide_weights(**kwargs):
         D_s = kwargs["X"]
         D   = kwargs["D_train"]
-        weight_on_the_kl         = 1/len(D_train)
+        weight_on_the_kl         = 1/len(D)
         weight_on_the_likelihood = 1/len(D_s)
         return weight_on_the_kl, weight_on_the_likelihood
 elif WEIGHTING=="Sun in practice":
@@ -287,6 +288,15 @@ elif WEIGHTING=="Sun in practice":
     def decide_weights(**kwargs):
         D_s = kwargs["X"]
         weight_on_the_kl         = 1/len(D_s)
+        weight_on_the_likelihood = 1/len(D_s)
+        return weight_on_the_kl, weight_on_the_likelihood
+elif WEIGHTING=="naive":
+    #
+    # ~~~ Naively average the marginal KL divergences of each parameter, as well as the marginal likelihoods for each data point
+    def decide_weights(**kwargs):
+        D_s = kwargs["X"]
+        n_params = kwargs["n_params"]
+        weight_on_the_kl         = 1/n_params
         weight_on_the_likelihood = 1/len(D_s)
         return weight_on_the_kl, weight_on_the_likelihood
 else:
