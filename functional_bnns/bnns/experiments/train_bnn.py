@@ -262,7 +262,9 @@ if EARLY_STOPPING:
 
 #
 # ~~~ Set "regularization parameters" for the loss function
-if WEIGHTING=="Blundell": 
+if not isinstance(WEIGHTING,str):
+    my_warn(f"Expected WEIGHTING to be a string, but found instead type(WEIGHTING)=={type(WEIGHTING)}. The loss function will be weighted as if WEIGHTING='standard'.")
+elif WEIGHTING=="Blundell":
     #
     # ~~~ Follow the suggestion "\pi_i = \frac{2^{M-i}}{2^M-1}" from page 5 of https://arxiv.org/abs/1505.05424
     def decide_weights(**kwargs):
@@ -270,7 +272,7 @@ if WEIGHTING=="Blundell":
         M = kwargs["n_batches"]
         pi_i = 2**(M-i)/(2**M-1)
         return  pi_i, 1.
-elif WEIGHTING=="Sun in principle":
+elif WEIGHTING=="Sun in principle": # (EQUIVALENT TO THE "standard" WEIGHTING BELOW)
     #
     # ~~~ Follow the suggestion "In principle, \lambda should be set as 1/|\mathcal{D}|" in equation (12) of https://arxiv.org/abs/1903.05779
     def decide_weights(**kwargs):
@@ -292,7 +294,7 @@ else:
     # ~~~ Downweight the KL divergence in the simplest manner possible to match the expectation of the minibatch estimator of likelihood
     decide_weights = lambda **kwargs: (1/n_batches, 1.)  # ~~~ this normalization achchieves an unbiased estimate of the variational loss
     if not WEIGHTING=="standard":
-        my_warn(f'The given value of WEIGHTING ({WEIGHTING}) wass not recognized. Using the default setting of WEIGHTING="standard" instead.')
+        my_warn(f'The given value of WEIGHTING ({WEIGHTING}) was not recognized. Using the default setting of WEIGHTING="standard" instead.')
 
 #
 # ~~~ A few safety checks
