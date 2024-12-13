@@ -3,13 +3,7 @@ import numpy as np
 import torch
 import os
 from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
-from quality_of_life.my_base_utils import find_root_dir_of_repo
-from bnns.data.slosh_70_15_15 import coords_np, inputs_np, out_np, idx_train, idx_test, idx_val, extrapolary_grid, interpolary_grid
-
-#
-# ~~~ Establish the path to the folder `bnns/data`
-root = find_root_dir_of_repo()
-PATH = os.path.join( root, "functional_bnns", "bnns", "data" )
+from bnns.data.slosh_70_15_15 import coords_np, inputs_np, out_np, idx_train, idx_test, idx_val, extrapolary_grid, interpolary_grid, data_folder
 
 #
 # ~~~ Generate U, s, and V
@@ -17,9 +11,9 @@ avg_out = np.mean(out_np,axis=0)
 try:
     #
     # ~~~ Load the processed data
-    U = torch.load(os.path.join( PATH, "slosh_centered_U.pt"))
-    s = torch.load(os.path.join( PATH, "slosh_centered_s.pt"))
-    V = torch.load(os.path.join( PATH, "slosh_centered_V.pt"))
+    U = torch.load(os.path.join( data_folder, "slosh_centered_U.pt"))
+    s = torch.load(os.path.join( data_folder, "slosh_centered_s.pt"))
+    V = torch.load(os.path.join( data_folder, "slosh_centered_V.pt"))
 except:
     #
     # ~~~ Load the unprocessed data
@@ -32,9 +26,9 @@ except:
     V = Vt.T
     #
     # ~~~ Save the processed data
-    torch.save( U, os.path.join( PATH, "slosh_centered_U.pt" ))
-    torch.save( s, os.path.join( PATH, "slosh_centered_s.pt" ))
-    torch.save( V, os.path.join( PATH, "slosh_centered_V.pt" ))
+    torch.save( U, os.path.join( data_folder, "slosh_centered_U.pt" ))
+    torch.save( s, os.path.join( data_folder, "slosh_centered_s.pt" ))
+    torch.save( V, os.path.join( data_folder, "slosh_centered_V.pt" ))
 
 #
 # ~~~ Determine how many principal components `r` are needed to explain 99% of the variance
@@ -56,6 +50,11 @@ unprocessed_y_train = torch.from_numpy(out_np[idx_train])
 unprocessed_y_test = torch.from_numpy(out_np[idx_test])
 unprocessed_y_val = torch.from_numpy(out_np[idx_val])
 avg_out = torch.from_numpy(avg_out)
+
+#
+# ~~~ Sanity check
+reconstructed_y_train = y_train @ s_truncated.diag() @ V_truncated.T + avg_out
+assert (( reconstructed_y_train - unprocessed_y_train)**2).mean() < 0.02
 
 #
 # ~~~ Finally, package as objects of class torch.utils.data.Dataset

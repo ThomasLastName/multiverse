@@ -3,13 +3,7 @@ import numpy as np
 import torch
 import os
 from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
-from quality_of_life.my_base_utils import find_root_dir_of_repo
-from bnns.data.slosh_70_15_15 import coords_np, inputs_np, out_np, idx_train, idx_test, idx_val, extrapolary_grid, interpolary_grid
-
-#
-# ~~~ Establish the path to the folder `bnns/data`
-root = find_root_dir_of_repo()
-PATH = os.path.join( root, "functional_bnns", "bnns", "data" )
+from bnns.data.slosh_70_15_15 import coords_np, inputs_np, out_np, idx_train, idx_test, idx_val, extrapolary_grid, interpolary_grid, data_folder
 
 #
 # ~~~ Generate U, s, V, and r
@@ -18,9 +12,9 @@ std_out = np.std(out_np,axis=0) + 1e-10
 try:
     #
     # ~~~ Load the processed data
-    U_truncated = torch.load(os.path.join( PATH, "slosh_cheap_standardized_U_truncated.pt"))
-    s_truncated = torch.load(os.path.join( PATH, "slosh_cheap_standardized_s_truncated.pt"))
-    V_truncated = torch.load(os.path.join( PATH, "slosh_cheap_standardized_V_truncated.pt"))
+    U_truncated = torch.load(os.path.join( data_folder, "slosh_cheap_standardized_U_truncated.pt"))
+    s_truncated = torch.load(os.path.join( data_folder, "slosh_cheap_standardized_s_truncated.pt"))
+    V_truncated = torch.load(os.path.join( data_folder, "slosh_cheap_standardized_V_truncated.pt"))
     r = len(s_truncated)    # ~~~ 17
 except:
     #
@@ -37,9 +31,9 @@ except:
     U_truncated, s_truncated, V_truncated = torch.svd_lowrank( data_matrix, r )
     #
     # ~~~ Save the processed data
-    torch.save( U_truncated, os.path.join( PATH, "slosh_cheap_standardized_U_truncated.pt" ))
-    torch.save( s_truncated, os.path.join( PATH, "slosh_cheap_standardized_s_truncated.pt" ))
-    torch.save( V_truncated, os.path.join( PATH, "slosh_cheap_standardized_V_truncated.pt" ))
+    torch.save( U_truncated, os.path.join( data_folder, "slosh_cheap_standardized_U_truncated.pt" ))
+    torch.save( s_truncated, os.path.join( data_folder, "slosh_cheap_standardized_s_truncated.pt" ))
+    torch.save( V_truncated, os.path.join( data_folder, "slosh_cheap_standardized_V_truncated.pt" ))
 
 #
 # ~~~ Use indices for a train/val/test split
@@ -54,6 +48,11 @@ unprocessed_y_test = torch.from_numpy(out_np[idx_test])
 unprocessed_y_val = torch.from_numpy(out_np[idx_val])
 avg_out = torch.from_numpy(avg_out)
 std_out = torch.from_numpy(std_out)
+
+#
+# ~~~ Sanity check
+reconstructed_y_train = (y_train @ s_truncated.diag() @ V_truncated.T)*std_out + avg_out
+assert (( reconstructed_y_train - unprocessed_y_train)**2).mean() < 0.02
 
 #
 # ~~~ Finally, package as objects of class torch.utils.data.Dataset
