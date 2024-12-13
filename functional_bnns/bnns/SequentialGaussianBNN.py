@@ -54,6 +54,13 @@ class SequentialGaussianBNN(nn.Module):
         for p in self.realized_standard_normal.parameters():
             p.requires_grad = False
             nn.init.normal_(p)
+        # #
+        # # ~~~ Initialize the "posterior" mean and standard deviation to match the prior distribution
+        # with torch.no_grad():
+        #     for p_post, p_prior in zip( self.model_mean.parameters(), self.prior_mean.parameters() ):
+        #         p_post.data = p_prior.data.clone()
+        #     for p_post, p_prior in zip( self.model_std.parameters(), self.prior_std.parameters() ):
+        #         p_post.data = p_prior.data.clone()
         #
         # ~~~ Define a reparameterization (-Inf,Inf) -> (0,Inf)
         self.rho = lambda sigma: torch.log(1+torch.exp(sigma))
