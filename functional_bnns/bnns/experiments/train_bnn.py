@@ -76,6 +76,7 @@ hyperparameter_template = {
     "PATIENCE" : 20,
     "STRIDE" : 30,
     "N_MC_SAMPLES" : 1,
+    "WEIGHTING" : "standard",               # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
@@ -183,6 +184,7 @@ BNN.post_GP_eta = POST_GP_eta
 #
 # ~~~ The optimizer and dataloader
 dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
+n_batches = len(dataloader)
 optimizer = Optimizer( BNN.parameters(), lr=LR )
 
 #
@@ -192,7 +194,7 @@ if GAUSSIAN_APPROXIMATION:
     if FUNCTIONAL:
         description_of_the_experiment += " Using a Gaussian Approximation"
     else:
-        my_warn("`GAUSSIAN_APPROXIMATION` was specified as True, but `FUNCTIONAL` was specified as False; since Rudner et al.'s Gaussian approximation is only used in fBNNs, it will not be used in this case.")
+        my_warn("The settings GAUSSIAN_APPROXIMATION=True and FUNCTIONAL=False are incompatible, since Rudner et al.'s Gaussian approximation is only used in fBNNs. The former will be ignored.")
 
 #
 # ~~~ Some plotting stuff
@@ -259,6 +261,45 @@ if EARLY_STOPPING:
         ]
 
 #
+# ~~~ Set "regularization parameters" for the loss function
+if WEIGHTING=="Blundell": 
+    #
+    # ~~~ Follow the suggestion "\pi_i = \frac{2^{M-i}}{2^M-1}" from page 5 of https://arxiv.org/abs/1505.05424
+    def decide_weights(**kwargs):
+        i = kwargs["b"]
+        M = kwargs["n_batches"]
+        pi_i = 2**(M-i)/(2**M-1)
+        return  pi_i, 1.
+elif WEIGHTING=="Sun in principle":
+    #
+    # ~~~ Follow the suggestion "In principle, \lambda should be set as 1/|\mathcal{D}|" in equation (12) of https://arxiv.org/abs/1903.05779
+    def decide_weights(**kwargs):
+        D_s = kwargs["X"]
+        D   = kwargs["D_train"]
+        weight_on_the_kl         = 1/len(D_train)
+        weight_on_the_likelihood = 1/len(D_s)
+        return weight_on_the_kl, weight_on_the_likelihood
+elif WEIGHTING=="Sun in practice":
+    #
+    # ~~~ Follow the suggestion "We used \lambda=1/|\mathcal{D}_s| in practice" in equation (12) of https://arxiv.org/abs/1903.05779
+    def decide_weights(**kwargs):
+        D_s = kwargs["X"]
+        weight_on_the_kl         = 1/len(D_s)
+        weight_on_the_likelihood = 1/len(D_s)
+        return weight_on_the_kl, weight_on_the_likelihood
+else:
+    #
+    # ~~~ Downweight the KL divergence in the simplest manner possible to match the expectation of the minibatch estimator of likelihood
+    decide_weights = lambda **kwargs: (1/n_batches, 1.)  # ~~~ this normalization achchieves an unbiased estimate of the variational loss
+    if not WEIGHTING=="standard":
+        my_warn(f'The given value of WEIGHTING ({WEIGHTING}) wass not recognized. Using the default setting of WEIGHTING="standard" instead.')
+
+#
+# ~~~ A few safety checks
+if EXACT_WEIGHT_KL and FUNCTIONAL:
+    my_warn("The settings EXACT_WEIGHT==True and FUNCTIONAL==True are incompatible. The former will be ignored.")
+
+#
 # ~~~ Start the training loop
 while keep_training:
     with support_for_progress_bars():   # ~~~ this just supports green progress bars
@@ -272,7 +313,7 @@ while keep_training:
         #
         # ~~~ The actual training logic (see train_nn.py for a simpler analogy)
         for e in range( target_epochs - epochs_completed_so_far ):
-            for X, y in dataloader:
+            for b, (X,y) in enumerate(dataloader):
                 X, y = X.to(DEVICE), y.to(DEVICE)
                 for j in range(N_MC_SAMPLES):
                     #
@@ -287,7 +328,8 @@ while keep_training:
                 #
                 # ~~~ Add the the likelihood term and differentiate
                 log_likelihood_density = BNN.log_likelihood_density(X,y)
-                negative_ELBO = ( kl_div - log_likelihood_density )/N_MC_SAMPLES
+                alpha, beta = decide_weights( b=b, n_batches=n_batches, X=X, D_train=D_train )
+                negative_ELBO = ( alpha*kl_div - beta*log_likelihood_density )/N_MC_SAMPLES
                 #
                 # ~~~ Do the gradient-based update
                 negative_ELBO.backward()
