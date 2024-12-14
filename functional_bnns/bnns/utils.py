@@ -34,7 +34,7 @@ def log_gaussian_pdf( where, mu, sigma ):
         assert len(sigma.shape)==0 or sigma.shape==mu.shape # ~~~ either scalar, or a matrix of the same shape is `mu` and `where`
         assert (sigma>0).all()
     except:
-        assert isinstance(1,(float,int))
+        assert isinstance(sigma,(float,int))
         assert sigma>0
     marginal_log_probs = -((where-mu)/sigma)**2/2 - torch.log( math.sqrt(2*torch.pi)*sigma )   # ~~~ note: isn't (x-mu)/sigma numerically unstable, like numerical differentiation?
     return marginal_log_probs.sum()
