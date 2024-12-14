@@ -62,11 +62,11 @@ class SequentialGaussianBNN(nn.Module):
         #     for p_post, p_prior in zip( self.model_std.parameters(), self.prior_std.parameters() ):
         #         p_post.data = p_prior.data.clone()
         #
-        # ~~~ Define a reparameterization (-Inf,Inf) -> (0,Inf)
-        self.rho = lambda sigma: torch.log(1+torch.exp(sigma))
-        #
         # ~~~ Define the assumed level of noise in the training data: when this is set to smaller values, the model "pays more attention" to the data, and fits it more aggresively (can also be a vector)
         self.conditional_std = torch.tensor(0.001)
+        #
+        # ~~~ Opt to project onto [projection_tol,Inf), rather than onto [0,Inf)
+        self.projection_tol = 1e-6
         #
         # ~~~ Attributes for SSGE and functional training
         self.prior_J   = "please specify"
@@ -93,8 +93,25 @@ class SequentialGaussianBNN(nn.Module):
             if hasattr(layer,"weight"):         # ~~~ the first layer with weights
                 device = layer.weight.device
                 dtype = layer.weight.dtype
-                break
-        return device, dtype
+                return device, dtype
+    #
+    # ~~~ Project the standard deviations to be positive, as in projected gradient descent
+    def projection_step(self,hard=True):
+        with torch.no_grad():
+            for p in self.model_std.parameters():
+                p.data = torch.clamp( p.data, min=self.projection_tol ) if hard else torch.log( 1 + torch.exp(p.data) ) # ~~~ basically, max if hard else softmax
+    #
+    # ~~~ In Blundell et al. (https://arxiv.org/abs/1505.05424), the chain rule is implemented manually (this is necessary since pytorch doesn't allow in-place operations on the parameters to be included in the graph)
+    def apply_chain_rule_for_soft_projection(self):
+        with torch.no_grad():
+            for p in self.model_std.parameters():
+                p.data  = torch.log( torch.exp(p.data)-1 )  # ~~~ now the parameters are \rho = \ln(\exp(\sigma)-1) instead of \sigma
+                try:
+                    p.grad /= ( 1 + torch.exp(-p.data) )    # ~~~ now the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
+                except:
+                    if p.grad is None:
+                        my_warn("`apply_chain_rule_for_soft_projection` operates directly on the `grad` attributes of the parameters. It should be applied *after* `backwards` is called.")
+                    raise
     #
     # ~~~ Sample the distribution of Y|X=x,W=w
     def forward(self,x,resample_weights=True):
@@ -115,9 +132,9 @@ class SequentialGaussianBNN(nn.Module):
             else:
                 mean_layer = self.model_mean[j]     # ~~~ the trainable (posterior) means of this layer's parameters
                 std_layer  =  self.model_std[j]     # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                A = mean_layer.weight + self.rho(std_layer.weight) * z.weight   # ~~~ A = F_\theta(z.weight) is normal with the trainable (posterior) mean and std
-                b = mean_layer.bias   +   self.rho(std_layer.bias) * z.bias     # ~~~ b = F_\theta(z.bias)   is normal with the trainable (posterior) mean and std
-                x = x@A.T + b                                                   # ~~~ apply the appropriately distributed weights to this layer's input
+                A = mean_layer.weight + std_layer.weight * z.weight # ~~~ A = F_\theta(z.weight) is normal with the trainable (posterior) mean and std
+                b = mean_layer.bias   +   std_layer.bias * z.bias   # ~~~ b = F_\theta(z.bias)   is normal with the trainable (posterior) mean and std
+                x = x@A.T + b                                       # ~~~ apply the appropriately distributed weights to this layer's input
         return x
     # ~~~
     #
@@ -142,9 +159,9 @@ class SequentialGaussianBNN(nn.Module):
                 post_std       =    self.model_std[j]   # ~~~ the trainable (posterior) standard deviations of this layer's parameters
                 prior_mean     =    self.prior_mean[j]  # ~~~ the prior means of this layer's parameters
                 prior_std      =    self.prior_std[j]   # ~~~ the prior standard deviations of this layer's parameters
-                F_theta_of_z   =    post_mean.weight + self.rho(post_std.weight)*z.weight
+                F_theta_of_z   =    post_mean.weight + post_std.weight*z.weight
                 log_prior     +=    log_gaussian_pdf( where=F_theta_of_z, mu=prior_mean.weight, sigma=prior_std.weight )
-                F_theta_of_z   =    post_mean.bias   +  self.rho(post_std.bias) * z.bias
+                F_theta_of_z   =    post_mean.bias   +  post_std.bias * z.bias
                 log_prior     +=    log_gaussian_pdf( where=F_theta_of_z,  mu=prior_mean.bias,  sigma=prior_std.bias   )
         return log_prior
     #
@@ -158,8 +175,8 @@ class SequentialGaussianBNN(nn.Module):
             if isinstance( z, nn.modules.linear.Linear ):
                 mean_layer      =    self.model_mean[j] # ~~~ the trainable (posterior) means of this layer's parameters
                 std_layer       =    self.model_std[j]  # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                sigma_weight    =    self.rho(std_layer.weight)
-                sigma_bias      =    self.rho(std_layer.bias)
+                sigma_weight    =    std_layer.weight
+                sigma_bias      =    std_layer.bias
                 F_theta_of_z    =    mean_layer.weight + sigma_weight*z.weight
                 log_posterior  +=    log_gaussian_pdf( where=F_theta_of_z, mu=mean_layer.weight, sigma=sigma_weight )
                 F_theta_of_z    =    mean_layer.bias   +  sigma_bias * z.bias
@@ -180,8 +197,8 @@ class SequentialGaussianBNN(nn.Module):
                 prior_mean     =    self.prior_mean[j]  # ~~~ the prior means of this layer's parameters
                 prior_std      =    self.prior_std[j]   # ~~~ the prior standard deviations of this layer's parameters
                 if isinstance( post_mean, nn.modules.linear.Linear ):
-                    kl_div += diagonal_gaussian_kl( mu_0=post_mean.weight, sigma_0=self.rho(post_std.weight), mu_1=prior_mean.weight, sigma_1=prior_std.weight )
-                    kl_div += diagonal_gaussian_kl(  mu_0=post_mean.bias,   sigma_0=self.rho(post_std.bias),   mu_1=prior_mean.bias,   sigma_1=prior_std.bias  )
+                    kl_div += diagonal_gaussian_kl( mu_0=post_mean.weight, sigma_0=post_std.weight, mu_1=prior_mean.weight, sigma_1=prior_std.weight )
+                    kl_div += diagonal_gaussian_kl(  mu_0=post_mean.bias,   sigma_0=post_std.bias,   mu_1=prior_mean.bias,   sigma_1=prior_std.bias  )
             return kl_div
     # ~~~
     #
@@ -308,7 +325,7 @@ class SequentialGaussianBNN(nn.Module):
         if not approximate_mean:
             #
             # ~~~ Compute the mean and covariance from the paper's equation (14): https://arxiv.org/abs/2312.17199, page 4
-            S_sqrt = torch.cat([ self.rho(p).flatten() for p in self.model_std.parameters() ])  # ~~~ covariance of the joint (diagonal) normal distribution of all network weights is then S_sqrt.diag()**2
+            S_sqrt = torch.cat([ p.flatten() for p in self.model_std.parameters() ])  # ~~~ covariance of the joint (diagonal) normal distribution of all network weights is then S_sqrt.diag()**2
             theta_minus_m = S_sqrt*flatten_parameters(self.realized_standard_normal)            # ~~~ theta-m == S_sqrt*z because theta = m+S_sqrt*z
             J_dict = jacrev( functional_call, argnums=1 )(
                     self.model_mean,
@@ -330,8 +347,8 @@ class SequentialGaussianBNN(nn.Module):
             #
             # ~~~ Only estimate the mean from the paper's eq'n (14), still computing the covariance exactly
             S_beta_sqrt = torch.cat([   # ~~~ the covaraince matrix of the weights and biases of the final layer is then S_beta_sqrt.diag()**2
-                    self.rho(self.model_std[-1].weight).flatten(),
-                    self.rho(self.model_std[-1].bias).flatten()
+                    self.model_std[-1].weight.flatten(),
+                    self.model_std[-1].bias.flatten()
                 ])
             z = torch.cat([             # ~~~ equivalent to `flatten_parameters(self.realized_standard_normal)[ how_many_params_from_not_last_layer: ]`
                     self.realized_standard_normal[-1].weight.flatten(),

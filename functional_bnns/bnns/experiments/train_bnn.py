@@ -177,6 +177,8 @@ BNN.post_eta = POST_eta
 BNN.prior_M = PRIOR_M
 BNN.post_M = POST_M
 BNN.post_GP_eta = POST_GP_eta
+BNN.projection_tol = PROJECTION_TOL
+BNN.projection_step(hard=PROJECT)
 
 
 
@@ -222,22 +224,6 @@ if data_is_univariate:
         fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN, prior=True )
         for j in range(INITIAL_FRAME_REPETITIONS):
             gif.capture( clear_frame_upon_capture=(j+1==INITIAL_FRAME_REPETITIONS) )
-
-#
-# ~~~ Define how to project onto the constraint set
-if PROJECT:
-    BNN.rho = lambda x:x
-    def projection_step(BNN):
-        with torch.no_grad():
-            for p in BNN.model_std.parameters():
-                p.data = torch.clamp( p.data, min=PROJECTION_TOL )
-    projection_step(BNN)
-
-# if not PROJECT:
-#     def projection_step(BNN):
-#         with torch.no_grad():
-#             for p in BNN.model_std.parameters():
-#                 p.data = torch.log( 1 + torch.exp(p.data) )
 
 #
 # ~~~ Establish some variables used for training
@@ -353,20 +339,14 @@ while keep_training:
                     negative_ELBO = ( alpha*kl_div - beta*log_likelihood_density )/N_MC_SAMPLES
                     negative_ELBO.backward()
                 #
-                # ~~~ In Blundell et al. (https://arxiv.org/abs/1505.05424), the chain rule is implemented manually (this is necessary since pytorch doesn't allow in-place operations on the parameters to be included in the graph)
-                # if not PROJECT:
-                #     with torch.no_grad():
-                #         for p in BNN.model_std.parameters():
-                #             p.data  = torch.log( torch.exp(p.data)-1 )  # ~~~ now the parameters are \rho = \ln(\exp(\sigma)-1) instead of \sigma
-                #             p.grad /= ( 1 + torch.exp(-p.data) )        # ~~~ now the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
-                #
                 # ~~~ Update the parameters according to the gradient
+                if not PROJECT:
+                    BNN.apply_chain_rule_for_soft_projection()
                 optimizer.step()
                 optimizer.zero_grad()
                 #
                 # ~~~ Do the projection
-                if PROJECT:
-                    projection_step(BNN)
+                BNN.projection_step(hard=PROJECT)
                 #
                 # ~~~ Report a moving average of train_loss as well as val_loss in the progress bar
                 if len(train_loss_curve)>0:
