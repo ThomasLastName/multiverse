@@ -60,7 +60,7 @@ plot_bnn()
 
 #
 # ~~~ Train the BNN
-lr = 0.001
+lr = 0.0001
 N = 10000
 conditional_std = torch.tensor(0.0015)
 BNN.conditional_std = conditional_std
@@ -69,7 +69,8 @@ kl_history = []
 optimizer = optim.Adam( BNN.parameters(), lr=lr )
 pbar = trange(N)
 for _ in range(N):
-    kl_div = BNN.weight_kl(exact_formula=False)
+    BNN.sample_from_standard_normal()
+    kl_div = BNN.weight_kl(exact_formula=True)
     log_lik = BNN.log_likelihood_density(x_train,y_train)
     loss = kl_div - log_lik
     loss.backward()
