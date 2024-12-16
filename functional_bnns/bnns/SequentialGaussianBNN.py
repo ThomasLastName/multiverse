@@ -41,7 +41,7 @@ class SequentialGaussianBNN(nn.Module):
             self.prior_mean = nonredundant_copy_of_module_list(self.model_mean)
             for p in self.prior_mean.parameters():
                 p.requires_grad = False # ~~~ don't train the prior
-                p = torch.zeros_like(p) # ~~~ assign the desired prior mean values
+                p = p.fill_(0.)         # ~~~ assign the desired prior mean values
             #
             # ~~~ Define the prior std. dev.'s: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired std values
             self.prior_std = nonredundant_copy_of_module_list(self.model_mean)
@@ -54,13 +54,19 @@ class SequentialGaussianBNN(nn.Module):
         for p in self.realized_standard_normal.parameters():
             p.requires_grad = False
             nn.init.normal_(p)
-        # #
-        # # ~~~ Initialize the "posterior" mean and standard deviation to match the prior distribution
-        # with torch.no_grad():
-        #     for p_post, p_prior in zip( self.model_mean.parameters(), self.prior_mean.parameters() ):
-        #         p_post.data = p_prior.data.clone()
-        #     for p_post, p_prior in zip( self.model_std.parameters(), self.prior_std.parameters() ):
-        #         p_post.data = p_prior.data.clone()
+        #
+        # ~~~ Initialize the "posterior" mean and standard deviation to match the prior distribution
+        with torch.no_grad():
+            #
+            # ~~~ Define the prior means: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired mean values (==zero, for now)
+            for p in self.model_mean.parameters():
+                p.requires_grad = False # ~~~ don't train the prior
+                p = p.fill_(0.)         # ~~~ assign the desired prior mean values
+            #
+            # ~~~ Define the prior std. dev.'s: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired std values
+            for p in self.model_std.parameters():
+                p.requires_grad = False # ~~~ don't train the prior
+                p = p.fill_(get_std(p)) # ~~~ assign the desired prior standard deviation value
         #
         # ~~~ Define the assumed level of noise in the training data: when this is set to smaller values, the model "pays more attention" to the data, and fits it more aggresively (can also be a vector)
         self.conditional_std = torch.tensor(0.001)
