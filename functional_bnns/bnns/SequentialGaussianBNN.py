@@ -40,14 +40,14 @@ class SequentialGaussianBNN(nn.Module):
             # ~~~ Define the prior means: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired mean values (==zero, for now)
             self.prior_mean = nonredundant_copy_of_module_list(self.model_mean)
             for p in self.prior_mean.parameters():
-                p.requires_grad = False # ~~~ don't train the prior
-                p = p.fill_(0.)         # ~~~ assign the desired prior mean values
+                p.requires_grad = False             # ~~~ don't train the prior
+                p.data = torch.zeros_like(p.data)   # ~~~ assign the desired prior mean values
             #
             # ~~~ Define the prior std. dev.'s: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired std values
             self.prior_std = nonredundant_copy_of_module_list(self.model_mean)
             for p in self.prior_std.parameters():
-                p.requires_grad = False # ~~~ don't train the prior
-                p = p.fill_(get_std(p)) # ~~~ assign the desired prior standard deviation values
+                p.requires_grad = False                     # ~~~ don't train the prior
+                p.data = get_std(p)*torch.ones_like(p.data) # ~~~ assign the desired prior standard deviation values
         #
         # ~~~ Define a "standard normal distribution in the shape of our neural network"
         self.realized_standard_normal = nonredundant_copy_of_module_list(self.model_mean)
@@ -104,9 +104,9 @@ class SequentialGaussianBNN(nn.Module):
     def revert_to_prior(self):
         with torch.no_grad():
             for p in self.model_mean.parameters():
-                p = p.fill_(0.)         # ~~~ assign the prior mean values
+                p.data = torch.zeros_like(p.data)           # ~~~ assign the prior mean values
             for p in self.model_std.parameters():
-                p = p.fill_(get_std(p)) # ~~~ assign the prior standard deviation values
+                p.data = get_std(p)*torch.ones_like(p.data) # ~~~ assign the prior standard deviation values
     #
     # ~~~ In Blundell et al. (https://arxiv.org/abs/1505.05424), the chain rule is implemented manually (this is necessary since pytorch doesn't allow in-place operations on the parameters to be included in the graph)
     def apply_chain_rule_for_soft_projection(self):
