@@ -183,7 +183,7 @@ BNN.hard_projection = PROJECT                       # ~~~ whether to use project
 if INITIALIZE_AT_PRIOR:
     BNN.revert_to_prior()
 else:
-    BNN.project_step(hard=PROJECT)
+    BNN.projection_step(hard=PROJECT)
 
 
 
