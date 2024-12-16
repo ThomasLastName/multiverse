@@ -28,6 +28,7 @@
 	"STRIDE": 50,
 	"N_MC_SAMPLES": 1,
 	"WEIGHTING": "standard",
+	"INITIALIZE_AT_PRIOR" : true,
 	"MAKE_GIF": false,
 	"HOW_OFTEN": 10,
 	"INITIAL_FRAME_REPETITIONS": 24,

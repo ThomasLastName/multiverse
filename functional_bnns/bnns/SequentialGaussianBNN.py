@@ -55,19 +55,6 @@ class SequentialGaussianBNN(nn.Module):
             p.requires_grad = False
             nn.init.normal_(p)
         #
-        # ~~~ Initialize the "posterior" mean and standard deviation to match the prior distribution
-        with torch.no_grad():
-            #
-            # ~~~ Define the prior means: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired mean values (==zero, for now)
-            for p in self.model_mean.parameters():
-                p.requires_grad = False # ~~~ don't train the prior
-                p = p.fill_(0.)         # ~~~ assign the desired prior mean values
-            #
-            # ~~~ Define the prior std. dev.'s: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired std values
-            for p in self.model_std.parameters():
-                p.requires_grad = False # ~~~ don't train the prior
-                p = p.fill_(get_std(p)) # ~~~ assign the desired prior standard deviation value
-        #
         # ~~~ Define the assumed level of noise in the training data: when this is set to smaller values, the model "pays more attention" to the data, and fits it more aggresively (can also be a vector)
         self.conditional_std = torch.tensor(0.001)
         #
@@ -87,6 +74,9 @@ class SequentialGaussianBNN(nn.Module):
         #
         # ~~~ A hyperparameter needed for the gaussian appxroximation method
         self.post_GP_eta = "please specify"
+        #
+        # ~~~ A hyperparameter needed for the gaussian appxroximation method
+        self.hard_projection = True
     #
     # ~~~ Sample according to a "standard normal distribution in the shape of our neural network"
     def sample_from_standard_normal(self):
@@ -103,9 +93,20 @@ class SequentialGaussianBNN(nn.Module):
     #
     # ~~~ Project the standard deviations to be positive, as in projected gradient descent
     def projection_step(self,hard=True):
+        if not hard==self.hard_projection:
+            my_warn(f"`hard={hard}` argument to `projection_step` does not match `self.hard_projection={self.hard_projection}`. The latter will be updated to match the former.")
+            self.hard_projection = hard
         with torch.no_grad():
             for p in self.model_std.parameters():
                 p.data = torch.clamp( p.data, min=self.projection_tol ) if hard else torch.log( 1 + torch.exp(p.data) ) # ~~~ basically, max if hard else softmax
+    #
+    # ~~~ Initialize the "posterior" mean and standard deviation to match the prior distribution
+    def revert_to_prior(self):
+        with torch.no_grad():
+            for p in self.model_mean.parameters():
+                p = p.fill_(0.)         # ~~~ assign the prior mean values
+            for p in self.model_std.parameters():
+                p = p.fill_(get_std(p)) # ~~~ assign the prior standard deviation values
     #
     # ~~~ In Blundell et al. (https://arxiv.org/abs/1505.05424), the chain rule is implemented manually (this is necessary since pytorch doesn't allow in-place operations on the parameters to be included in the graph)
     def apply_chain_rule_for_soft_projection(self):

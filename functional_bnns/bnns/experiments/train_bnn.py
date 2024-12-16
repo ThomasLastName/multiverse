@@ -77,6 +77,7 @@ hyperparameter_template = {
     "STRIDE" : 30,
     "N_MC_SAMPLES" : 1,
     "WEIGHTING" : "standard",               # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
+    "INITIALIZE_AT_PRIOR" : True,           # ~~~ whether or not to take the prior  as the initialization of the posterior
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
@@ -169,16 +170,20 @@ except:
     model = import_module(MODEL)                    # ~~~ this is equivalent to `import <MODEL> as model` (works if MODEL.py is in the cwd or anywhere on the path)
 
 BNN = model.BNN.to( device=DEVICE, dtype=DTYPE )
-BNN.conditional_std = torch.tensor(CONDITIONAL_STD)
-BNN.prior_J = PRIOR_J
-BNN.post_J = POST_J
-BNN.prior_eta = PRIOR_eta
-BNN.post_eta = POST_eta
-BNN.prior_M = PRIOR_M
-BNN.post_M = POST_M
-BNN.post_GP_eta = POST_GP_eta
-BNN.projection_tol = PROJECTION_TOL
-BNN.projection_step(hard=PROJECT)
+BNN.conditional_std = torch.tensor(CONDITIONAL_STD) # ~~~ relevant for all training methods
+BNN.prior_J = PRIOR_J                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
+BNN.post_J = POST_J                                 # ~~~ SSGE accuracyhyperparameter (only relevant for Sun et al. 2019)
+BNN.prior_eta = PRIOR_eta                           # ~~~ stabilizing noise for SSGE (only relevant for Sun et al. 2019)
+BNN.post_eta = POST_eta                             # ~~~ stabilizing noise for SSGE (only relevant for Sun et al. 2019)
+BNN.prior_M = PRIOR_M                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
+BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
+BNN.post_GP_eta = POST_GP_eta                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
+BNN.projection_tol = PROJECTION_TOL                 # ~~~ project onto [PROJECTION_TOL,Inf) if PROJECT==True
+BNN.hard_projection = PROJECT                       # ~~~ whether to use projected gradient descent or one of those dumb parameterizations sigma=log(1+exp(rho))
+if INITIALIZE_AT_PRIOR:
+    BNN.revert_to_prior()
+else:
+    BNN.project_step(hard=PROJECT)
 
 
 
