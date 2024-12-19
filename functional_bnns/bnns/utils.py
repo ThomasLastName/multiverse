@@ -7,13 +7,14 @@ from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~
 
 import os
 import pytz
+from tqdm import tqdm
 from glob import glob
 from datetime import datetime
 from importlib import import_module
 from matplotlib import pyplot as plt
 import fiona
 from quality_of_life.ansi import bcolors
-from quality_of_life.my_base_utils import process_for_saving, my_warn, json_to_dict
+from quality_of_life.my_base_utils import process_for_saving, my_warn, json_to_dict, support_for_progress_bars
 try:
     from quality_of_life.my_base_utils import buffer
 except:
@@ -234,9 +235,13 @@ class EarlyStopper:
 
 #
 # ~~~ Load all the .json files in a directory to data frame
-def load_filtered_json_files( directory ):
-    json_files = glob(os.path.join(directory,'*.json'))
-    all_dicts = [ json_to_dict(json) for json in json_files ]
+def load_filtered_json_files( directory, verbose=True ):
+    #
+    # ~~~ Load (as a list of dictionaries) all the .json files in a directory that don't start with "RUN_THIS"
+    with support_for_progress_bars():
+        json_files = glob(os.path.join(directory,'*.json'))
+        json_files = [ json for json in json_files if not os.path.split(json)[1].startswith("RUN_THIS") ]
+        all_dicts  = [ json_to_dict(json) for json in ( tqdm(json_files,desc="Loading json files") if verbose else json_files ) ]
     #
     # ~~~ Remove from each dictionary any key/value pair where the value is a list, as pandas doesn't like those
     all_filtered_dicts = [
