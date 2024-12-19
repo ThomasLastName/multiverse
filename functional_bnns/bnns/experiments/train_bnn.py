@@ -23,14 +23,14 @@ import os
 from bnns.SequentialGaussianBNN import SequentialGaussianBNN
 #
 # ~~~ Package-specific utils
-from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, set_Dataset_attributes, generate_json_filename, non_negative_list, EarlyStopper
+from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, set_Dataset_attributes, generate_json_filename, convert_to_list_and_check_items, non_negative_list, EarlyStopper
 from bnns.metrics import *
 
 #
 # ~~~ My Personal Helper Functions (https://github.com/ThomasLastName/quality_of_life)
 from quality_of_life.my_visualization_utils import GifMaker
 from quality_of_life.my_numpy_utils         import moving_average
-from quality_of_life.my_base_utils          import support_for_progress_bars, dict_to_json, json_to_dict, print_dict, my_warn
+from quality_of_life.my_base_utils          import support_for_progress_bars, dict_to_json, json_to_dict, print_dict, my_warn, process_for_saving
 from quality_of_life.my_torch_utils         import convert_Dataset_to_Tensors
 
 
@@ -234,8 +234,6 @@ if data_is_univariate:
 # ~~~ Establish some variables used for training
 N_EPOCHS = non_negative_list( N_EPOCHS, integer_only=True ) # ~~~ supports N_EPOCHS to be a list of integers
 STRIDE   = non_negative_list(  STRIDE,  integer_only=True ) # ~~~ supports STRIDE to be a list of integers
-PATIENCE = non_negative_list( PATIENCE, integer_only=True ) # ~~~ supports PATIENCE to be a list of integers
-DELTA    = non_negative_list( DELTA )                       # ~~~ supports DELTA to be a list of integers
 assert np.diff(N_EPOCHS+[N_EPOCHS[-1]+1]).min()>0, "The given sequence N_EPOCHS is not strictly increasing."
 train_loss_curve = []
 val_loss_curve = []
@@ -250,9 +248,12 @@ target_epochs = N_EPOCHS.pop(0)
 starting_time = time()
 first_round = True
 keep_training = True
+min_val_loss = float("inf")
 if EARLY_STOPPING:
     #
     # ~~~ Define all len(PATIENCE)*len(DELTA)*len(STRIDE) stopping conditions
+    PATIENCE = non_negative_list( PATIENCE, integer_only=True )         # ~~~ supports PATIENCE to be a list of integers
+    DELTA    = convert_to_list_and_check_items( DELTA, classes=float )  # ~~~ supports DELTA to be a list of integers
     stride_patience_and_delta_stopping_conditions = [
             [
                 EarlyStopper( patience=patience, delta=delta )
@@ -378,11 +379,16 @@ while keep_training:
                         kl_div_curve.append(kl_div.item())
                         val_lik = BNN.log_likelihood_density(x_test,y_test)
                         val_likelihood_curve.append(val_lik.item())
-                        val_loss_curve.append(kl_div.item()-val_lik.item())
+                        val_loss = kl_div.item() - val_lik.item()
+                        val_loss_curve.append(val_loss)
                         predictions_train = torch.stack([ BNN(X,resample_weights=True) for _ in range(20) ])
                         predictions_val   = torch.stack([ BNN(x_test,resample_weights=True) for _ in range(20) ])
                         train_acc_curve.append(rmse_of_mean( predictions_train, y ))
                         val_acc_curve.append(rmse_of_mean( predictions_val, y_test ))
+                        if val_loss < min_val_loss:
+                            best_pars_so_far = BNN.state_dict()
+                            best_iter_so_far = pbar.n
+                            min_val_loss = val_loss
                     #
                     # ~~~ Assess whether or not any new stopping condition is triggered (although, training won't stop until *every* stopping condition is triggered)
                     if EARLY_STOPPING:
@@ -439,6 +445,7 @@ while keep_training:
         #
         # ~~~ Compute the desired metrics
         hyperparameters["total_iter"] = total_iterations/len(dataloader)
+        hyperparameters["best_iter"] = best_iter_so_far
         hyperparameters["epochs_completed"] = epochs_completed_so_far
         hyperparameters["compute_time"] = time() - starting_time
         hyperparameters["patience"] = patience
@@ -451,6 +458,7 @@ while keep_training:
         hyperparameters["val_lik_curve"] = val_likelihood_curve
         hyperparameters["train_lik_curve"] = train_likelihood_curve
         hyperparameters["kl_div_curve"] = kl_div_curve
+        hyperparameters["train_acc"] = avg(train_loss_curve[-min(STRIDE):])
         hyperparameters["METRIC_rmse_of_median"]             =      rmse_of_median( predictions, y_test )
         hyperparameters["METRIC_rmse_of_mean"]               =        rmse_of_mean( predictions, y_test )
         hyperparameters["METRIC_mae_of_median"]              =       mae_of_median( predictions, y_test )
@@ -528,7 +536,7 @@ while keep_training:
                     )
                 hyperparameters["STATE_DICT_PATH"] = state_dict_path
                 torch.save(
-                        BNN.state_dict(),
+                        best_pars_so_far,
                         state_dict_path
                     )
             dict_to_json(
