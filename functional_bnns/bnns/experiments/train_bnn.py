@@ -243,7 +243,7 @@ val_likelihood_curve = []
 kl_div_curve = []
 train_acc_curve = []
 val_acc_curve = []
-total_iterations = 0
+iter_count = []
 epochs_completed_so_far = 0
 target_epochs = N_EPOCHS.pop(0)
 starting_time = time()
@@ -387,6 +387,7 @@ while keep_training:
                         predictions_val   = torch.stack([ BNN(x_test,resample_weights=True) for _ in range(20) ])
                         train_acc_curve.append(rmse_of_mean( predictions_train, y ))
                         val_acc_curve.append(rmse_of_mean( predictions_val, y_test ))
+                        iter_count.append(pbar.n)
                         if val_loss < min_val_loss:
                             best_pars_so_far = BNN.state_dict()
                             best_iter_so_far = pbar.n
