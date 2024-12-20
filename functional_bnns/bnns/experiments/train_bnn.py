@@ -194,6 +194,7 @@ else:
 #
 # ~~~ The optimizer and dataloader
 dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
+testloader = torch.utils.data.DataLoader( (D_test if final_test else D_val), batch_size=BATCH_SIZE )
 n_batches = len(dataloader)
 n_params = sum( p.numel() for p in BNN.model_mean.parameters() )
 optimizer = Optimizer( BNN.parameters(), lr=LR )
@@ -376,10 +377,11 @@ while keep_training:
                     with torch.no_grad():
                         train_loss_curve.append(negative_ELBO.item())
                         train_likelihood_curve.append(log_likelihood_density.item())
-                        kl_div_curve.append(kl_div.item())
-                        val_lik = BNN.log_likelihood_density(x_test,y_test)
-                        val_likelihood_curve.append(val_lik.item())
-                        val_loss = kl_div.item() - val_lik.item()
+                        kl_div = kl_div.item()
+                        kl_div_curve.append(kl_div)
+                        val_lik = sum( BNN.log_likelihood_density(X,y).item() for (X,y) in testloader )
+                        val_likelihood_curve.append(val_lik)
+                        val_loss = kl_div - val_lik
                         val_loss_curve.append(val_loss)
                         predictions_train = torch.stack([ BNN(X,resample_weights=True) for _ in range(20) ])
                         predictions_val   = torch.stack([ BNN(x_test,resample_weights=True) for _ in range(20) ])
@@ -428,18 +430,27 @@ while keep_training:
         ### ~~~
         #
         # ~~~ Compute the posterior predictive distribution on the testing dataset
-        def predict(x):
-                predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
+        def predict(loader,n):
+            with torch.no_grad():
+                data_is_unlabeled = isinstance( next(iter(loader)), torch.Tensor )
+                predictions = torch.stack([
+                        torch.row_stack([
+                                BNN( batch if data_is_unlabeled else batch[0], resample_weights=True )
+                                for batch in loader
+                            ])
+                        for _ in range(n)
+                    ])
                 if EXTRA_STD:
                     predictions += CONDITIONAL_STD*torch.randn_like(predictions)
                 return predictions
-        with torch.no_grad():
-            predictions = predict(x_test)
+        predictions = predict( testloader, N_POSTERIOR_SAMPLES_EVALUATION )
         try:
             interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
             extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )
-            predictions_on_interpolary_grid = predict(interpolary_grid)
-            predictions_on_extrapolary_grid = predict(extrapolary_grid)
+            batched_interpolary_grid = torch.utils.data.DataLoader( interpolary_grid, batch_size=BATCH_SIZE )
+            batched_extrapolary_grid = torch.utils.data.DataLoader( extrapolary_grid, batch_size=BATCH_SIZE )
+            predictions_on_interpolary_grid = predict( batched_interpolary_grid, N_POSTERIOR_SAMPLES_EVALUATION )
+            predictions_on_extrapolary_grid = predict( batched_extrapolary_grid, N_POSTERIOR_SAMPLES_EVALUATION )
         except AttributeError:
             my_warn(f"Could import `extrapolary_grid` or `interpolary_grid` from bnns.data.{data}. For the best assessment of the quality of the UQ, please define these variables in the data file (no labels necessary)")
         #
@@ -487,15 +498,22 @@ while keep_training:
             S = data.s_truncated.to( device=DEVICE, dtype=DTYPE )
             V = data.V_truncated.to( device=DEVICE, dtype=DTYPE )
             Y = data.unprocessed_y_test.to( device=DEVICE, dtype=DTYPE )
-            def predict(x):
-                predictions = torch.stack([ BNN(x,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
-                if EXTRA_STD:
-                    predictions += CONDITIONAL_STD*torch.randn_like(predictions)
-                return predictions.mean(dim=0,keepdim=True) * S @ V.T
-            with torch.no_grad():
-                predictions = predict(x_test)
-                predictions_on_interpolary_grid = predict(interpolary_grid)
-                predictions_on_extrapolary_grid = predict(extrapolary_grid)
+            def predict(loader,n):
+                with torch.no_grad():
+                    data_is_unlabeled = isinstance( next(iter(loader)), torch.Tensor )
+                    predictions = torch.stack([
+                            torch.row_stack([
+                                    BNN( batch if data_is_unlabeled else batch[0], resample_weights=True )
+                                    for batch in loader
+                                ])
+                            for _ in range(n)
+                        ])
+                    if EXTRA_STD:
+                        predictions += CONDITIONAL_STD*torch.randn_like(predictions)
+                    return predictions.mean(dim=0,keepdim=True) * S @ V.T
+            predictions = predict( x_test, N_POSTERIOR_SAMPLES_EVALUATION )
+            predictions_on_interpolary_grid = predict( batched_interpolary_grid, N_POSTERIOR_SAMPLES_EVALUATION )
+            predictions_on_extrapolary_grid = predict( batched_extrapolary_grid, N_POSTERIOR_SAMPLES_EVALUATION )
             #
             # ~~~ Compute the desired metrics
             hyperparameters["METRIC_unprocessed_rmse_of_mean"]                =        rmse_of_mean( predictions, Y )
