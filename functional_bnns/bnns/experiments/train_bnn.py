@@ -567,6 +567,10 @@ while keep_training:
         # ~~~ Display the results
         if SHOW_DIAGNOSTICS:
             print_dict(hyperparameters)
+        if SHOW_PLOT and keep_training and (not MAKE_GIF):
+            fig,ax = plt.subplots(figsize=(12,6))
+            fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
+            plt.show()
 
 #
 # ~~~ Afterwards, develop the .gif or plot the trained model, if applicable
@@ -596,3 +600,23 @@ if data.__name__ == "bnns.data.bivar_trivial":
     ax.grid()
     fig.tight_layout()
     plt.show()
+
+#
+# ~~~ A convenience function for diagnoistics when run interactively
+def get_variable_name(obj,scope):
+    return [name for name, value in scope.items() if value is obj]
+
+def plot( lst, w=30, title=None ):
+    assert len(lst)==len(iter_count)
+    variable_name = get_variable_name( lst, globals() )[0]    
+    plt.plot( moving_average(iter_count,w), moving_average(lst,w) )
+    plt.xlabel("Number of Iterations of Gradient Descent")
+    plt.ylabel(variable_name)
+    plt.suptitle( f"{variable_name} vs. #iter" if title is None else title )
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+# plot( kl_div_curve, title="KL Divergence as Training Progresses" )
+# plot( train_loss_curve, title="Training Loss as Training Progresses" )
+# plot( val_loss_curve, title="Validation Loss as Training Progresses" )
