@@ -1,6 +1,6 @@
 {
-    "DEVICE": "cpu",
-    "DTYPE": "float",
+	"DEVICE": "cpu",
+	"DTYPE": "float",
 	"SEED": 2024,
 	"DATA": "univar_missing_middle_normalized_12",
 	"MODEL": "univar_BNN.univar_BNN_300_300",
@@ -29,6 +29,8 @@
 	"N_MC_SAMPLES": 1,
 	"WEIGHTING": "standard",
 	"INITIALIZE_AT_PRIOR": true,
+	"GP_PRIOR" : false,
+	"GP_PRIOR_ETA" : 0.001,
 	"MAKE_GIF": false,
 	"HOW_OFTEN": 50,
 	"INITIAL_FRAME_REPETITIONS": 24,
@@ -41,6 +43,6 @@
 	"SHOW_DIAGNOSTICS": false,
 	"SHOW_PLOT": true,
 	"patience": 200,
-d	"delta": -0.5,
+	"delta": -0.5,
 	"stride": 20
 }
