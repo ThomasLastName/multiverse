@@ -41,8 +41,5 @@
 	"EXTRA_STD": true,
 	"N_POSTERIOR_SAMPLES_EVALUATION": 1000,
 	"SHOW_DIAGNOSTICS": false,
-	"SHOW_PLOT": true,
-	"patience": 200,
-	"delta": -0.5,
-	"stride": 20
+	"SHOW_PLOT": true
 }
