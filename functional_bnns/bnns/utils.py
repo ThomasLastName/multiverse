@@ -221,8 +221,13 @@ class EarlyStopper:
             self.min_val_loss = val_loss
             self.counter = 0
         #
-        # ~~~ If the current val_loss is "more than delta worse" relative to min_val_loss, increment the counter    
-        rel_val_loss = val_loss/self.min_val_loss - 1   # ~~~ `== ( val_loss - self.min_val_loss ) / self.min_val_loss` except that's less numerically stable
+        # ~~~ Compute the relative difference between the current `val_loss` and smallest yet `self.min_val_loss`
+        if self.min_val_loss>0:
+            rel_val_loss = val_loss/self.min_val_loss - 1   # ~~~ `== ( val_loss - self.min_val_loss ) / self.min_val_loss` but more numerically stable
+        else:
+            rel_val_loss = abs(val_loss-self.min_val_loss) / abs(self.min_val_loss)
+        #
+        # ~~~ If the current val_loss is "more than delta worse" relative to min_val_loss, increment the counter
         if rel_val_loss > self.delta:
             self.counter += 1
             self.max_count = max( self.counter, self.max_count )
