@@ -30,16 +30,16 @@ hyperparameter_template = {
     "OPTIMIZER" : "Adam",
     "LR" : EXPLORE_DURING_TUNING,
     "BATCH_SIZE" : 64,
-    "N_EPOCHS" : 15000,
+    "N_EPOCHS" : [10000,20000,30000],
     "EARLY_STOPPING" : True,
-    "DELTA": [0.05, 0.075, 0.1],
-    "PATIENCE" : [20, 30, 40, 50],
-    "STRIDE" : [20, 30, 40, 50],
+    "DELTA": [-0.1,0.1],
+    "PATIENCE" : [20,50],
+    "STRIDE" : 15,
     "N_MC_SAMPLES" : 1,                     # ~~~ relevant for droupout
     #
     # ~~~ For visualization
     "MAKE_GIF" : False,
-    "HOW_OFTEN" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
+    "HOW_OFTEN" : 50,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
     "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ for how many frames should the state of initialization be rendered
     "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ for how many frames should the state after training be rendered
     "HOW_MANY_INDIVIDUAL_PREDICTIONS" : 6,  # ~~~ how many posterior predictive samples to plot
@@ -54,22 +54,43 @@ hyperparameter_template = {
 
 #
 # ~~~ Values that we want to test, for each one EXPLORE_DURING_TUNING
-LR = np.linspace( 1e-5, 1e-2, 15 )
-ARCHITECTURE = [
-        "univar_NN",                        # ~~~ 2 hidden layers, 100 neurons each
-        "univar_NN.univar_NN_300_300",      # ~~~ 2 hidden layers, 300 neurons each
-        "univar_NN.univar_NN_500_500",      # ~~~ 2 hidden layers, 500 neurons each
-        "univar_NN.univar_NN_750_750",      # ~~~ 2 hidden layers, 750 neurons each
-        "univar_NN.univar_NN_1000_1000",    # ~~~ 2 hidden layers, 1000 neurons each
-        "univar_NN.univar_NN_300_300_300",      # ~~~ 3 hidden layers, 300 neurons each
-        "univar_NN.univar_NN_500_500_500",      # ~~~ 3 hidden layers, 500 neurons each
-        "univar_NN.univar_NN_750_750_750",      # ~~~ 3 hidden layers, 750 neurons each
-        "univar_NN.univar_NN_1000_1000_1000"    # ~~~ 3 hidden layers, 1000 neurons each
-    ]
 DATA = [    # ~~~ two different train/val splits of the same data
         "univar_missing_middle_normalized_12",
         "univar_missing_middle_normalized_12_cross_fold"
     ]
+ARCHITECTURE = [
+        #
+        "univar_NN.univar_NN_30",               # ~~~ 1 hidden layer, 30 neurons
+        "univar_NN.univar_NN_30_30",              # ~~~ 2 hidden layers, 30 neurons each
+        "univar_NN.univar_NN_30_30_30",            # ~~~ 3 hidden layers, 30 neurons each
+        "univar_NN.univar_NN_30_30_30_30",          # ~~~ 4 hidden layers, 30 neurons each
+        #
+        "univar_NN.univar_NN_100",              # ~~~ 1 hidden layer,  100 neurons
+        "univar_NN",                              # ~~~ 2 hidden layers, 100 neurons each
+        "univar_NN.univar_NN_100_100_100",         # ~~~ 3 hidden layers, 100 neurons each
+        "univar_NN.univar_NN_100_100_100_100",      # ~~~ 4 hidden layers, 100 neurons each
+        #
+        "univar_NN.univar_NN_300",              # ~~~ 1 hidden layer, 300 neurons
+        "univar_NN.univar_NN_300_300",            # ~~~ 2 hidden layers, 300 neurons each
+        "univar_NN.univar_NN_300_300_300",         # ~~~ 3 hidden layers, 300 neurons each
+        "univar_NN.univar_NN_300_300_300_300",      # ~~~ 4 hidden layers, 300 neurons each
+        #
+        "univar_NN.univar_NN_500",              # ~~~ 1 hidden layer, 500 neurons
+        "univar_NN.univar_NN_500_500",            # ~~~ 2 hidden layers, 500 neurons each
+        "univar_NN.univar_NN_500_500_500",         # ~~~ 3 hidden layers, 500 neurons each
+        "univar_NN.univar_NN_500_500_500_500",      # ~~~ 4 hidden layers, 500 neurons each
+        #
+        "univar_NN.univar_NN_750",              # ~~~ 1 hidden layer, 750 neurons
+        "univar_NN.univar_NN_750_750",            # ~~~ 2 hidden layers, 750 neurons each
+        "univar_NN.univar_NN_750_750_750",         # ~~~ 3 hidden layers, 750 neurons each
+        "univar_NN.univar_NN_750_750_750_750",      # ~~~ 4 hidden layers, 750 neurons each
+        #
+        "univar_NN.univar_NN_1000",             # ~~~ 1 hidden layer, 1000 neurons
+        "univar_NN.univar_NN_1000_1000",          # ~~~ 2 hidden layers, 1000 neurons each
+        "univar_NN.univar_NN_1000_1000_1000",      # ~~~ 3 hidden layers, 1000 neurons each
+        "univar_NN.univar_NN_1000_1000_1000_1000",  # ~~~ 4 hidden layers, 1000 neurons each
+    ]
+LR = [ 0.005, 0.001, 0.0005, 0.0001, 0.00001 ]
 
 #
 # ~~~ Create and populate a folder for the hyperparameter search
