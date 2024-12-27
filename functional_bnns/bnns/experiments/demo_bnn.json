@@ -32,6 +32,7 @@
 	"GP_PRIOR" : false,
 	"GP_PRIOR_ETA" : 0.001,
 	"MAKE_GIF": false,
+	"TITLE" : "title_of_my_gif",
 	"HOW_OFTEN": 10,
 	"INITIAL_FRAME_REPETITIONS": 24,
 	"FINAL_FRAME_REPETITIONS": 48,
