@@ -29,6 +29,8 @@
 	"N_MC_SAMPLES": 1,
 	"WEIGHTING": "standard",
 	"INITIALIZE_AT_PRIOR" : true,
+	"GP_PRIOR" : false,
+	"GP_PRIOR_ETA" : 0.001,
 	"MAKE_GIF": false,
 	"HOW_OFTEN": 10,
 	"INITIAL_FRAME_REPETITIONS": 24,
