@@ -45,7 +45,7 @@ hyperparameter_template = {
     # ~~~ For training
     "conditional_std" : 0.19,
     "bw" : 0.1,
-        #
+    #
     # ~~~ For metrics and visualization
     "extra_std" : True,
     "show_diagnostics" : True

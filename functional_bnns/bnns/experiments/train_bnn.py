@@ -57,7 +57,7 @@ hyperparameter_template = {
     "GAUSSIAN_APPROXIMATION" : True,    # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
     "APPPROXIMATE_GAUSSIAN_MEAN" : True,# ~~~ whether to compute exactly, or approximately, the mean from eq'n (14) in https://arxiv.org/pdf/2312.17199
     "FUNCTIONAL" : False,       # ~~~ whether or to do functional training or (if False) BBB
-	"EXACT_WEIGHT_KL" : True,   # ~~~ whether to use the exact KL divergence between the prior and posterior (True) or a Monte-Carlo approximation (False)
+    "EXACT_WEIGHT_KL" : True,   # ~~~ whether to use the exact KL divergence between the prior and posterior (True) or a Monte-Carlo approximation (False)
     "PROJECT" : True,           # ~~~ if True, use projected gradient descent; else use the weird thing from the paper
     "PROJECTION_TOL" : 1e-6,    # ~~~ for numerical reasons, project onto [PROJECTION_TOL,Inf), rather than onto [0,Inft)
     "PRIOR_J"   : 100,          # ~~~ `J` in the SSGE of the prior score
@@ -95,7 +95,7 @@ hyperparameter_template = {
     # ~~~ For metrics and visualization
     "EXTRA_STD" : True,
     "N_POSTERIOR_SAMPLES_EVALUATION" : 1000,# ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
-	"SHOW_DIAGNOSTICS" : True,
+    "SHOW_DIAGNOSTICS" : True,
     "SHOW_PLOT" : True
 }
 
