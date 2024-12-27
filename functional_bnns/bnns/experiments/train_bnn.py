@@ -7,7 +7,7 @@
 # ~~~ Standard packages
 import numpy as np
 import torch
-from torch import nn, optim
+from torch import optim
 from tqdm import tqdm
 from statistics import mean as avg
 from matplotlib import pyplot as plt
@@ -21,6 +21,7 @@ import os
 #
 # ~~~ The guts of the model
 from bnns.SequentialGaussianBNN import SequentialGaussianBNN
+
 #
 # ~~~ Package-specific utils
 from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, set_Dataset_attributes, generate_json_filename, convert_to_list_and_check_items, non_negative_list, EarlyStopper
@@ -30,8 +31,8 @@ from bnns.metrics import *
 # ~~~ My Personal Helper Functions (https://github.com/ThomasLastName/quality_of_life)
 from quality_of_life.my_visualization_utils import GifMaker
 from quality_of_life.my_numpy_utils         import moving_average
-from quality_of_life.my_base_utils          import support_for_progress_bars, dict_to_json, json_to_dict, print_dict, my_warn, process_for_saving
 from quality_of_life.my_torch_utils         import convert_Dataset_to_Tensors
+from quality_of_life.my_base_utils          import support_for_progress_bars, dict_to_json, json_to_dict, print_dict, my_warn, process_for_saving
 
 
 
@@ -76,11 +77,14 @@ hyperparameter_template = {
     "PATIENCE" : 20,
     "STRIDE" : 30,
     "N_MC_SAMPLES" : 1,
-    "WEIGHTING" : "standard",               # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
-    "INITIALIZE_AT_PRIOR" : True,           # ~~~ whether or not to take the prior  as the initialization of the posterior
+    "WEIGHTING" : "standard",       # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
+    "INITIALIZE_AT_PRIOR" : True,   # ~~~ whether or not to take the prior  as the initialization of the posterior
+    "GP_PRIOR" : False,             # ~~~ whether or not to use a Gaussian process prior
+    "GP_PRIOR_ETA" : 0.001,         # ~~~ "stabilizing noise" added to the variance of the Gaussian process
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
+    "TITLE" : "title of my gif",            # ~~~ if MAKE_GIF is True, this will be the file name of the created .gif
     "HOW_OFTEN" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
     "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ for how many frames should the state of initialization be rendered
     "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ for how many frames should the state after training be rendered
@@ -96,7 +100,7 @@ hyperparameter_template = {
 }
 
 #
-# ~~~ Define the variable `input_json_filename`
+# ~~~ Define the variable `input_json_filename` (str, no default), along with `model_save_dir` (str, default None), and `final_test` and `overwrite_json` (both Bool, default False)
 if hasattr(sys,"ps1"):
     #
     # ~~~ If this is an interactive (not srcipted) session, i.e., we are directly typing/pasting in the commands (I do this for debugging), then use the demo json name
@@ -159,8 +163,10 @@ x_test,  y_test    =   convert_Dataset_to_Tensors(D_test if final_test else D_va
 
 try:
     grid = data.grid.to( device=DEVICE, dtype=DTYPE )
-except:
+except AttributeError:
     pass
+except:
+    raise
 
 #
 # ~~~ Load the network architecture
@@ -180,24 +186,32 @@ BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperpar
 BNN.post_GP_eta = POST_GP_eta                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
 BNN.projection_tol = PROJECTION_TOL                 # ~~~ project onto [PROJECTION_TOL,Inf) if PROJECT==True
 BNN.hard_projection = PROJECT                       # ~~~ whether to use projected gradient descent or one of those dumb parameterizations sigma=log(1+exp(rho))
+
 if INITIALIZE_AT_PRIOR:
     BNN.revert_to_prior()
 else:
     BNN.projection_step(hard=PROJECT)
 
+if GP_PRIOR:
+    from bnns.GPR import simple_mean_zero_RPF_kernel_GP as GP
+    BNN.GP = GP( out_features=BNN.out_features, eta=GP_PRIOR_ETA )
+    if not FUNCTIONAL:
+        my_warn("The Gaussian process prior specified by `GP_PRIOR=True` will be ignored because `FUNCTIONAL==False`.")
+
 
 
 ### ~~~
-## ~~~ Do Bayesian training
+## ~~~ Train a Bayesian neural network, either using BBB, or some functional mehtod
 ### ~~~
 
 #
 # ~~~ The optimizer and dataloader
 dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
 testloader = torch.utils.data.DataLoader( (D_test if final_test else D_val), batch_size=BATCH_SIZE )
-n_batches = len(dataloader)
-n_params = sum( p.numel() for p in BNN.model_mean.parameters() )
 optimizer = Optimizer( BNN.parameters(), lr=LR )
+n_batches = len(dataloader)
+n_test_batches = len(testloader)
+n_params = sum( p.numel() for p in BNN.model_mean.parameters() )
 
 #
 # ~~~ Some naming stuff
@@ -209,13 +223,24 @@ if GAUSSIAN_APPROXIMATION:
         my_warn("The settings GAUSSIAN_APPROXIMATION=True and FUNCTIONAL=False are incompatible, since Rudner et al.'s Gaussian approximation is only used in fBNNs. The former will be ignored.")
 
 #
+# ~~~ Use the description_of_the_experiment as the title if no TITLE is specified
+try:
+    title = description_of_the_experiment if (TITLE is None) else TITLE
+except NameError:
+    title = description_of_the_experiment
+
+#
 # ~~~ Some plotting stuff
 if data_is_univariate:
+    #
+    # ~~~ Define some objects used for plotting
     green_curve =  data.y_test.cpu().squeeze()
     x_train_cpu = data.x_train.cpu()
     y_train_cpu = data.y_train.cpu().squeeze()
+    #
+    # ~~~ Define the main plotting routine
     plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
-    def plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, bnn, extra_std=(CONDITIONAL_STD if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, n_posterior_samples=N_POSTERIOR_SAMPLES, title=description_of_the_experiment, prior=False ):
+    def plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, bnn, extra_std=(CONDITIONAL_STD if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, n_posterior_samples=N_POSTERIOR_SAMPLES, title=title, prior=False ):
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
@@ -225,7 +250,9 @@ if data_is_univariate:
     #
     # ~~~ Plot the state of the posterior predictive distribution upon its initialization
     if MAKE_GIF:
-        gif = GifMaker()      # ~~~ essentially just a list of images
+        #
+        # ~~~ Make the gif, and save `INITIAL_FRAME_REPETITIONS` copies of an identical image of the initial distribution
+        gif = GifMaker(title)   # ~~~ essentially just a list of images
         fig,ax = plt.subplots(figsize=(12,6))
         fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN, prior=True )
         for j in range(INITIAL_FRAME_REPETITIONS):
@@ -238,8 +265,8 @@ STRIDE   = non_negative_list(  STRIDE,  integer_only=True ) # ~~~ supports STRID
 assert np.diff(N_EPOCHS+[N_EPOCHS[-1]+1]).min()>0, "The given sequence N_EPOCHS is not strictly increasing."
 train_loss_curve = []
 val_loss_curve = []
-train_likelihood_curve = []
-val_likelihood_curve = []
+train_lik_curve = []
+val_lik_curve = []
 kl_div_curve = []
 train_acc_curve = []
 val_acc_curve = []
@@ -264,7 +291,7 @@ if EARLY_STOPPING:
         ]
 
 #
-# ~~~ Set "regularization parameters" for the loss function
+# ~~~ Set "regularization parameters" for a Bayesian loss function (i.e., relative weights of the likelihood and the KL divergence)
 if not isinstance(WEIGHTING,str):
     my_warn(f"Expected WEIGHTING to be a string, but found instead type(WEIGHTING)=={type(WEIGHTING)}. The loss function will be weighted as if WEIGHTING='standard'.")
 elif WEIGHTING=="Blundell":
@@ -309,12 +336,12 @@ else:
         my_warn(f'The given value of WEIGHTING ({WEIGHTING}) was not recognized. Using the default setting of WEIGHTING="standard" instead.')
 
 #
-# ~~~ A few safety checks
+# ~~~ One or two safety checks
 if EXACT_WEIGHT_KL and FUNCTIONAL:
     my_warn("The settings EXACT_WEIGHT==True and FUNCTIONAL==True are incompatible. The former will be ignored.")
 
 #
-# ~~~ Start the training loop
+# ~~~ Do the actual training loop
 while keep_training:
     with support_for_progress_bars():   # ~~~ this just supports green progress bars
         stopped_early = False
@@ -329,30 +356,36 @@ while keep_training:
         for e in range( target_epochs - epochs_completed_so_far ):
             for b, (X,y) in enumerate(dataloader):
                 X, y = X.to(DEVICE), y.to(DEVICE)
+                #
+                # ~~~ Compute the gradient of the loss function on the batch (X,y)
                 for j in range(N_MC_SAMPLES):
                     #
-                    # ~~~ Compute the gradient of the loss function
-                    BNN.sample_from_standard_normal()   # ~~~ draw a new MC sample for estimating the integrals
+                    # ~~~ Draw a new sample
+                    BNN.sample_from_standard_normal()
+                    #
+                    # ~~~ Compute the KL divergence of the (approximate) posterior against the user-specified prior
                     if not FUNCTIONAL:
                         kl_div = BNN.weight_kl(exact_formula=EXACT_WEIGHT_KL)
+                    else:
+                        BNN.sample_new_measurement_set()
                     if FUNCTIONAL and not GAUSSIAN_APPROXIMATION:
                         kl_div = BNN.functional_kl()
                     if FUNCTIONAL and GAUSSIAN_APPROXIMATION:
                         kl_div = BNN.gaussian_kl(approximate_mean=APPPROXIMATE_GAUSSIAN_MEAN)
                     #
-                    # ~~~ Add the the likelihood term and differentiate
+                    # ~~~ Compute the likelihood term (this is the same for all training methods)
                     log_likelihood_density = BNN.log_likelihood_density(X,y)
+                    #
+                    # ~~~ Compute the loss==negative_ELBO
                     alpha, beta = decide_weights( b=b, n_batches=n_batches, X=X, D_train=D_train )
                     negative_ELBO = ( alpha*kl_div - beta*log_likelihood_density )/N_MC_SAMPLES
                     negative_ELBO.backward()
                 #
-                # ~~~ Update the parameters according to the gradient
+                # ~~~ Perform the gradient-based update
                 if not PROJECT:
                     BNN.apply_chain_rule_for_soft_projection()
                 optimizer.step()
                 optimizer.zero_grad()
-                #
-                # ~~~ Do the projection
                 BNN.projection_step(hard=PROJECT)
                 #
                 # ~~~ Report a moving average of train_loss as well as val_loss in the progress bar
@@ -375,19 +408,35 @@ while keep_training:
                     #
                     # ~~~ Record a little diagnostic info
                     with torch.no_grad():
+                        #
+                        # ~~~ Misc.
+                        iter_count.append(pbar.n)
+                        #
+                        # ~~~ Diagnostic info specific to the last seen batch of training data
                         train_loss_curve.append(negative_ELBO.item())
-                        train_likelihood_curve.append(log_likelihood_density.item())
+                        predictions_train = torch.stack([ BNN(X,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ])
+                        train_acc_curve.append(rmse_of_mean( predictions_train, y ))
+                        train_lik_curve.append(log_likelihood_density.item())
+                        #
+                        # ~~~ Diagnostic info on the kl divergence between posterior and prior
                         kl_div = kl_div.item()
                         kl_div_curve.append(kl_div)
-                        val_lik = sum( BNN.log_likelihood_density(X,y).item() for (X,y) in testloader )
-                        val_likelihood_curve.append(val_lik)
-                        val_loss = kl_div - val_lik
+                        #
+                        # ~~~ Diagnostic info specific to a randomly chosen batch of validation data
+                        this_one = np.random.randint(n_test_batches)
+                        for b, (X,y) in enumerate(testloader):
+                            X, y = X.to(DEVICE), y.to(DEVICE)
+                            if b==this_one:
+                                val_lik = BNN.log_likelihood_density(X,y).item()
+                                val_lik_curve.append(val_lik)
+                                alpha, beta = decide_weights( b=b, n_batches=n_test_batches, X=X, D_train=D_train )
+                                val_loss = alpha*kl_div - beta*val_lik
+                                break
                         val_loss_curve.append(val_loss)
-                        predictions_train = torch.stack([ BNN(X,resample_weights=True) for _ in range(20) ])
-                        predictions_val   = torch.stack([ BNN(x_test,resample_weights=True) for _ in range(20) ])
-                        train_acc_curve.append(rmse_of_mean( predictions_train, y ))
-                        val_acc_curve.append(rmse_of_mean( predictions_val, y_test ))
-                        iter_count.append(pbar.n)
+                        predictions_val = torch.stack([ BNN(X,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ])
+                        val_acc_curve.append(rmse_of_mean( predictions_val, y ))
+                        #
+                        # ~~~ Save only the "best" parameters thus far
                         if val_loss < min_val_loss:
                             best_pars_so_far = BNN.state_dict()
                             best_iter_so_far = pbar.n
@@ -430,20 +479,23 @@ while keep_training:
         ## ~~~ Metrics (evaluate the model at this checkpoint, and save the results)
         ### ~~~
         #
-        # ~~~ Compute the posterior predictive distribution on the testing dataset
+        # ~~~ Define the predictive process
         def predict(loader,n):
             with torch.no_grad():
                 data_is_unlabeled = isinstance( next(iter(loader)), torch.Tensor )
-                predictions = torch.stack([
-                        torch.row_stack([
-                                BNN( batch if data_is_unlabeled else batch[0], resample_weights=True )
+                predictions = []
+                for _ in range(n):
+                    BNN.sample_from_standard_normal()
+                    predictions.append(torch.row_stack([
+                                BNN( batch if data_is_unlabeled else batch[0], resample_weights=False )
                                 for batch in loader
-                            ])
-                        for _ in range(n)
-                    ])
+                            ]))
+                predictions = torch.stack(predictions)
                 if EXTRA_STD:
                     predictions += CONDITIONAL_STD*torch.randn_like(predictions)
                 return predictions
+        #
+        # ~~~ Compute the posterior predictive distribution on the testing dataset(s)
         predictions = predict( testloader, N_POSTERIOR_SAMPLES_EVALUATION )
         try:
             interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
@@ -467,8 +519,8 @@ while keep_training:
         hyperparameters["train_loss_curve"] = train_loss_curve
         hyperparameters["val_acc_curve"] = val_acc_curve
         hyperparameters["train_acc_curve"] = train_acc_curve
-        hyperparameters["val_lik_curve"] = val_likelihood_curve
-        hyperparameters["train_lik_curve"] = train_likelihood_curve
+        hyperparameters["val_lik_curve"] = val_lik_curve
+        hyperparameters["train_lik_curve"] = train_lik_curve
         hyperparameters["kl_div_curve"] = kl_div_curve
         hyperparameters["train_acc"] = avg(train_loss_curve[-min(STRIDE):])
         hyperparameters["METRIC_rmse_of_median"]             =      rmse_of_median( predictions, y_test )
@@ -578,7 +630,7 @@ if data_is_univariate:
     if MAKE_GIF:
         for j in range(FINAL_FRAME_REPETITIONS):
             gif.frames.append( gif.frames[-1] )
-        gif.develop( destination=description_of_the_experiment, fps=24 )
+        gif.develop(fps=24)
         plt.close()
     elif SHOW_PLOT:
         fig,ax = plt.subplots(figsize=(12,6))
@@ -617,6 +669,7 @@ def plot( lst, w=30, title=None ):
     plt.tight_layout()
     plt.show()
 
-# plot( kl_div_curve, title="KL Divergence as Training Progresses" )
-# plot( train_loss_curve, title="Training Loss as Training Progresses" )
-# plot( val_loss_curve, title="Validation Loss as Training Progresses" )
+if SHOW_DIAGNOSTICS:
+    plot( kl_div_curve, title="KL Divergence as Training Progresses" )
+    plot( train_loss_curve, title="Training Loss as Training Progresses" )
+    plot( val_loss_curve, title="Validation Loss as Training Progresses" )
