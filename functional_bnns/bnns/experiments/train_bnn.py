@@ -660,7 +660,7 @@ def get_variable_name(obj,scope):
 
 def plot( lst, w=30, title=None ):
     assert len(lst)==len(iter_count)
-    variable_name = get_variable_name( lst, globals() )[0]    
+    variable_name = get_variable_name( lst, globals() )[0]
     plt.plot( moving_average(iter_count,w), moving_average(lst,w) )
     plt.xlabel("Number of Iterations of Gradient Descent")
     plt.ylabel(variable_name)

@@ -20,14 +20,15 @@ import os
 
 #
 # ~~~ Package-specific utils
-from bnns.utils import plot_nn, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, generate_json_filename, set_Dataset_attributes, non_negative_list, EarlyStopper
+from bnns.utils import plot_nn, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, generate_json_filename, set_Dataset_attributes, convert_to_list_and_check_items, non_negative_list, EarlyStopper
 from bnns.metrics import *
 
 #
 # ~~~ My Personal Helper Functions (https://github.com/ThomasLastName/quality_of_life)
 from quality_of_life.my_visualization_utils import GifMaker
-from quality_of_life.my_base_utils          import support_for_progress_bars, dict_to_json, json_to_dict, print_dict, my_warn, process_for_saving
+from quality_of_life.my_numpy_utils         import moving_average
 from quality_of_life.my_torch_utils         import convert_Dataset_to_Tensors
+from quality_of_life.my_base_utils          import support_for_progress_bars, dict_to_json, json_to_dict, print_dict, my_warn, process_for_saving
 
 
 
@@ -59,8 +60,9 @@ hyperparameter_template = {
     "STRIDE" : 30,
     "N_MC_SAMPLES" : 1,                     # ~~~ relevant for droupout
     #
-    # ~~~ For visualization
+    # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
+    "TITLE" : "title of my gif",            # ~~~ if MAKE_GIF is True, this will be the file name of the created .gif
     "HOW_OFTEN" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
     "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ for how many frames should the state of initialization be rendered
     "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ for how many frames should the state after training be rendered
@@ -75,7 +77,7 @@ hyperparameter_template = {
 }
 
 #
-# ~~~ Define the variable `input_json_filename`
+# ~~~ Define the variable `input_json_filename` (str, no default), along with `model_save_dir` (str, default None), and `final_test` and `overwrite_json` (both Bool, default False)
 if hasattr(sys,"ps1"):
     #
     # ~~~ If this is an interactive (not srcipted) session, i.e., we are directly typing/pasting in the commands (I do this for debugging), then use the demo json name
@@ -138,8 +140,10 @@ x_test,  y_test    =   convert_Dataset_to_Tensors(D_test if final_test else D_va
 
 try:
     grid = data.grid.to( device=DEVICE, dtype=DTYPE )
-except:
+except AttributeError:
     pass
+except:
+    raise
 
 #
 # ~~~ Load the network architecture
@@ -150,29 +154,37 @@ except:
 
 NN = model.NN.to( device=DEVICE, dtype=DTYPE )
 
-
 #
 # ~~~ Infer whether or not the model's forward pass is stochastic (e.g., whether or not it's using dropout)
 X,_ = next(iter(torch.utils.data.DataLoader( D_train, batch_size=10 )))
 with torch.no_grad():
     difference = NN(X)-NN(X)
-    dropout = (difference.abs().mean()>0).item()
+    dropout = (difference.abs().mean()>1e-6).item()
 
 
 
 ### ~~~
-## ~~~ Train a conventional neural network, for reference
+## ~~~ Train a conventional neural network
 ### ~~~
 
 #
 # ~~~ The optimizer, dataloader, and loss function
-optimizer = Optimizer( NN.parameters(), lr=LR )
 dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
+testloader = torch.utils.data.DataLoader( (D_test if final_test else D_val), batch_size=BATCH_SIZE )
+optimizer = Optimizer( NN.parameters(), lr=LR )
 loss_fn = nn.MSELoss()
+n_test_batches = len(testloader)
 
 #
 # ~~~ Some naming stuff
 description_of_the_experiment = "Conventional, Deterministic Training" if not dropout else "Conventional Training of a Neural Network with Dropout"
+
+#
+# ~~~ Use the description_of_the_experiment as the title if no TITLE is specified
+try:
+    title = description_of_the_experiment if (TITLE is None) else TITLE
+except NameError:
+    title = description_of_the_experiment
 
 #
 # ~~~ Some plotting stuff
@@ -193,7 +205,9 @@ if data_is_univariate:
     #
     # ~~~ Plot the state of the model upon its initialization
     if MAKE_GIF:
-        gif = GifMaker()      # ~~~ essentially just a list of images
+        #
+        # ~~~ Make the gif, and save `INITIAL_FRAME_REPETITIONS` copies of an identical image of the initial distribution
+        gif = GifMaker(title)   # ~~~ essentially just a list of images
         fig,ax = plt.subplots(figsize=(12,6))
         fig,ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
         for j in range(INITIAL_FRAME_REPETITIONS):
@@ -203,20 +217,21 @@ if data_is_univariate:
 # ~~~ Establish some variables used for training
 N_EPOCHS = non_negative_list( N_EPOCHS, integer_only=True ) # ~~~ supports N_EPOCHS to be a list of integers
 STRIDE   = non_negative_list(  STRIDE,  integer_only=True ) # ~~~ supports STRIDE to be a list of integers
-PATIENCE = non_negative_list( PATIENCE, integer_only=True ) # ~~~ supports PATIENCE to be a list of integers
-DELTA    = non_negative_list( DELTA )                       # ~~~ supports DELTA to be a list of integers
 assert np.diff(N_EPOCHS+[N_EPOCHS[-1]+1]).min()>0, "The given sequence N_EPOCHS is not strictly increasing."
 train_loss_curve = []
 val_loss_curve = []
-total_iterations = 0
+iter_count = []
 epochs_completed_so_far = 0
 target_epochs = N_EPOCHS.pop(0)
 starting_time = time()
 first_round = True
 keep_training = True
+min_val_loss = float("inf")
 if EARLY_STOPPING:
     #
     # ~~~ Define all len(PATIENCE)*len(DELTA)*len(STRIDE) stopping conditions
+    PATIENCE = non_negative_list( PATIENCE, integer_only=True )         # ~~~ supports PATIENCE to be a list of integers
+    DELTA    = convert_to_list_and_check_items( DELTA, classes=float )  # ~~~ supports DELTA to be a list of integers
     stride_patience_and_delta_stopping_conditions = [
             [
                 EarlyStopper( patience=patience, delta=delta )
@@ -226,7 +241,7 @@ if EARLY_STOPPING:
         ]
 
 #
-# ~~~ Start the training loop
+# ~~~ Do the actual training loop
 while keep_training:
     with support_for_progress_bars():   # ~~~ with green progress bars
         stopped_early = False
@@ -241,17 +256,17 @@ while keep_training:
         for e in range( target_epochs - epochs_completed_so_far ):
             for X, y in dataloader:
                 X, y = X.to(DEVICE), y.to(DEVICE)
+                #
+                # ~~~ Compute the gradient of the loss function on the batch (X,y)
                 if not dropout:
                     loss = loss_fn(NN(X),y)
-                if dropout:
-                    #
-                    # ~~~ If the network has dropout, optionally, average over multiple samples
+                if dropout: # ~~~ if the network has dropout, optionally average the loss over multiple samples
                     loss = 0.
                     for _ in range(N_MC_SAMPLES):
                         loss += loss_fn(NN(X),y)/N_MC_SAMPLES
-                #
-                # ~~~ Do the gradient-based update
                 loss.backward()
+                #
+                # ~~~ Perform the gradient-based update
                 optimizer.step()
                 optimizer.zero_grad()
                 #
@@ -273,8 +288,27 @@ while keep_training:
                     #
                     # ~~~ Record a little diagnostic info
                     with torch.no_grad():
+                        #
+                        # ~~~ Misc.
+                        iter_count.append(pbar.n)
+                        #
+                        # ~~~ Diagnostic info specific to the last seen batch of training data
                         train_loss_curve.append( loss.item() )
-                        val_loss_curve.append( loss_fn(NN(x_test),y_test).item() )
+                        #
+                        # ~~~ Diagnostic info specific to a randomly chosen batch of validation data
+                        this_one = np.random.randint(n_test_batches)
+                        for b, (X,y) in enumerate(testloader):
+                            X, y = X.to(DEVICE), y.to(DEVICE)
+                            if b==this_one:
+                                val_loss = loss_fn(NN(x_test),y_test).item()
+                                val_loss_curve.append(val_loss)
+                                break
+                        #
+                        # ~~~ Save only the "best" parameters thus far
+                        if val_loss < min_val_loss:
+                            best_pars_so_far = NN.state_dict()
+                            best_iter_so_far = pbar.n
+                            min_val_loss = val_loss
                     #
                     # ~~~ Assess whether or not any new stopping condition is triggered (although, training won't stop until *every* stopping condition is triggered)
                     if EARLY_STOPPING:
@@ -313,10 +347,13 @@ while keep_training:
         ## ~~~ Metrics (evaluate the model at this checkpoint, and save the results)
         ### ~~~
         #
-        # ~~~ Compute the posterior predictive distribution on the testing dataset
-        predict = lambda points: torch.stack([ NN(points) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ]) if dropout else NN(points)
-        with torch.no_grad():
-            predictions = predict(x_test)
+        # ~~~ Define the predictive process
+        def predict(points):
+            with torch.no_grad():
+                return torch.stack([ NN(points) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ]) if dropout else NN(points)
+        #
+        # ~~~ Compute the posterior predictive distribution on the testing dataset(s)
+        predictions = predict(x_test)
         try:
             interpolary_grid = data.interpolary_grid.to( device=DEVICE, dtype=DTYPE )
             extrapolary_grid = data.extrapolary_grid.to( device=DEVICE, dtype=DTYPE )
@@ -329,6 +366,7 @@ while keep_training:
         #
         # ~~~ Compute the desired metrics
         hyperparameters["total_iter"] = total_iterations/len(dataloader)
+        hyperparameters["best_iter"] = best_iter_so_far
         hyperparameters["epochs_completed"] = epochs_completed_so_far
         hyperparameters["compute_time"] = time() - starting_time
         hyperparameters["patience"] = patience
@@ -370,12 +408,12 @@ while keep_training:
             V = data.V_truncated.to( device=DEVICE, dtype=DTYPE )
             Y = data.unprocessed_y_test.to( device=DEVICE, dtype=DTYPE )
             def predict(x):
-                predictions = torch.stack([ NN(x) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ]) if dropout else NN(x)
-                return predictions * S @ V.T
-            with torch.no_grad():
-                predictions = predict(x_test)
-                predictions_on_interpolary_grid = predict(interpolary_grid)
-                predictions_on_extrapolary_grid = predict(extrapolary_grid)
+                with torch.no_grad():
+                    predictions = torch.stack([ NN(x) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ]) if dropout else NN(x)
+                    return predictions * S @ V.T
+            predictions = predict(x_test)
+            predictions_on_interpolary_grid = predict(interpolary_grid)
+            predictions_on_extrapolary_grid = predict(extrapolary_grid)
             #
             # ~~~ Compute the desired metrics
             if dropout:
@@ -421,7 +459,7 @@ while keep_training:
                     )
                 hyperparameters["STATE_DICT_PATH"] = state_dict_path
                 torch.save(
-                        NN.state_dict(),
+                        best_pars_so_far,
                         state_dict_path
                     )
             dict_to_json(
@@ -433,6 +471,10 @@ while keep_training:
         # ~~~ Display the results
         if SHOW_DIAGNOSTICS:
             print_dict(hyperparameters)
+        if SHOW_PLOT and keep_training and (not MAKE_GIF):
+            fig,ax = plt.subplots(figsize=(12,6))
+            fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
+            plt.show()
 
 #
 # ~~~ Afterwards, develop the .gif or plot the trained model, if applicable
@@ -440,7 +482,7 @@ if data_is_univariate:
     if MAKE_GIF:
         for j in range(FINAL_FRAME_REPETITIONS):
             gif.frames.append( gif.frames[-1] )
-        gif.develop( destination=description_of_the_experiment, fps=24 )
+        gif.develop(fps=24)
         plt.close()
     elif SHOW_PLOT:
         fig,ax = plt.subplots(figsize=(12,6))
@@ -460,3 +502,24 @@ if data.__name__ == "bnns.data.bivar_trivial" and SHOW_PLOT:
     ax.grid()
     fig.tight_layout()
     plt.show()
+
+#
+# ~~~ A convenience function for diagnoistics when run interactively
+def get_variable_name(obj,scope):
+    return [name for name, value in scope.items() if value is obj]
+
+def plot( lst, w=30, title=None ):
+    assert len(lst)==len(iter_count)
+    variable_name = get_variable_name( lst, globals() )[0]
+    plt.plot( moving_average(iter_count,w), moving_average(lst,w) )
+    plt.xlabel("Number of Iterations of Gradient Descent")
+    plt.ylabel(variable_name)
+    plt.suptitle( f"{variable_name} vs. #iter" if title is None else title )
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+
+if SHOW_DIAGNOSTICS:
+    plot( kl_div_curve, title="KL Divergence as Training Progresses" )
+    plot( train_loss_curve, title="Training Loss as Training Progresses" )
+    plot( val_loss_curve, title="Validation Loss as Training Progresses" )
