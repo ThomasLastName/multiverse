@@ -13,6 +13,7 @@
 	"PATIENCE" : 20,
 	"STRIDE" : 30,
 	"N_MC_SAMPLES": 1,
+	"DROPOUT" : null,
 	"MAKE_GIF": false,
 	"HOW_OFTEN": 10,
 	"INITIAL_FRAME_REPETITIONS": 24,
