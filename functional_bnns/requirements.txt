@@ -1,4 +1,4 @@
-maplotlib
+matplotlib
 tqdm
 numpy
 scipy
