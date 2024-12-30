@@ -3,5 +3,6 @@ tqdm
 numpy
 scipy
 pandas
+torch
 fiona
 quality_of_life @ git+https://github.com/ThomasLastName/quality-of-life.git
