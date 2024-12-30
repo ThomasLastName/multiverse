@@ -20,7 +20,7 @@ import os
 
 #
 # ~~~ Package-specific utils
-from bnns.utils import plot_nn, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, generate_json_filename, set_Dataset_attributes, convert_to_list_and_check_items, non_negative_list, EarlyStopper
+from bnns.utils import plot_nn, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, generate_json_filename, set_Dataset_attributes, convert_to_list_and_check_items, non_negative_list, EarlyStopper, add_dropout_to_sequential_relu_network
 from bnns.metrics import *
 
 #
@@ -59,6 +59,7 @@ hyperparameter_template = {
     "PATIENCE" : 20,
     "STRIDE" : 30,
     "N_MC_SAMPLES" : 1,                     # ~~~ relevant for droupout
+    "DROPOUT" : None,                       # ~~~ add dropout layers with p=DROPOUT to the model before training, if it is a purely deterministic model
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
@@ -160,6 +161,12 @@ X,_ = next(iter(torch.utils.data.DataLoader( D_train, batch_size=10 )))
 with torch.no_grad():
     difference = NN(X)-NN(X)
     dropout = (difference.abs().mean()>1e-6).item()
+
+#
+# ~~~ If the model's forward pass is deterministic, but if dropout is desired, then add it now
+if (not dropout) and (DROPOUT is not None):
+    NN = add_dropout_to_sequential_relu_network(NN,p=DROPOUT)
+    dropout = True
 
 
 
@@ -473,7 +480,7 @@ while keep_training:
             print_dict(hyperparameters)
         if SHOW_PLOT and keep_training and (not MAKE_GIF):
             fig,ax = plt.subplots(figsize=(12,6))
-            fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
+            fig,ax = plot_nn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, NN )
             plt.show()
 
 #

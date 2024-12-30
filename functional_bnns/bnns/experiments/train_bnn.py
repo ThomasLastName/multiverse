@@ -19,10 +19,6 @@ import sys
 import os
 
 #
-# ~~~ The guts of the model
-from bnns.SequentialGaussianBNN import SequentialGaussianBNN
-
-#
 # ~~~ Package-specific utils
 from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, set_Dataset_attributes, generate_json_filename, convert_to_list_and_check_items, non_negative_list, EarlyStopper
 from bnns.metrics import *
@@ -184,13 +180,8 @@ BNN.post_eta = POST_eta                             # ~~~ stabilizing noise for 
 BNN.prior_M = PRIOR_M                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_GP_eta = POST_GP_eta                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
-BNN.projection_tol = PROJECTION_TOL                 # ~~~ project onto [PROJECTION_TOL,Inf) if PROJECT==True
 BNN.hard_projection = PROJECT                       # ~~~ whether to use projected gradient descent or one of those dumb parameterizations sigma=log(1+exp(rho))
-
-if INITIALIZE_AT_PRIOR:
-    BNN.revert_to_prior()
-else:
-    BNN.projection_step(hard=PROJECT)
+BNN.initialize_uncertainty(initialize_at_prior=INITIALIZE_AT_PRIOR)
 
 if GP_PRIOR:
     from bnns.GPR import simple_mean_zero_RPF_kernel_GP as GP
@@ -386,7 +377,7 @@ while keep_training:
                     BNN.apply_chain_rule_for_soft_projection()
                 optimizer.step()
                 optimizer.zero_grad()
-                BNN.projection_step(hard=PROJECT)
+                BNN.projection_step()
                 #
                 # ~~~ Report a moving average of train_loss as well as val_loss in the progress bar
                 if len(train_loss_curve)>0:

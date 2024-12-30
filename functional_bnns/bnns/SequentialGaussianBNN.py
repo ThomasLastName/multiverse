@@ -3,8 +3,9 @@ import math
 import torch
 from torch import nn
 from torch.func import jacrev, functional_call
+from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
 from bnns.SSGE import SpectralSteinEstimator as SSGE
-from bnns.utils import log_gaussian_pdf, diagonal_gaussian_kl, get_std, manual_Jacobian
+from bnns.utils import log_gaussian_pdf, diagonal_gaussian_kl, manual_Jacobian, get_std
 from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
@@ -37,17 +38,26 @@ class SequentialGaussianBNN(nn.Module):
         # ~~~ Define a prior on the weights
         with torch.no_grad():
             #
-            # ~~~ Define the prior means: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired mean values (==zero, for now)
+            # ~~~ Define the prior means: first copy the architecture, then set requires_grad=False and assign the desired mean values (==zero, for now)
             self.prior_mean = nonredundant_copy_of_module_list(self.model_mean)
             for p in self.prior_mean.parameters():
                 p.requires_grad = False             # ~~~ don't train the prior
                 p.data = torch.zeros_like(p.data)   # ~~~ assign the desired prior mean values
             #
-            # ~~~ Define the prior std. dev.'s: first copy the architecture (maybe inefficient?), then set requires_grad=False and assign the desired std values
-            self.prior_std = nonredundant_copy_of_module_list(self.model_mean)
-            for p in self.prior_std.parameters():
-                p.requires_grad = False                     # ~~~ don't train the prior
-                p.data = get_std(p)*torch.ones_like(p.data) # ~~~ assign the desired prior standard deviation values
+            # ~~~ Define the prior std. dev.'s: first copy the architecture, then set requires_grad=False, and finally assign the desired std values in a way that mimics pytorch's default initialization
+            self.prior_std = nonredundant_copy_of_module_list(self.model_mean)  # ~~~ copy the architecture
+            for layer in self.prior_std:
+                if isinstance(layer,nn.Linear):
+                    #
+                    # ~~~ Don't train the prior
+                    layer.weight.requires_grad = False
+                    layer.bias.requires_grad = False
+                    #
+                    # ~~~ Mimic pytorch's default initialization, but using a normal instead of uniform distribution (https://discuss.pytorch.org/t/how-are-layer-weights-and-biases-initialized-by-default/13073/2)
+                    bound = 1 / math.sqrt(layer.weight.size(1))
+                    std = bound / math.sqrt(3)  # ~~~ our reference distribution `uniform_(-bound,bound)` from the deafult pytorch weight initialization has standard deviation bound/sqrt(3), the value of which we copy
+                    layer.weight.data = std * torch.ones_like(layer.weight.data)
+                    layer.bias.data = std * torch.ones_like(layer.bias.data)
         #
         # ~~~ Define a "standard normal distribution in the shape of our neural network"
         self.realized_standard_normal = nonredundant_copy_of_module_list(self.model_mean)
@@ -75,8 +85,13 @@ class SequentialGaussianBNN(nn.Module):
         # ~~~ A hyperparameter needed for the gaussian appxroximation method
         self.post_GP_eta = "please specify"
         #
-        # ~~~ A hyperparameter needed for the gaussian appxroximation method
+        # ~~~ Whether or not to use projected gradient descent
         self.hard_projection = True
+        #
+        # ~~~ If not using projected gradient descent, then what transform to apply
+        self.rho = lambda x: torch.log( 1 + torch.exp(x) )
+        self.rho_inv = lambda x: torch.log( torch.exp(x) - 1 )
+        self.rho_prime = lambda x: 1 / (1 + torch.exp(-x))
     #
     # ~~~ Sample according to a "standard normal distribution in the shape of our neural network"
     def sample_from_standard_normal(self):
@@ -92,33 +107,43 @@ class SequentialGaussianBNN(nn.Module):
                 return device, dtype
     #
     # ~~~ Project the standard deviations to be positive, as in projected gradient descent
-    def projection_step(self,hard=True):
-        if not hard==self.hard_projection:
-            my_warn(f"`hard={hard}` argument to `projection_step` does not match `self.hard_projection={self.hard_projection}`. The latter will be updated to match the former.")
-            self.hard_projection = hard
+    def projection_step(self):
         with torch.no_grad():
             for p in self.model_std.parameters():
-                p.data = torch.clamp( p.data, min=self.projection_tol ) if hard else torch.log( 1 + torch.exp(p.data) ) # ~~~ basically, max if hard else softmax
+                p.data = torch.clamp( p.data, min=self.projection_tol ) if self.hard_projection else self.rho(p.data) # ~~~ basically, max if hard else softmax
     #
-    # ~~~ Initialize the "posterior" mean and standard deviation to match the prior distribution
-    def revert_to_prior(self):
+    # ~~~ Do something about the fact that the default pytorch initialization creates a lot of negative values, which we cannot use as initial values for the posterior standard deviations
+    def initialize_uncertainty( self, initialize_at_prior=False ):
         with torch.no_grad():
-            for p in self.model_mean.parameters():
-                p.data = torch.zeros_like(p.data)           # ~~~ assign the prior mean values
-            for p in self.model_std.parameters():
-                p.data = get_std(p)*torch.ones_like(p.data) # ~~~ assign the prior standard deviation values
+            if initialize_at_prior:
+                #
+                # ~~~ Initialize the posterior standard deviations to match the default prior standard deviations
+                for (sigma_post, sigma_prior) in zip( self.model_std.parameters(), self.prior_std.parameters() ):
+                    sigma_post.data = sigma_prior.data
+            else:
+                #
+                # ~~~ Simply apply some transform to all the current values so that they are made positive
+                self.projection_step()
     #
     # ~~~ In Blundell et al. (https://arxiv.org/abs/1505.05424), the chain rule is implemented manually (this is necessary since pytorch doesn't allow in-place operations on the parameters to be included in the graph)
     def apply_chain_rule_for_soft_projection(self):
         with torch.no_grad():
             for p in self.model_std.parameters():
-                p.data  = torch.log( torch.exp(p.data)-1 )  # ~~~ now the parameters are \rho = \ln(\exp(\sigma)-1) instead of \sigma
+                p.data  = self.rho_inv(p.data)          # ~~~ now the parameters are \rho = \ln(\exp(\sigma)-1) instead of \sigma
                 try:
-                    p.grad /= ( 1 + torch.exp(-p.data) )    # ~~~ now the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
+                    p.grad *= self.rho_prime(p.data)    # ~~~ now the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
                 except:
                     if p.grad is None:
                         my_warn("`apply_chain_rule_for_soft_projection` operates directly on the `grad` attributes of the parameters. It should be applied *after* `backwards` is called.")
                     raise
+    #
+    # ~~~ Check that all the posterior standard deviations are positive
+    def check_positive(self):
+        with torch.no_grad():
+            for p in self.model_std.parameters():
+                if not p.min() > 0:
+                    my_warn("`model_std` contains negative values.")
+                    break
     #
     # ~~~ Sample the distribution of Y|X=x,W=w
     def forward(self,x,resample_weights=True):
@@ -128,6 +153,7 @@ class SequentialGaussianBNN(nn.Module):
             self.sample_from_standard_normal()      # ~~~ this methods re-generates the values of weights and biases in `self.realized_standard_normal` (IID standard normal)
         #
         # ~~~ Basically, `x=layer(x)` for each layer in model, but with a twist on the weights
+        self.check_positive()
         for j in range(self.n_layers):
             z = self.realized_standard_normal[j]    # ~~~ the network's j'th layer, but with IID standard normal weights and biases
             #
@@ -158,6 +184,7 @@ class SequentialGaussianBNN(nn.Module):
     def log_prior_density(self):
         #
         # ~~~ Because the weights and biases are mutually independent, the log prior pdf can be decomposed as a summation \sum_j
+        self.check_positive()
         log_prior = 0.
         for j in range(self.n_layers):
             z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
@@ -176,6 +203,7 @@ class SequentialGaussianBNN(nn.Module):
     def log_posterior_density(self):
         #
         # ~~~ Because the weights and biases are mutually independent, the log_prior_pdf can be decomposed as a summation \sum_j
+        self.check_positive()
         log_posterior = 0.
         for j in range(self.n_layers):
             z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
@@ -192,6 +220,7 @@ class SequentialGaussianBNN(nn.Module):
     #
     # ~~~ Compute the kl divergence between posterior and prior distributions over the network weights
     def weight_kl( self, exact_formula=False ):
+        self.check_positive()
         if not exact_formula:
             return self.log_posterior_density() - self.log_prior_density()
         else:
@@ -391,7 +420,7 @@ class SequentialGaussianBNN(nn.Module):
             - len(mu_0)
             + torch.inner( mu_0-mu_theta, (Sigma_0_inv @ (mu_0-mu_theta)) )
             + 2*root_Sigma_0.diag().log().sum() - 2*root_Sigma_theta.diag().log().sum()
-        )/2
+        ) / 2
     #
     # ~~~ A helper function that samples a bunch from the predicted posterior distribution
     def posterior_predicted_mean_and_std( self, x_test, n_samples ):
