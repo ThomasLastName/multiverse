@@ -260,6 +260,27 @@ def load_filtered_json_files( directory, verbose=True ):
     return pd.DataFrame(all_filtered_dicts)
 
 #
+# ~~~ Infer the width of each model
+def infer_width_and_depth(dataframe):
+    #
+    # ~~~ Infer the width of each model
+    width_mapping = {}
+    for model in dataframe["MODEL"].unique():
+        text_after_last_underscore = model[model.rfind("_")+1:] # ~~~ e.g., if model=="univar_NN.univar_NN_30_30_30", then text_after_last_underscore=="30"
+        width_mapping[model] = int(text_after_last_underscore)
+    dataframe["width"] = dataframe["MODEL"].map(width_mapping)
+    # print_dict(width_mapping)
+    #
+    # ~~~ Infer the depth of each model
+    depth_mapping = {}
+    for model in dataframe["MODEL"].unique():
+        how_many_underscores = len(model.split("_"))-1 # ~~~ e.g., if model=="univar_NN.univar_NN_30_30_30", then text_after_last_underscore=="30"
+        depth_mapping[model] = how_many_underscores-2 if how_many_underscores>1 else 2
+    dataframe["depth"] = dataframe["MODEL"].map(depth_mapping)
+    # print_dict(depth_mapping)
+    return dataframe
+
+#
 # ~~~ Get the dataframe.iloc[i,"arg"] for all the arguments `args`
 def get_attributes_from_row_i(dataframe,i,*args):
     return [
@@ -298,6 +319,33 @@ def load_trained_model_from_dataframe( results_dataframe, i ):
     architecture = results_dataframe.iloc[i].MODEL
     state_dict_path = results_dataframe.iloc[i].STATE_DICT_PATH
     return load_trained_model( architecture, state_dict_path )
+
+#
+# ~~~ Load a trained model, based on the dataframe of results you get from hyperparameter search, and then plot it
+def plot_trained_model_from_dataframe( dataframe, i, title="Trained Model", n_samples=500 ):
+    data = import_module(f"bnns.data.{dataframe.iloc[i].DATA}")
+    grid        =  data.x_test.cpu()
+    green_curve =  data.y_test.cpu().squeeze()
+    x_train_cpu = data.x_train.cpu()
+    y_train_cpu = data.y_train.cpu().squeeze()
+    plot_predictions = plot_bnn_empirical_quantiles if dataframe.iloc[i].VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
+    bnn = load_trained_model_from_dataframe(dataframe,i)
+    with torch.no_grad():
+        predictions = torch.stack([ bnn(grid) for _ in range(n_samples) ]).squeeze()
+        fig, ax = plt.subplots(figsize=(12,6))
+        fig, ax = plot_predictions(
+            fig = fig,
+            ax = ax,
+            grid = grid,
+            green_curve = green_curve,
+            x_train = x_train_cpu,
+            y_train = y_train_cpu,
+            predictions = predictions,
+            extra_std = 0.,
+            how_many_individual_predictions = 0,
+            title = title
+            )
+        plt.show()
 
 #
 # ~~~ Generate a .json filename based on the current datetime
@@ -349,6 +397,16 @@ def set_Dataset_attributes( dataset, device, dtype ):
             def __len__(self):
                 return len(self.original_dataset)
         return ModifiedDataset(dataset)
+
+#
+# ~~~ Add dropout to a standard ReLU network
+def add_dropout_to_sequential_relu_network( add_dropout_to_sequential_relu_network, p=0.5 ):
+    layers = []
+    for layer in add_dropout_to_sequential_relu_network:
+        layers.append(layer)
+        if isinstance(layer, torch.nn.ReLU):
+            layers.append(torch.nn.Dropout(p=p))
+    return torch.nn.Sequential(*layers)
 
 
 
