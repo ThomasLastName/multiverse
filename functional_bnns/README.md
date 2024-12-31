@@ -37,11 +37,17 @@ In addition to impelementations of each of the above training methods, this pack
 
 **IMPORTANT: At this time, `git` is a prerequisite for installation.**
 
+
 ## Minimal setup instructions using git
 
-1. (_have python already set up_) Simply put, have python on your machine. Optionally, this may include setting up a virtual environment for this repository and its dependencies, which most programmers would opt to do. The below **Setup steps using anaconda and git** go into more detail on this matter, walking you through the process of setting up such an environment using `conda`.
-2. (_have pytorch already installed_) This dependency is intentionally left to the user to be installed manually, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility.
-3. (_install this repository as a package_) Navigate to wherever you want (e.g., the Documents folder), and clone this reppository there. Then, mimicing [the SEPIA installation guidelines](https://sepia-lanl.readthedocs.io/en/latest/#installation), "from the command line, while in the [the directory where this repository's `setup.py` file is located], use the following command to install [bnns]:" `pip install -e .`. From [the SEPIA installation guidelines](https://sepia-lanl.readthedocs.io/en/latest/#installation), "the -e flag signals developer mode, meaning that if you update the code from Github, your installation will automatically take those changes into account without requiring re-installation."
+1. (_have python already set up_) Basically, just have python on your machine in an environment that allows you to install packages. Optionally, this may include setting up a virtual environment for this repository and its dependencies, which most programmers would opt to do. The below **Setup steps using anaconda and git** go into more detail on this matter, walking you through the process of setting up such an environment using `conda`.
+
+2. (_have pytorch already installed_) *This dependency is intentionally left to the user to be installed manually*, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility. If pytorch isn't already part of your python environment, you should install it now.
+
+3. (_clone this repo_) Navigate to wherever you want this code to be stored (e.g., the Desktop, or the Documents folder), and clone this reppository there using `git clone https://github.com/ThomasLastName/multiverse.git` in the terminal.
+
+4. (_install the `multiverse/functional_bnns` directory as a package_) Navigate into the folder containing `setup.py` and, from that directory, run `pip install -e .` in the command line.
+
 
 ## Setup steps using anaconda and git
 
@@ -53,7 +59,9 @@ In addition to impelementations of each of the above training methods, this pack
 
 3. (_install pytorch_) This dependency is intentionally left to the user to be installed manually, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility. Additionally, it may depend on your conda channels. The simplest installation (which is not CUDA-compatible) is to try the command `conda install pytorch`. If that doesn't work (probably because of channels) then commanding `pip install torch` while the environment is active shuold still work, although using `conda` is preferable because it reduces the likelihood of conflicts.
 
-4. (_install this repository as a package_) This step is identical as in the **Minimal setup instructions using git** above.
+4. (_clone this repo_) Navigate to wherever you want this code to be stored (e.g., the Desktop, or the Documents folder), and clone this reppository there using `git clone https://github.com/ThomasLastName/multiverse.git` in the terminal.
+
+5. (_install the `multiverse/functional_bnns` directory as a package_) Navigate into the folder containing `setup.py` and, from that directory, run `pip install -e .` in the command line. As in [the SEPIA installation guidelines](https://sepia-lanl.readthedocs.io/en/latest/#installation), "the -e flag signals developer mode, meaning that if you update the code from Github, your installation will automatically take those changes into account without requiring re-installation."
 
 6. (_verify installation_) Try running one of the python files, e.g., `python scripts\SSGE_univar_demo.py`, which should create an plot with several curves.
 
