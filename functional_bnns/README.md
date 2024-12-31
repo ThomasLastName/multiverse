@@ -44,14 +44,14 @@ In addition to impelementations of each of the above training methods, this pack
 
 2. (_have pytorch already installed_) *This dependency is intentionally left to the user to be installed manually*, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility. If pytorch isn't already part of your python environment, you should install it now.
 
-3. (_clone this repo_) Navigate to wherever you want this code to be stored (e.g., the Desktop, or the Documents folder), and clone this reppository there using `git clone https://github.com/ThomasLastName/multiverse.git` in the terminal.
+3. (_clone this repo_) Navigate to wherever you want this code to be stored (e.g., the Desktop, or the Documents folder), and clone this reppository there using `git clone https://github.com/ThomasLastName/multiverse.git` in the command line.
 
 4. (_install the `multiverse/functional_bnns` directory as a package_) Navigate into the folder containing `setup.py` and, from that directory, run `pip install -e .` in the command line.
 
 
 ## Setup steps using anaconda and git
 
-0. Open the terminal and say `conda env list` to confirm that the code is not present already.
+0. Open the command line and say `conda env list` to confirm that the code is not present already.
 
 1. (_create an env with standard / easy-to-install packages_) `conda create --name bnns python=3.10 matplotlib tqdm numpy scipy pandas pip` (if desired, you can swap `bnns` for your preferred name).
 
@@ -59,7 +59,7 @@ In addition to impelementations of each of the above training methods, this pack
 
 3. (_install pytorch_) This dependency is intentionally left to the user to be installed manually, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility. Additionally, it may depend on your conda channels. The simplest installation (which is not CUDA-compatible) is to try the command `conda install pytorch`. If that doesn't work (probably because of channels) then commanding `pip install torch` while the environment is active shuold still work, although using `conda` is preferable because it reduces the likelihood of conflicts.
 
-4. (_clone this repo_) Navigate to wherever you want this code to be stored (e.g., the Desktop, or the Documents folder), and clone this reppository there using `git clone https://github.com/ThomasLastName/multiverse.git` in the terminal.
+4. (_clone this repo_) Navigate to wherever you want this code to be stored (e.g., the Desktop, or the Documents folder), and clone this reppository there using `git clone https://github.com/ThomasLastName/multiverse.git` in the command line.
 
 5. (_install the `multiverse/functional_bnns` directory as a package_) Navigate into the folder containing `setup.py` and, from that directory, run `pip install -e .` in the command line. As in [the SEPIA installation guidelines](https://sepia-lanl.readthedocs.io/en/latest/#installation), "the -e flag signals developer mode, meaning that if you update the code from Github, your installation will automatically take those changes into account without requiring re-installation."
 
