@@ -73,10 +73,10 @@ hyperparameter_template = {
     "PATIENCE" : 20,
     "STRIDE" : 30,
     "N_MC_SAMPLES" : 1,
-    "WEIGHTING" : "standard",       # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
-    "INITIALIZE_AT_PRIOR" : True,   # ~~~ whether or not to take the prior  as the initialization of the posterior
-    "GP_PRIOR" : False,             # ~~~ whether or not to use a Gaussian process prior
-    "GP_PRIOR_ETA" : 0.001,         # ~~~ "stabilizing noise" added to the variance of the Gaussian process
+    "WEIGHTING" : "standard",           # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
+    "DEFAULT_INITIALIZATION" : "new",   # ~~~ whether or not to take the prior as the initialization of the posterior
+    "GP_PRIOR" : False,                 # ~~~ whether or not to use a Gaussian process prior
+    "GP_PRIOR_ETA" : 0.001,             # ~~~ "stabilizing noise" added to the variance of the Gaussian process
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
@@ -180,8 +180,11 @@ BNN.post_eta = POST_eta                             # ~~~ stabilizing noise for 
 BNN.prior_M = PRIOR_M                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_GP_eta = POST_GP_eta                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
-BNN.hard_projection = PROJECT                       # ~~~ whether to use projected gradient descent or one of those dumb parameterizations sigma=log(1+exp(rho))
-BNN.initialize_uncertainty(initialize_at_prior=INITIALIZE_AT_PRIOR)
+try:
+    assert DEFAULT_INITIALIZATION in ("new","old")
+    BNN.set_default_uncertainty(DEFAULT_INITIALIZATION=="new")
+except:
+    BNN.projection_step( soft = not PROJECT )
 
 if GP_PRIOR:
     from bnns.GPR import simple_mean_zero_RPF_kernel_GP as GP
@@ -377,7 +380,7 @@ while keep_training:
                     BNN.apply_chain_rule_for_soft_projection()
                 optimizer.step()
                 optimizer.zero_grad()
-                BNN.projection_step()
+                BNN.projection_step( soft = not PROJECT )
                 #
                 # ~~~ Report a moving average of train_loss as well as val_loss in the progress bar
                 if len(train_loss_curve)>0:

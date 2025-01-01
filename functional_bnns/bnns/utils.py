@@ -3,7 +3,6 @@ import math
 import numpy as np
 import pandas as pd
 import torch
-from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
 
 import os
 import pytz
@@ -39,18 +38,6 @@ def log_gaussian_pdf( where, mu, sigma ):
         assert sigma>0
     marginal_log_probs = -((where-mu)/sigma)**2/2 - torch.log( math.sqrt(2*torch.pi)*sigma )   # ~~~ note: isn't (x-mu)/sigma numerically unstable, like numerical differentiation?
     return marginal_log_probs.sum()
-
-#
-# ~~~ Define what we want the prior std. to be for each group of model parameters
-def get_std(p):
-    if len(p.shape)==1: # ~~~ for the biase vectors, take variance=1/length
-        numb_pars = len(p)
-        std = 1/math.sqrt(numb_pars)
-    else:   # ~~~ for the weight matrices, mimic pytorch's `xavier normal` initialization (https://pytorch.org/docs/stable/_modules/torch/nn/init.html#xavier_normal_)
-        fan_in, fan_out = _calculate_fan_in_and_fan_out(p)
-        gain = calculate_gain("relu")
-        std = gain * math.sqrt(2.0 / float(fan_in + fan_out))
-    return torch.tensor( std, device=p.device, dtype=p.dtype )
 
 #
 # ~~~ Compute the (appropriately shaped) Jacobian of the final layer of a nerural net (I came up with the formula for the Jacobian, and chat-gpt came up with the generalized vectorized pytorch implementation)
