@@ -28,7 +28,7 @@
 	"STRIDE": 50,
 	"N_MC_SAMPLES": 1,
 	"WEIGHTING": "standard",
-	"INITIALIZE_AT_PRIOR" : true,
+	"DEFAULT_INITIALIZATION" : null,
 	"GP_PRIOR" : false,
 	"GP_PRIOR_ETA" : 0.001,
 	"MAKE_GIF": false,
