@@ -150,6 +150,18 @@ class SequentialGaussianBNN(nn.Module):
         else:
             raise ValueError(f' Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
     #
+    # ~~~ In Blundell et al. (https://arxiv.org/abs/1505.05424), the chain rule is implemented manually (this is necessary since pytorch doesn't allow in-place operations on the parameters to be included in the graph)
+    def apply_chain_rule_for_soft_projection(self):
+        with torch.no_grad():
+            for p in self.model_std.parameters():
+                p.data  = self.soft_projection_inv(p.data)          # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
+                try:
+                    p.grad *= self.soft_projection_prime(p.data)    # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
+                except:
+                    if p.grad is None:
+                        my_warn("`apply_chain_rule_for_soft_projection` operates directly on the `grad` attributes of the parameters. It should be applied *after* `backwards` is called.")
+                    raise
+    #
     # ~~~ Initialize the posterior standard deviations to match the standard deviations of a possible prior distribution
     def set_default_uncertainty( self, comparable_to_default_torch_init=False, scale=1.0 ):
         with torch.no_grad():
@@ -162,18 +174,6 @@ class SequentialGaussianBNN(nn.Module):
             else:
                 for p in self.model_std.parameters():
                     p.data = scale*std_per_param(p)*torch.ones_like(p.data)
-    #
-    # ~~~ In Blundell et al. (https://arxiv.org/abs/1505.05424), the chain rule is implemented manually (this is necessary since pytorch doesn't allow in-place operations on the parameters to be included in the graph)
-    def apply_chain_rule_for_soft_projection(self):
-        with torch.no_grad():
-            for p in self.model_std.parameters():
-                p.data  = self.soft_projection_inv(p.data)          # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
-                try:
-                    p.grad *= self.soft_projection_prime(p.data)    # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
-                except:
-                    if p.grad is None:
-                        my_warn("`apply_chain_rule_for_soft_projection` operates directly on the `grad` attributes of the parameters. It should be applied *after* `backwards` is called.")
-                    raise
     #
     # ~~~ Check that all the posterior standard deviations are positive
     def check_positive(self):
