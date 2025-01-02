@@ -29,6 +29,7 @@
 	"N_MC_SAMPLES": 1,
 	"WEIGHTING": "standard",
 	"DEFAULT_INITIALIZATION": "old",
+	"DEFAULT_PRIOR" : "old",
 	"GP_PRIOR" : false,
 	"GP_PRIOR_ETA" : 0.001,
 	"MAKE_GIF": true,
