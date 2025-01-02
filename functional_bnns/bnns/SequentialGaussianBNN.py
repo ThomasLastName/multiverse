@@ -52,7 +52,11 @@ flatten_parameters = lambda model: torch.cat([ p.view(-1) for p in model.paramet
 #
 # ~~~ Main class: intended to mimic nn.Sequential
 class SequentialGaussianBNN(nn.Module):
-    def __init__(self,*args):
+    def __init__(
+                self,
+                *args,
+                conditional_std = torch.tensor(0.001)
+            ):
         #
         # ~~~ Means and standard deviations for each network parameter
         super().__init__()
@@ -89,7 +93,7 @@ class SequentialGaussianBNN(nn.Module):
             nn.init.normal_(p)
         #
         # ~~~ Define the assumed level of noise in the training data: when this is set to smaller values, the model "pays more attention" to the data, and fits it more aggresively (can also be a vector)
-        self.conditional_std = torch.tensor(0.001)
+        self.conditional_std = conditional_std
         #
         # ~~~ Opt to project onto [projection_tol,Inf), rather than onto [0,Inf)
         self.projection_tol = 1e-6
