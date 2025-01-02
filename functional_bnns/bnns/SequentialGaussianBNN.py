@@ -106,11 +106,6 @@ class SequentialGaussianBNN(nn.Module):
         #
         # ~~~ A hyperparameter needed for the gaussian appxroximation method
         self.post_GP_eta = "please specify"
-        #
-        # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" (page 4 of https://arxiv.org/pdf/1505.05424)
-        self.rho = lambda x: torch.log( 1 + torch.exp(x) )
-        self.rho_inv = lambda x: torch.log( torch.exp(x) - 1 )
-        self.rho_prime = lambda x: 1 / (1 + torch.exp(-x))
     #
     # ~~~ Sample according to a "standard normal distribution in the shape of our neural network"
     def sample_from_standard_normal(self):
@@ -132,7 +127,24 @@ class SequentialGaussianBNN(nn.Module):
                 if not soft:
                     p.data = torch.clamp( p.data, min=self.projection_tol )
                 else:
-                    p.data = self.rho( p.data )
+                    try:
+                        p.data = self.soft_projection( p.data )
+                    except:
+                        my_warn("Encountered an error when calling `self.soft_projection(tensor)`... Please ensure that `self.soft_projection`, `self.soft_projection_inv`, and , `self.soft_projection_prime` are all callable on generic tensors.")
+                        raise
+    #
+    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" (as on page 4 of https://arxiv.org/pdf/1505.05424)
+    def setup_soft_projection( self, method="Blundell" ):
+        if method=="Blundell":
+            self.soft_projection = lambda x: torch.log( 1 + torch.exp(x) )
+            self.soft_projection_inv = lambda x: torch.log( torch.exp(x) - 1 )
+            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
+        elif method=="torchbnn":
+            self.soft_projection = lambda x: torch.exp(x)
+            self.soft_projection_inv = lambda x: torch.log(x)
+            self.soft_projection_prime = lambda x: torch.exp(x)
+        else:
+            raise ValueError(f' Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
     #
     # ~~~ Initialize the posterior standard deviations to match the standard deviations of a possible prior distribution
     def set_default_uncertainty( self, comparable_to_default_torch_init=False ):
@@ -151,9 +163,9 @@ class SequentialGaussianBNN(nn.Module):
     def apply_chain_rule_for_soft_projection(self):
         with torch.no_grad():
             for p in self.model_std.parameters():
-                p.data  = self.rho_inv(p.data)          # ~~~ now the parameters are \rho = \ln(\exp(\sigma)-1) instead of \sigma
+                p.data  = self.soft_projection_inv(p.data)          # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
                 try:
-                    p.grad *= self.rho_prime(p.data)    # ~~~ now the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
+                    p.grad *= self.soft_projection_prime(p.data)    # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
                 except:
                     if p.grad is None:
                         my_warn("`apply_chain_rule_for_soft_projection` operates directly on the `grad` attributes of the parameters. It should be applied *after* `backwards` is called.")
