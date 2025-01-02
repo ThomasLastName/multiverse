@@ -182,6 +182,10 @@ BNN.prior_M = PRIOR_M                               # ~~~ SSGE accuracy hyperpar
 BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_GP_eta = POST_GP_eta                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
 BNN.set_default_prior(DEFAULT_PRIOR=="new")
+
+if not PROJECT:
+    BNN.setup_soft_projection()
+
 try:
     assert DEFAULT_INITIALIZATION in ("new","old")
     BNN.set_default_uncertainty(DEFAULT_INITIALIZATION=="new")
