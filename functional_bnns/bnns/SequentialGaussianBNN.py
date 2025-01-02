@@ -56,8 +56,8 @@ class SequentialGaussianBNN(nn.Module):
         #
         # ~~~ Means and standard deviations for each network parameter
         super().__init__()
-        self.model_mean = nn.Sequential(*nn.ModuleList(args))
-        self.model_std  = nonredundant_copy_of_module_list(self.model_mean)
+        self.model_mean = nn.Sequential(*args)
+        self.model_std  = nonredundant_copy_of_module_list( self.model_mean, sequential=True )
         #
         # ~~~ Basic information about the model: in_features, out_features, and n_layers, etc.
         self.n_layers   = len(self.model_mean)
