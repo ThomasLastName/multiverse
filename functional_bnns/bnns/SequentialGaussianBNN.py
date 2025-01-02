@@ -187,21 +187,24 @@ class SequentialGaussianBNN(nn.Module):
                 y_mean = labels.mean(dim=0)
                 mu += y_mean
             #
-            # ~~~ Define the prior std. dev.'s: first copy the architecture, then set requires_grad=False, and finally assign the desired std values in a way that mimics pytorch's default initialization
-            self.prior_std = nonredundant_copy_of_module_list(self.model_mean)  # ~~~ copy the architecture
-            for p in self.prior_std.parameters():
-                p.requires_grad = False                     # ~~~ don't train the prior
-                p.data = std_per_param(p)*torch.ones_like(p.data) # ~~~ assign the desired prior standard deviation values
-        with torch.no_grad():
+            # ~~~ Set the prior standard deviation
             if comparable_to_default_torch_init:
-                for layer in self.model_std:
+                for layer in self.prior_std:
                     if isinstance(layer,nn.Linear):
-                        std = scale*std_per_layer(layer)
+                        std = std_per_layer(layer)
                         layer.weight.data = std * torch.ones_like(layer.weight.data)
-                        layer.bias.data = std * torch.ones_like(layer.bias.data)
+                        if layer.bias is not None:
+                            layer.bias.data = std * torch.ones_like(layer.bias.data)
             else:
-                for p in self.model_std.parameters():
-                    p.data = scale*std_per_param(p)*torch.ones_like(p.data)
+                for p in self.prior_std.parameters():
+                    p.data = std_per_param(p)*torch.ones_like(p.data)
+            #
+            # ~~~ Scale the range of output, much like the scale paramter in a GP
+            if isinstance( self.prior_std[-1], nn.Linear ):
+                for p in self.prior_std[-1].parameters():
+                    p.data *= scale
+            elif not scale==1:
+                my_warn(f"`scale` assumes the final layer is `nn.Linear`, but found instead {type(self.prior_std[-1])}. The supplied `scale={scale}` was ignored.")
     #
     # ~~~ Check that all the posterior standard deviations are positive
     def check_positive(self):

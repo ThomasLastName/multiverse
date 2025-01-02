@@ -75,6 +75,7 @@ hyperparameter_template = {
     "N_MC_SAMPLES" : 1,
     "WEIGHTING" : "standard",           # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
     "DEFAULT_INITIALIZATION" : "new",   # ~~~ whether or not to take the prior as the initialization of the posterior
+    "DEFAULT_PRIOR" : "old",
     "GP_PRIOR" : False,                 # ~~~ whether or not to use a Gaussian process prior
     "GP_PRIOR_ETA" : 0.001,             # ~~~ "stabilizing noise" added to the variance of the Gaussian process
     #
@@ -180,6 +181,7 @@ BNN.post_eta = POST_eta                             # ~~~ stabilizing noise for 
 BNN.prior_M = PRIOR_M                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_GP_eta = POST_GP_eta                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
+BNN.set_default_prior(DEFAULT_PRIOR=="new")
 try:
     assert DEFAULT_INITIALIZATION in ("new","old")
     BNN.set_default_uncertainty(DEFAULT_INITIALIZATION=="new")
