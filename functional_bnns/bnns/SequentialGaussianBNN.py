@@ -155,7 +155,8 @@ class SequentialGaussianBNN(nn.Module):
                     if isinstance(layer,nn.Linear):
                         std = std_per_layer(layer)
                         layer.weight.data = std * torch.ones_like(layer.weight.data)
-                        layer.bias.data = std * torch.ones_like(layer.bias.data)
+                        if layer.bias is not None:
+                            layer.bias.data = std * torch.ones_like(layer.bias.data)
             else:
                 for p in self.model_std.parameters():
                     p.data = std_per_param(p)*torch.ones_like(p.data)
