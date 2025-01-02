@@ -147,17 +147,17 @@ class SequentialGaussianBNN(nn.Module):
             raise ValueError(f' Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
     #
     # ~~~ Initialize the posterior standard deviations to match the standard deviations of a possible prior distribution
-    def set_default_uncertainty( self, comparable_to_default_torch_init=False ):
+    def set_default_uncertainty( self, comparable_to_default_torch_init=False, scale=1.0 ):
         with torch.no_grad():
             if comparable_to_default_torch_init:
                 for layer in self.model_std:
                     if isinstance(layer,nn.Linear):
-                        std = std_per_layer(layer)
+                        std = scale*std_per_layer(layer)
                         layer.weight.data = std * torch.ones_like(layer.weight.data)
                         layer.bias.data = std * torch.ones_like(layer.bias.data)
             else:
                 for p in self.model_std.parameters():
-                    p.data = std_per_param(p)*torch.ones_like(p.data)
+                    p.data = scale*std_per_param(p)*torch.ones_like(p.data)
     #
     # ~~~ In Blundell et al. (https://arxiv.org/abs/1505.05424), the chain rule is implemented manually (this is necessary since pytorch doesn't allow in-place operations on the parameters to be included in the graph)
     def apply_chain_rule_for_soft_projection(self):
