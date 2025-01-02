@@ -71,21 +71,6 @@ class SequentialGaussianBNN(nn.Module):
                 self.in_features = layer.in_features 
                 break
         #
-        # ~~~ Define a prior on the weights
-        with torch.no_grad():
-            #
-            # ~~~ Define the prior means: first copy the architecture, then set requires_grad=False and assign the desired mean values (==zero, for now)
-            self.prior_mean = nonredundant_copy_of_module_list(self.model_mean)
-            for p in self.prior_mean.parameters():
-                p.requires_grad = False             # ~~~ don't train the prior
-                p.data = torch.zeros_like(p.data)   # ~~~ assign the desired prior mean values
-            #
-            # ~~~ Define the prior std. dev.'s: first copy the architecture, then set requires_grad=False, and finally assign the desired std values in a way that mimics pytorch's default initialization
-            self.prior_std = nonredundant_copy_of_module_list(self.model_mean)  # ~~~ copy the architecture
-            for p in self.prior_std.parameters():
-                p.requires_grad = False                     # ~~~ don't train the prior
-                p.data = std_per_param(p)*torch.ones_like(p.data) # ~~~ assign the desired prior standard deviation values
-        #
         # ~~~ Define a "standard normal distribution in the shape of our neural network"
         self.realized_standard_normal = nonredundant_copy_of_module_list(self.model_mean)
         for p in self.realized_standard_normal.parameters():
@@ -164,6 +149,48 @@ class SequentialGaussianBNN(nn.Module):
     #
     # ~~~ Initialize the posterior standard deviations to match the standard deviations of a possible prior distribution
     def set_default_uncertainty( self, comparable_to_default_torch_init=False, scale=1.0 ):
+        with torch.no_grad():
+            if comparable_to_default_torch_init:
+                for layer in self.model_std:
+                    if isinstance(layer,nn.Linear):
+                        std = std_per_layer(layer)
+                        layer.weight.data = std * torch.ones_like(layer.weight.data)
+                        layer.bias.data = std * torch.ones_like(layer.bias.data)
+            else:
+                for p in self.model_std.parameters():
+                    p.data = std_per_param(p)*torch.ones_like(p.data)
+            #
+            # ~~~ Scale the range of output, much like the scale paramter in a GP
+            if isinstance( self.model_std[-1], nn.Linear ):
+                for p in self.model_std[-1].parameters():
+                    p.data *= scale
+            elif not scale==1:
+                my_warn(f"`scale` assumes the final layer is `nn.Linear`, but found instead {type(self.model_std[-1])}. The supplied `scale={scale}` was ignored.")
+    #
+    # ~~~ Define a prior on the weights
+    def set_default_prior( self, comparable_to_default_torch_init=False, scale=1.0, labels=None ):
+        with torch.no_grad():
+            #
+            # ~~~ First copy the architecture
+            self.prior_mean = nonredundant_copy_of_module_list(self.model_mean)
+            self.prior_std  = nonredundant_copy_of_module_list(self.model_mean)
+            #
+            # ~~~ Don't train the prior
+            for (mu,sigma) in zip( self.prior_mean.parameters(), self.prior_std.parameters() ):
+                mu.requires_grad = False
+                sigma.requires_grad = False
+                mu.data = torch.zeros_like(mu.data) # ~~~ assign a prior mean of zero to the parameters
+            #
+            # ~~~ If labels are provided, use them to set the mean of the final bias
+            if labels is not None:
+                y_mean = labels.mean(dim=0)
+                mu += y_mean
+            #
+            # ~~~ Define the prior std. dev.'s: first copy the architecture, then set requires_grad=False, and finally assign the desired std values in a way that mimics pytorch's default initialization
+            self.prior_std = nonredundant_copy_of_module_list(self.model_mean)  # ~~~ copy the architecture
+            for p in self.prior_std.parameters():
+                p.requires_grad = False                     # ~~~ don't train the prior
+                p.data = std_per_param(p)*torch.ones_like(p.data) # ~~~ assign the desired prior standard deviation values
         with torch.no_grad():
             if comparable_to_default_torch_init:
                 for layer in self.model_std:
