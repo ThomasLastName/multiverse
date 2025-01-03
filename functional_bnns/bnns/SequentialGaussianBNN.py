@@ -184,8 +184,8 @@ class SequentialGaussianBNN(nn.Module):
             #
             # ~~~ If labels are provided, use them to set the mean of the final bias
             if labels is not None:
-                y_mean = labels.mean(dim=0)
-                mu += y_mean
+                mean_of_response = labels.mean(dim=0)
+                mu.data += mean_of_response
             #
             # ~~~ Set the prior standard deviation
             if comparable_to_default_torch_init:
