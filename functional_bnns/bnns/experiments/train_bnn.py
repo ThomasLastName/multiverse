@@ -173,6 +173,8 @@ except:
     model = import_module(MODEL)                    # ~~~ this is equivalent to `import <MODEL> as model` (works if MODEL.py is in the cwd or anywhere on the path)
 
 BNN = model.BNN.to( device=DEVICE, dtype=DTYPE )
+from bnns.SequentialGaussianBNN import PopularBNN
+BNN = PopularBNN(*BNN.model_mean)
 BNN.conditional_std = torch.tensor(CONDITIONAL_STD) # ~~~ relevant for all training methods
 BNN.prior_J = PRIOR_J                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_J = POST_J                                 # ~~~ SSGE accuracyhyperparameter (only relevant for Sun et al. 2019)
@@ -181,7 +183,6 @@ BNN.post_eta = POST_eta                             # ~~~ stabilizing noise for 
 BNN.prior_M = PRIOR_M                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_GP_eta = POST_GP_eta                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
-BNN.set_default_prior(DEFAULT_PRIOR=="new")
 
 if not PROJECT:
     BNN.setup_soft_projection()
@@ -189,6 +190,7 @@ if not PROJECT:
 try:
     assert DEFAULT_INITIALIZATION in ("new","old")
     BNN.set_default_uncertainty(DEFAULT_INITIALIZATION=="new")
+    # BNN.set_fully_factored_prior(DEFAULT_INITIALIZATION=="new")
 except:
     BNN.projection_step( soft = not PROJECT )
 
@@ -244,8 +246,8 @@ if data_is_univariate:
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
-            forward = bnn.prior_forward if prior else bnn
-            predictions = torch.stack([ forward(grid,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ]).squeeze()
+            forward = bnn.prior_forward if prior else ( lambda x: bnn(x,resample_weights=True) )
+            predictions = torch.stack([ forward(grid) for _ in range(N_POSTERIOR_SAMPLES) ]).squeeze()
         return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, HOW_MANY_INDIVIDUAL_PREDICTIONS, title )
     #
     # ~~~ Plot the state of the posterior predictive distribution upon its initialization

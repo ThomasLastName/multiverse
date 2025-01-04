@@ -1,11 +1,15 @@
 
 import math
+from abc import abstractmethod
+
 import torch
 from torch import nn
 from torch.func import jacrev, functional_call
 from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
+
 from bnns.SSGE import SpectralSteinEstimator as SSGE
 from bnns.utils import log_gaussian_pdf, diagonal_gaussian_kl, manual_Jacobian
+
 from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
@@ -43,6 +47,10 @@ def std_per_layer(linear_layer):
 # ~~~ Flatten and concatenate all the parameters in a model
 flatten_parameters = lambda model: torch.cat([ p.view(-1) for p in model.parameters() ])
 
+#
+# ~~~ Set an error message explaining that the prior distribution must be setup
+message_about_priors =  "The prior distribution must be user-specified by defining the methods `log_prior_density` and `prior_forward` and, optionally (if an exact formula is available), `exact_weight_kl`. In lieu of a custom implementation, the following options are provided: TODO"
+
 
 
 ### ~~~
@@ -51,7 +59,7 @@ flatten_parameters = lambda model: torch.cat([ p.view(-1) for p in model.paramet
 
 #
 # ~~~ Main class: intended to mimic nn.Sequential
-class SequentialGaussianBNN(nn.Module):
+class SequentialGaussianBNN(nn.Module): # ~~~ IndependentWeightScaleBNN(nn.Module):
     def __init__(
                 self,
                 *args,
@@ -78,6 +86,7 @@ class SequentialGaussianBNN(nn.Module):
             nn.init.normal_(p)
         #
         # ~~~ Define the assumed level of noise in the training data: when this is set to smaller values, the model "pays more attention" to the data, and fits it more aggresively (can also be a vector)
+        self.likelihood_model = "Gaussian"
         self.conditional_std = conditional_std
         #
         # ~~~ Opt to project onto [projection_tol,Inf), rather than onto [0,Inf)
@@ -95,6 +104,11 @@ class SequentialGaussianBNN(nn.Module):
         #
         # ~~~ A hyperparameter needed for the gaussian appxroximation method
         self.post_GP_eta = "please specify"
+    # ~~~
+    #
+    ### ~~~
+    ## ~~~ Basic methods such as "check that the weights are positive" and "make the weights positive" (`projection_step`)
+    ### ~~~
     #
     # ~~~ Sample according to a "standard normal distribution in the shape of our neural network"
     def sample_from_standard_normal(self):
@@ -109,7 +123,15 @@ class SequentialGaussianBNN(nn.Module):
                 dtype = layer.weight.dtype
                 return device, dtype
     #
-    # ~~~ Project the standard deviations to be positive, as in projected gradient descent
+    # ~~~ Check that all the posterior standard deviations are positive
+    def check_positive(self):
+        with torch.no_grad():
+            for p in self.model_std.parameters():
+                if not p.min() > 0:
+                    my_warn("`model_std` contains negative values.")
+                    break
+    #
+    # ~~~ Project the standard deviations to be positive
     def projection_step( self, soft ):
         with torch.no_grad():
             for p in self.model_std.parameters():
@@ -168,58 +190,12 @@ class SequentialGaussianBNN(nn.Module):
             elif not scale==1:
                 my_warn(f"`scale` assumes the final layer is `nn.Linear`, but found instead {type(self.model_std[-1])}. The supplied `scale={scale}` was ignored.")
     #
-    # ~~~ Define a prior on the weights
-    def set_default_prior( self, comparable_to_default_torch_init=False, scale=1.0, labels=None ):
-        with torch.no_grad():
-            #
-            # ~~~ First copy the architecture
-            self.prior_mean = nonredundant_copy_of_module_list(self.model_mean)
-            self.prior_std  = nonredundant_copy_of_module_list(self.model_mean)
-            #
-            # ~~~ Don't train the prior
-            for (mu,sigma) in zip( self.prior_mean.parameters(), self.prior_std.parameters() ):
-                mu.requires_grad = False
-                sigma.requires_grad = False
-                mu.data = torch.zeros_like(mu.data) # ~~~ assign a prior mean of zero to the parameters
-            #
-            # ~~~ If labels are provided, use them to set the mean of the final bias
-            if labels is not None:
-                mean_of_response = labels.mean(dim=0)
-                mu.data += mean_of_response
-            #
-            # ~~~ Set the prior standard deviation
-            if comparable_to_default_torch_init:
-                for layer in self.prior_std:
-                    if isinstance(layer,nn.Linear):
-                        std = std_per_layer(layer)
-                        layer.weight.data = std * torch.ones_like(layer.weight.data)
-                        if layer.bias is not None:
-                            layer.bias.data = std * torch.ones_like(layer.bias.data)
-            else:
-                for p in self.prior_std.parameters():
-                    p.data = std_per_param(p)*torch.ones_like(p.data)
-            #
-            # ~~~ Scale the range of output, much like the scale paramter in a GP
-            if isinstance( self.prior_std[-1], nn.Linear ):
-                for p in self.prior_std[-1].parameters():
-                    p.data *= scale
-            elif not scale==1:
-                my_warn(f"`scale` assumes the final layer is `nn.Linear`, but found instead {type(self.prior_std[-1])}. The supplied `scale={scale}` was ignored.")
-    #
-    # ~~~ Check that all the posterior standard deviations are positive
-    def check_positive(self):
-        with torch.no_grad():
-            for p in self.model_std.parameters():
-                if not p.min() > 0:
-                    my_warn("`model_std` contains negative values.")
-                    break
-    #
     # ~~~ Sample the distribution of Y|X=x,W=w
-    def forward(self,x,resample_weights=True):
+    def forward( self, x, resample_weights=True ):
         #
         # ~~~ The realized sample of the distribution of Y|X=x,W=w is entirely determined by self.realized_standard_normal
         if resample_weights:
-            self.sample_from_standard_normal()      # ~~~ this methods re-generates the values of weights and biases in `self.realized_standard_normal` (IID standard normal)
+            self.sample_from_standard_normal()      # ~~~ this method re-generates the values of weights and biases in `self.realized_standard_normal` (IID standard normal)
         #
         # ~~~ Basically, `x=layer(x)` for each layer in model, but with a twist on the weights
         self.check_positive()
@@ -238,73 +214,56 @@ class SequentialGaussianBNN(nn.Module):
                 b = mean_layer.bias   +   std_layer.bias * z.bias   # ~~~ b = F_\theta(z.bias)   is normal with the trainable (posterior) mean and std
                 x = x@A.T + b                                       # ~~~ apply the appropriately distributed weights to this layer's input
         return x
+    #
+    # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
+    def log_likelihood_density( self, X, y ):
+        #
+        # ~~~ Record the last seen input, because it is recommended to include training data in the measurement set (see "Choosing the Measurement Set" in https://arxiv.org/abs/1903.05779)
+        self.last_seen_x = X
+        #
+        # ~~~ The likelihood depends on task criterion: classification or regression
+        if self.likelihood_model == "Gaussian":
+            return log_gaussian_pdf( where=y, mu=self(X,resample_weights=False), sigma=self.conditional_std )  # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.conditional_std (the latter being a tunable hyper-parameter)
+        else:
+            raise NotImplementedError("In the current version of the code, only the Gaussian likelihood (i.e., mean squared error) is implemented See issue ?????.")
     # ~~~
     #
     ### ~~~
     ## ~~~ Methods for computing the loss in Bayes by Backprop
     ### ~~~
     #
-    # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def log_likelihood_density( self, X, y ):
-        self.last_seen_x = X
-        return log_gaussian_pdf( where=y, mu=self(X,resample_weights=False), sigma=self.conditional_std )  # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.conditional_std (the latter being a tunable hyper-parameter)
-    #
-    # ~~~ Compute \ln( f_W(F_\theta(z)) ) at a point w sampled from the standard MVN distribution, where f_W is the prior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def log_prior_density(self):
-        #
-        # ~~~ Because the weights and biases are mutually independent, the log prior pdf can be decomposed as a summation \sum_j
-        self.check_positive()
-        log_prior = 0.
-        for j in range(self.n_layers):
-            z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
-            if isinstance( z, nn.modules.linear.Linear ):
-                post_mean      =    self.model_mean[j]  # ~~~ the trainable (posterior) means of this layer's parameters
-                post_std       =    self.model_std[j]   # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                prior_mean     =    self.prior_mean[j]  # ~~~ the prior means of this layer's parameters
-                prior_std      =    self.prior_std[j]   # ~~~ the prior standard deviations of this layer's parameters
-                F_theta_of_z   =    post_mean.weight + post_std.weight*z.weight
-                log_prior     +=    log_gaussian_pdf( where=F_theta_of_z, mu=prior_mean.weight, sigma=prior_std.weight )
-                F_theta_of_z   =    post_mean.bias   +  post_std.bias * z.bias
-                log_prior     +=    log_gaussian_pdf( where=F_theta_of_z,  mu=prior_mean.bias,  sigma=prior_std.bias   )
-        return log_prior
-    #
     # ~~~ Compute \ln( q_\theta(F_\theta(z)) ) at a point z sampled from the standard MVN distribution, where q_\theta is the posterior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
     def log_posterior_density(self):
         #
         # ~~~ Because the weights and biases are mutually independent, the log_prior_pdf can be decomposed as a summation \sum_j
-        self.check_positive()
         log_posterior = 0.
-        for j in range(self.n_layers):
-            z = self.realized_standard_normal[j]        # ~~~ the network's j'th layer, but with IID standard normal weights and biases
-            if isinstance( z, nn.modules.linear.Linear ):
-                mean_layer      =    self.model_mean[j] # ~~~ the trainable (posterior) means of this layer's parameters
-                std_layer       =    self.model_std[j]  # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                sigma_weight    =    std_layer.weight
-                sigma_bias      =    std_layer.bias
-                F_theta_of_z    =    mean_layer.weight + sigma_weight*z.weight
-                log_posterior  +=    log_gaussian_pdf( where=F_theta_of_z, mu=mean_layer.weight, sigma=sigma_weight )
-                F_theta_of_z    =    mean_layer.bias   +  sigma_bias * z.bias
-                log_posterior  +=    log_gaussian_pdf( where=F_theta_of_z,  mu=mean_layer.bias,   sigma=sigma_bias  )
+        for ( mu_post, sigma_post, z_sampled ) in zip(
+                        self.model_mean.parameters(),
+                        self.model_std.parameters(),
+                        self.realized_standard_normal.parameters()
+                    ):
+            w_sampled = mu_post + sigma_post*z_sampled  # ~~~ w_sampled==F_\theta(z_sampled)
+            log_posterior += log_gaussian_pdf( where=w_sampled, mu=mu_post, sigma=sigma_post )
         return log_posterior
     #
     # ~~~ Compute the kl divergence between posterior and prior distributions over the network weights
-    def weight_kl( self, exact_formula=False ):
-        self.check_positive()
-        if not exact_formula:
-            return self.log_posterior_density() - self.log_prior_density()
-        else:
-            kl_div = 0.
-            #
-            # ~~~ Because the weights and biases are mutually independent, the entropy is *additive* like log-density (https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Properties)
-            for j in range(self.n_layers):
-                post_mean      =    self.model_mean[j]  # ~~~ the trainable (posterior) means of this layer's parameters
-                post_std       =    self.model_std[j]   # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                prior_mean     =    self.prior_mean[j]  # ~~~ the prior means of this layer's parameters
-                prior_std      =    self.prior_std[j]   # ~~~ the prior standard deviations of this layer's parameters
-                if isinstance( post_mean, nn.modules.linear.Linear ):
-                    kl_div += diagonal_gaussian_kl( mu_0=post_mean.weight, sigma_0=post_std.weight, mu_1=prior_mean.weight, sigma_1=prior_std.weight )
-                    kl_div += diagonal_gaussian_kl(  mu_0=post_mean.bias,   sigma_0=post_std.bias,   mu_1=prior_mean.bias,   sigma_1=prior_std.bias  )
-            return kl_div
+    def weight_kl( self, exact_formula=True ):
+        if exact_formula:
+            try:
+                return self.exact_weight_kl()
+            except NotImplementedError:
+                pass
+        return self.log_posterior_density() - self.log_prior_density()
+    #
+    # ~~~ Apply an exact formula for the KL divergence
+    @abstractmethod
+    def exact_weight_kl(self):
+        raise NotImplementedError(message_about_priors)
+    #
+    # ~~~ Compute \ln( f_W(F_\theta(z)) ) at a point w sampled from the standard MVN distribution, where f_W is the prior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
+    @abstractmethod
+    def log_prior_density(self):
+        raise NotImplementedError(message_about_priors)
     # ~~~
     #
     ### ~~~
@@ -312,36 +271,9 @@ class SequentialGaussianBNN(nn.Module):
     ### ~~~
     #
     # ~~~ Sample from the priorly distributed outputs of the network
-    def prior_forward(self,x,resample_weights=True):
-        #
-        # ~~~ If the prior distribution is a Gaussian process, then we just need to sample from the correct Gaussian distribution
-        if hasattr(self,"GP"):
-            #
-            # ~~~ The realized sample of the distribution of Y|X=x,W=w is entirely determined by self.realized_standard_normal
-            mu, root_Sigma = self.GP.prior_mu_and_Sigma( x, cholesky=True )  # ~~~ return the cholesky square roots of the covariance matrices
-            z = torch.randn( x.shape[0], device=x.device, dtype=x.dtype )
-            return mu + (root_Sigma@z).T    # ~~~ mu + Sigma^{-1/2} z \sim N(mu,Sigma); einsum computes this in batches
-        #
-        # ~~~ The realized sample of the distribution of Y|X=x,W=w is entirely determined by self.realized_standard_normal
-        if resample_weights:
-            self.sample_from_standard_normal()      # ~~~ this methods re-generates the values of weights and biases in `self.realized_standard_normal` (IID standard normal)
-        #
-        # ~~~ Basically, `x=layer(x)` for each layer in model, but with a twist on the weights
-        for j in range(self.n_layers):
-            z = self.realized_standard_normal[j]    # ~~~ the network's j'th layer, but with IID standard normal weights and biases
-            #
-            # ~~~ If this layer is just like relu or something, then there aren't anny weights; just apply the layer and be done
-            if not isinstance( z, nn.modules.linear.Linear ):
-                x = z(x)                            # ~~~ x = layer(x)
-            #
-            # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
-            else:
-                mean_layer = self.prior_mean[j]     # ~~~ the user-specified prior means of this layer's parameters
-                std_layer  =  self.prior_std[j]     # ~~~ the user-specified prior standard deviations of this layer's parameters
-                A = mean_layer.weight + std_layer.weight * z.weight # ~~~ A = F_\theta(z.weight) is normal with the user-specified prior mean and std
-                b = mean_layer.bias   +   std_layer.bias * z.bias   # ~~~ b = F_\theta(z.bias)   is normal with the user-specified prior mean and std
-                x = x@A.T + b                       # ~~~ apply the appropriately distributed weights to this layer's input
-        return x
+    @abstractmethod
+    def prior_forward(self,x):
+        raise NotImplementedError(message_about_priors)
     #
     # ~~~ Instantiate the SSGE estimator of the prior score, using samples from the prior distribution
     def setup_prior_SSGE(self):
@@ -490,11 +422,202 @@ class SequentialGaussianBNN(nn.Module):
             + torch.inner( mu_0-mu_theta, (Sigma_0_inv @ (mu_0-mu_theta)) )
             + 2*root_Sigma_0.diag().log().sum() - 2*root_Sigma_theta.diag().log().sum()
         ) / 2
-    #
-    # ~~~ A helper function that samples a bunch from the predicted posterior distribution
-    def posterior_predicted_mean_and_std( self, x_test, n_samples ):
+
+#
+# ~~~ Inherit, and define a prior on weights
+class PopularBNN(SequentialGaussianBNN):
+    def __init__(
+            self,
+            *args,
+            conditional_std = torch.tensor(0.001),
+            comparable_to_default_torch_init = False,
+            scale = 1.0,
+            labels = None
+        ):
+        super().__init__( *args, conditional_std=conditional_std )
+        #
+        # ~~~ Define a prior on the weights
         with torch.no_grad():
-            predictions = torch.column_stack([ self(x_test) for _ in range(n_samples) ])
-            std = predictions.std(dim=-1).cpu()             # ~~~ transfer to cpu in order to be able to plot them
-            point_estimate = predictions.mean(dim=-1).cpu() # ~~~ transfer to cpu in order to be able to plot them
-        return point_estimate, std
+            #
+            # ~~~ First copy the architecture
+            self.prior_mean = nonredundant_copy_of_module_list(self.model_mean)
+            self.prior_std  = nonredundant_copy_of_module_list(self.model_mean)
+            #
+            # ~~~ Don't train the prior
+            for (mu,sigma) in zip( self.prior_mean.parameters(), self.prior_std.parameters() ):
+                mu.requires_grad = False
+                sigma.requires_grad = False
+                mu.data = torch.zeros_like(mu.data) # ~~~ assign a prior mean of zero to the parameters
+            #
+            # ~~~ If labels are provided, use them to set the mean of the final bias
+            if labels is not None:
+                mean_of_response = labels.mean(dim=0)
+                mu.data += mean_of_response
+            #
+            # ~~~ Set the prior standard deviation
+            if comparable_to_default_torch_init:
+                for layer in self.prior_std:
+                    if isinstance(layer,nn.Linear):
+                        std = std_per_layer(layer)
+                        layer.weight.data = std * torch.ones_like(layer.weight.data)
+                        if layer.bias is not None:
+                            layer.bias.data = std * torch.ones_like(layer.bias.data)
+            else:
+                for p in self.prior_std.parameters():
+                    p.data = std_per_param(p)*torch.ones_like(p.data)
+            #
+            # ~~~ Scale the range of output, much like the scale paramter in a GP
+            if isinstance( self.prior_std[-1], nn.Linear ):
+                for p in self.prior_std[-1].parameters():
+                    p.data *= scale
+            elif not scale==1:
+                my_warn(f"`scale` assumes the final layer is `nn.Linear`, but found instead {type(self.prior_std[-1])}. The supplied `scale={scale}` was ignored.")
+    #
+    # ~~~ Compute \ln( f_W(F_\theta(z)) ) at a point w sampled from the standard MVN distribution, where f_W is the prior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
+    def log_prior_density(self):
+        log_prior = 0.
+        for ( mu_post, sigma_post, mu_prior, sigma_prior, z_sampled ) in zip(
+                    self.model_mean.parameters(),
+                    self.model_std.parameters(),
+                    self.prior_mean.parameters(),
+                    self.prior_std.parameters(),
+                    self.realized_standard_normal.parameters()
+                ):
+            w_sampled = mu_post + sigma_post*z_sampled  # ~~~ w_sampled==F_\theta(z_sampled)
+            log_prior += log_gaussian_pdf( where=w_sampled, mu=mu_prior, sigma=sigma_prior )
+        return log_prior
+    #
+    # ~~~ Specify an exact formula for the KL divergence
+    def exact_weight_kl(self):
+        kl_div = 0.
+        #
+        # ~~~ Because the weights and biases are mutually independent, the entropy is *additive* like log-density (https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Properties)
+        for ( mu_post, sigma_post, mu_prior, sigma_prior ) in zip(
+                    self.model_mean.parameters(),
+                    self.model_std.parameters(),
+                    self.prior_mean.parameters(),
+                    self.prior_std.parameters()
+                ):
+            kl_div += diagonal_gaussian_kl( mu_0=mu_post, sigma_0=sigma_post, mu_1=mu_prior, sigma_1=sigma_prior )
+        return kl_div
+    #
+    # ~~~ Define how to sample from the priorly distributed outputs of the network (just replace `model_mean` and `model_std` with `prior_mean` and `prior_std` in `forward`)
+    def prior_forward(self,x):
+        #
+        # ~~~ Basically, `x=layer(x)` for each layer in model, but with a twist on the weights
+        self.sample_from_standard_normal()          # ~~~ this method re-generates the values of weights and biases in `self.realized_standard_normal` (IID standard normal)
+        for j in range(self.n_layers):
+            z = self.realized_standard_normal[j]    # ~~~ the network's j'th layer, but with IID standard normal weights and biases
+            #
+            # ~~~ If this layer is just like relu or something, then there aren't anny weights; just apply the layer and be done
+            if not isinstance( z, nn.modules.linear.Linear ):
+                x = z(x)                            # ~~~ x = layer(x)
+            #
+            # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
+            else:
+                mean_layer = self.prior_mean[j]     # ~~~ the user-specified prior means of this layer's parameters
+                std_layer  =  self.prior_std[j]     # ~~~ the user-specified prior standard deviations of this layer's parameters
+                A = mean_layer.weight + std_layer.weight * z.weight # ~~~ A = F_\theta(z.weight) is normal with the user-specified prior mean and std
+                b = mean_layer.bias   +   std_layer.bias * z.bias   # ~~~ b = F_\theta(z.bias)   is normal with the user-specified prior mean and std
+                x = x@A.T + b                       # ~~~ apply the appropriately distributed weights to this layer's input
+        return x
+
+#
+# ~~~ Inherit, and define a prior on weights
+class MixtureWeightPrior2015(SequentialGaussianBNN):
+    def __init__(
+            self,
+            *args,
+            conditional_std = torch.tensor(0.001),
+            comparable_to_default_torch_init = False,
+            scale = 1.0,
+            labels = None
+        ):
+        super().__init__( *args, conditional_std=conditional_std )
+        #
+        # ~~~ Define a prior on the weights
+        with torch.no_grad():
+            #
+            # ~~~ First copy the architecture
+            self.prior_mean = nonredundant_copy_of_module_list(self.model_mean)
+            self.prior_std  = nonredundant_copy_of_module_list(self.model_mean)
+            #
+            # ~~~ Don't train the prior
+            for (mu,sigma) in zip( self.prior_mean.parameters(), self.prior_std.parameters() ):
+                mu.requires_grad = False
+                sigma.requires_grad = False
+                mu.data = torch.zeros_like(mu.data) # ~~~ assign a prior mean of zero to the parameters
+            #
+            # ~~~ If labels are provided, use them to set the mean of the final bias
+            if labels is not None:
+                mean_of_response = labels.mean(dim=0)
+                mu.data += mean_of_response
+            #
+            # ~~~ Set the prior standard deviation
+            if comparable_to_default_torch_init:
+                for layer in self.prior_std:
+                    if isinstance(layer,nn.Linear):
+                        std = std_per_layer(layer)
+                        layer.weight.data = std * torch.ones_like(layer.weight.data)
+                        if layer.bias is not None:
+                            layer.bias.data = std * torch.ones_like(layer.bias.data)
+            else:
+                for p in self.prior_std.parameters():
+                    p.data = std_per_param(p)*torch.ones_like(p.data)
+            #
+            # ~~~ Scale the range of output, much like the scale paramter in a GP
+            if isinstance( self.prior_std[-1], nn.Linear ):
+                for p in self.prior_std[-1].parameters():
+                    p.data *= scale
+            elif not scale==1:
+                my_warn(f"`scale` assumes the final layer is `nn.Linear`, but found instead {type(self.prior_std[-1])}. The supplied `scale={scale}` was ignored.")
+    #
+    # ~~~ Compute \ln( f_W(F_\theta(z)) ) at a point w sampled from the standard MVN distribution, where f_W is the prior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
+    def log_prior_density(self):
+        log_prior = 0.
+        for ( mu_post, sigma_post, mu_prior, sigma_prior, z_sampled ) in zip(
+                    self.model_mean.parameters(),
+                    self.model_std.parameters(),
+                    self.prior_mean.parameters(),
+                    self.prior_std.parameters(),
+                    self.realized_standard_normal.parameters()
+                ):
+            w_sampled = mu_post + sigma_post*z_sampled  # ~~~ w_sampled==F_\theta(z_sampled)
+            log_prior += log_gaussian_pdf( where=w_sampled, mu=mu_prior, sigma=sigma_prior )
+        return log_prior
+    #
+    # ~~~ Specify an exact formula for the KL divergence
+    def exact_weight_kl(self):
+        kl_div = 0.
+        #
+        # ~~~ Because the weights and biases are mutually independent, the entropy is *additive* like log-density (https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Properties)
+        for ( mu_post, sigma_post, mu_prior, sigma_prior ) in zip(
+                    self.model_mean.parameters(),
+                    self.model_std.parameters(),
+                    self.prior_mean.parameters(),
+                    self.prior_std.parameters()
+                ):
+            kl_div += diagonal_gaussian_kl( mu_0=mu_post, sigma_0=sigma_post, mu_1=mu_prior, sigma_1=sigma_prior )
+        return kl_div
+    #
+    # ~~~ Define how to sample from the priorly distributed outputs of the network (just replace `model_mean` and `model_std` with `prior_mean` and `prior_std` in `forward`)
+    def prior_forward(self,x):
+        #
+        # ~~~ Basically, `x=layer(x)` for each layer in model, but with a twist on the weights
+        self.sample_from_standard_normal()          # ~~~ this method re-generates the values of weights and biases in `self.realized_standard_normal` (IID standard normal)
+        for j in range(self.n_layers):
+            z = self.realized_standard_normal[j]    # ~~~ the network's j'th layer, but with IID standard normal weights and biases
+            #
+            # ~~~ If this layer is just like relu or something, then there aren't anny weights; just apply the layer and be done
+            if not isinstance( z, nn.modules.linear.Linear ):
+                x = z(x)                            # ~~~ x = layer(x)
+            #
+            # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
+            else:
+                mean_layer = self.prior_mean[j]     # ~~~ the user-specified prior means of this layer's parameters
+                std_layer  =  self.prior_std[j]     # ~~~ the user-specified prior standard deviations of this layer's parameters
+                A = mean_layer.weight + std_layer.weight * z.weight # ~~~ A = F_\theta(z.weight) is normal with the user-specified prior mean and std
+                b = mean_layer.bias   +   std_layer.bias * z.bias   # ~~~ b = F_\theta(z.bias)   is normal with the user-specified prior mean and std
+                x = x@A.T + b                       # ~~~ apply the appropriately distributed weights to this layer's input
+        return x
+
