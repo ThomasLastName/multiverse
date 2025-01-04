@@ -19,9 +19,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ## ~~~ The returned image should match https://raw.githubusercontent.com/AntixK/Spectral-Stein-Gradient/master/assets/Gaussian.png
 ### ~~~
 
-import math
 import torch
-from typing import Callable, List, Tuple
 from abc import abstractmethod
 from quality_of_life.my_base_utils import my_warn
 
