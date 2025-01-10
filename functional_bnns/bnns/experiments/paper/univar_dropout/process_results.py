@@ -9,27 +9,60 @@ from quality_of_life.my_base_utils import json_to_dict
 
 
 
+
+import os
+import torch
+import pandas as pd
+import matplotlib.pyplot as plt
+from importlib import import_module
+from bnns.utils import infer_width_and_depth
+from quality_of_life.my_base_utils import json_to_dict, my_warn, print_dict
+
+from bnns.experiments.paper.univar_dropout import folder_name, DATA, ARCHITECTURE, LR
+
+
+
 ### ~~~
-## ~~~ Load the json files from `folder_name` as dictionaries, process them to a format that pandas likes, and combine them into a pandas DataFrame
+## ~~~ Load the json files from `folder_name` as dictionaries, processed in a format that pandas likes (remove any lists), and combined into a pandas DataFrame
 ### ~~~
 
-#
-# ~~~ First, remove any lists from the dictionaries, as pandas doesn't like those, before converting to pd.DataFrame 
-results = load_filtered_json_files(folder_name)
-unique_results = results.loc[:,results.nunique()>1]
+folder_dir = os.path.split(folder_name)[0]
+try:
+    results = pd.read_csv(os.path.join( folder_dir, "results.csv" ))
+except FileNotFoundError:
+    print("")
+    print("    Processing the raw results and storing them in .csv form (this should only need to be done once).")
+    print("")
+    from bnns.utils import load_filtered_json_files
+    results = load_filtered_json_files(folder_name)
+    results.to_csv(os.path.join( folder_dir, "results.csv" ))
+except:
+    raise
 
-#
-# ~~~ Average over all data train/val folds
-mean_results = unique_results.groupby(["MODEL","LR","n_epochs"]).mean(numeric_only=True).reset_index()
 
-#
-# ~~~ Sanity check that `groupby` works as intended
-model, lr, n = get_attributes_from_row_i( mean_results, 0, "MODEL", "LR", "n_epochs" )
-filtered_results = filter_by_attributes( unique_results, MODEL=model, LR=lr, n_epochs=n )
-assert filtered_results.shape == (2,30)
-a = filtered_results.mean(numeric_only=True).to_numpy()
-b = mean_results.iloc[0,1:].to_numpy()
-assert np.array_equal(a,b)
+
+
+# ### ~~~
+# ## ~~~ Load the json files from `folder_name` as dictionaries, process them to a format that pandas likes, and combine them into a pandas DataFrame
+# ### ~~~
+
+# #
+# # ~~~ First, remove any lists from the dictionaries, as pandas doesn't like those, before converting to pd.DataFrame 
+# results = load_filtered_json_files(folder_name)
+# unique_results = results.loc[:,results.nunique()>1]
+
+# #
+# # ~~~ Average over all data train/val folds
+# mean_results = unique_results.groupby(["MODEL","LR","n_epochs"]).mean(numeric_only=True).reset_index()
+
+# #
+# # ~~~ Sanity check that `groupby` works as intended
+# model, lr, n = get_attributes_from_row_i( mean_results, 0, "MODEL", "LR", "n_epochs" )
+# filtered_results = filter_by_attributes( unique_results, MODEL=model, LR=lr, n_epochs=n )
+# assert filtered_results.shape == (2,30)
+# a = filtered_results.mean(numeric_only=True).to_numpy()
+# b = mean_results.iloc[0,1:].to_numpy()
+# assert np.array_equal(a,b)
 
 
 
