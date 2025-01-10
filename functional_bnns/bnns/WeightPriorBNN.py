@@ -8,6 +8,11 @@ from bnns.IndependentLocationScaleBNN import IndependentLocationScaleBNN, std_pe
 from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
+
+#
+# ~~~ Flatten and concatenate all the parameters in a model
+flatten_parameters = lambda model: torch.cat([ p.view(-1) for p in model.parameters() ])
+
 #
 # ~~~ Implement `log_prior_density` and `prior_forward` for a "fully factored" Gaussian prior on the network weights
 class GaussianWeightPrior(IndependentLocationScaleBNN):
@@ -67,17 +72,13 @@ class GaussianWeightPrior(IndependentLocationScaleBNN):
     #
     # ~~~ Compute \ln( f_W(F_\theta(z)) ) at a point w sampled from the standard MVN distribution, where f_W is the prior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
     def log_prior_density(self):
-        log_prior = 0.
-        for ( mu_post, sigma_post, mu_prior, sigma_prior, z_sampled ) in zip(
-                    self.model_mean.parameters(),
-                    self.model_std.parameters(),
-                    self.prior_mean.parameters(),
-                    self.prior_std.parameters(),
-                    self.realized_standard_distribution.parameters()
-                ):
-            w_sampled = mu_post + sigma_post*z_sampled  # ~~~ w_sampled==F_\theta(z_sampled)
-            log_prior += log_gaussian_pdf( where=w_sampled, mu=mu_prior, sigma=sigma_prior )
-        return log_prior
+        mu_post = flatten_parameters(self.model_mean)
+        sigma_post = flatten_parameters(self.model_std)
+        mu_prior = flatten_parameters(self.prior_mean)
+        sigma_prior = flatten_parameters(self.prior_std)
+        z_sampled = flatten_parameters(self.realized_standard_distribution)
+        w_sampled = mu_post + sigma_post*z_sampled  # ~~~ w_sampled==F_\theta(z_sampled)
+        return log_gaussian_pdf( where=w_sampled, mu=mu_prior, sigma=sigma_prior )
     #
     # ~~~ Define how to sample from the priorly distributed outputs of the network (just replace `model_mean` and `model_std` with `prior_mean` and `prior_std` in `forward`)
     def prior_forward( self, x, n=1 ):
@@ -121,17 +122,11 @@ class SequentialGaussianBNN(GaussianWeightPrior):
     #
     # ~~~ Specify an exact formula for the KL divergence
     def exact_weight_kl(self):
-        kl_div = 0.
-        #
-        # ~~~ Because the weights and biases are mutually independent, the entropy is *additive* like log-density (https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Properties)
-        for ( mu_post, sigma_post, mu_prior, sigma_prior ) in zip(
-                    self.model_mean.parameters(),
-                    self.model_std.parameters(),
-                    self.prior_mean.parameters(),
-                    self.prior_std.parameters()
-                ):
-            kl_div += diagonal_gaussian_kl( mu_0=mu_post, sigma_0=sigma_post, mu_1=mu_prior, sigma_1=sigma_prior )
-        return kl_div
+        mu_post = flatten_parameters(self.model_mean)
+        sigma_post = flatten_parameters(self.model_std)
+        mu_prior = flatten_parameters(self.prior_mean)
+        sigma_prior = flatten_parameters(self.prior_std)
+        return diagonal_gaussian_kl( mu_0=mu_post, sigma_0=sigma_post, mu_1=mu_prior, sigma_1=sigma_prior )
 
 #
 # ~~~ Implement `log_prior_density` and `prior_forward` for the "homoskedastic" mixture prior on the network weights employed in Blundell et al. 2015 (https://arxiv.org/abs/1505.05424)

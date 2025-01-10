@@ -132,10 +132,8 @@ class IndependentLocationScaleBNN(BayesianModule):
     # ~~~ Check that all the posterior standard deviations are positive
     def check_positive(self):
         with torch.no_grad():
-            for p in self.model_std.parameters():
-                if not p.min() > 0:
-                    my_warn("`model_std` contains negative values.")
-                    break
+            if not flatten_parameters(self.model_std).min() > 0:
+                my_warn("`model_std` contains negative values.")
     #
     # ~~~ Project the standard deviations to be positive
     def projection_step(self,soft):
@@ -160,7 +158,7 @@ class IndependentLocationScaleBNN(BayesianModule):
     def apply_chain_rule_for_soft_projection(self):
         with torch.no_grad():
             for p in self.model_std.parameters():
-                p.data  = self.soft_projection_inv(p.data)          # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
+                p.data = self.soft_projection_inv(p.data)           # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
                 try:
                     p.grad *= self.soft_projection_prime(p.data)    # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
                 except:
@@ -233,17 +231,11 @@ class IndependentLocationScaleBNN(BayesianModule):
     #
     # ~~~ Compute \ln( q_\theta(F_\theta(z)) ) at a point z sampled from the standard MVN distribution, where q_\theta is the posterior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
     def log_posterior_density(self):
-        #
-        # ~~~ Because the weights and biases are mutually independent, the log_prior_pdf can be decomposed as a summation \sum_j
-        log_posterior = 0.
-        for ( mu_post, sigma_post, z_sampled ) in zip(
-                    self.model_mean.parameters(),
-                    self.model_std.parameters(),
-                    self.realized_standard_distribution.parameters()
-                ):
-            w_sampled = mu_post + sigma_post*z_sampled  # ~~~ w_sampled==F_\theta(z_sampled)
-            log_posterior += self.family_log_density( where=w_sampled, mu=mu_post, sigma=sigma_post )
-        return log_posterior
+        mu_post = flatten_parameters(self.model_mean)
+        sigma_post = flatten_parameters(self.model_std)
+        z_sampled = flatten_parameters(self.realized_standard_distribution)
+        w_sampled = mu_post + sigma_post*z_sampled
+        return self.family_log_density( where=w_sampled, mu=mu_post, sigma=sigma_post )
     #
     # ~~~ Compute the kl divergence between posterior and prior distributions over the network weights
     def weight_kl( self, exact_formula=True ):
