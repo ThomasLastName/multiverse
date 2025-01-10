@@ -173,8 +173,6 @@ except:
     model = import_module(MODEL)                    # ~~~ this is equivalent to `import <MODEL> as model` (works if MODEL.py is in the cwd or anywhere on the path)
 
 BNN = model.BNN.to( device=DEVICE, dtype=DTYPE )
-from bnns.SequentialGaussianBNN import PopularBNN
-BNN = PopularBNN(*BNN.model_mean)
 BNN.conditional_std = torch.tensor(CONDITIONAL_STD) # ~~~ relevant for all training methods
 BNN.prior_J = PRIOR_J                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_J = POST_J                                 # ~~~ SSGE accuracyhyperparameter (only relevant for Sun et al. 2019)
