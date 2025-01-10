@@ -8,6 +8,7 @@ from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~
 
 from bnns.utils import log_gaussian_pdf
 from bnns.SSGE import SpectralSteinEstimator as SSGE
+from bnns.BayesianModule import BayesianModule
 
 from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
@@ -58,12 +59,13 @@ message_about_priors =  "The prior distribution must be user-specified by defini
 
 #
 # ~~~ Main class: intended to mimic nn.Sequential
-class IndependentLocationScaleBNN(nn.Module):
+class IndependentLocationScaleBNN(BayesianModule):
     def __init__(
                 self,
                 *args,
                 family_log_density,
                 family_initializer,
+                family_generator = None,
                 conditional_std = torch.tensor(0.001)
             ):
         #
@@ -85,7 +87,8 @@ class IndependentLocationScaleBNN(nn.Module):
         #
         # ~~~ Define a "standard normal [or whatever else] distribution in the shape of our neural network"
         self.family_log_density = family_log_density
-        self.family_initializer = family_initializer  # ~~~ this is "ducky" (https://en.wikipedia.org/wiki/Duck_typing); can be anything that modifies the input's `data` attribute in place
+        self.family_initializer = family_initializer # ~~~ this is "ducky" (https://en.wikipedia.org/wiki/Duck_typing); can be anything that modifies the input's `data` attribute in place
+        self.family_generator   =   family_generator
         self.realized_standard_distribution = nonredundant_copy_of_module_list(self.model_mean)
         self.sample_from_standard_distribution()
         #
@@ -114,8 +117,9 @@ class IndependentLocationScaleBNN(nn.Module):
     #
     # ~~~ Sample according to a "standard normal distribution in the shape of our neural network"
     def sample_from_standard_distribution(self):
-        for p in self.realized_standard_distribution.parameters():
-            self.family_initializer(p)
+        with torch.no_grad():   # ~~~ theoretically the `no_grad()` context is redundant and unnecessary, but idk why not use it
+            for p in self.realized_standard_distribution.parameters():
+                self.family_initializer(p)
     #
     # ~~~ Infer device and dtype
     def infer_device_and_dtype(self):
@@ -304,30 +308,3 @@ class IndependentLocationScaleBNN(nn.Module):
         # ~~~ In the common case that the inputs are standardized, then standard random normal vectors are "points like our model's inputs"
         device, dtype = self.infer_device_and_dtype()
         self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
-    #
-    # ~~~ Estimate KL_div( posterior output || the prior output ) using the SSGE, assuming we don't have a forula for the density of the outputs
-    def functional_kl( self, resample_measurement_set=True ):
-        #
-        # ~~~ if `resample_measurement_set==True` then generate a new meausrement set
-        if resample_measurement_set:
-            self.sample_new_measurement_set()
-        #
-        # ~~~ Prepare for using SSGE to estimate some of the gradient terms
-        with torch.no_grad():
-            if (self.prior_SSGE is None) or resample_measurement_set:
-                self.setup_prior_SSGE()
-            posterior_samples = torch.row_stack([ self(self.measurement_set).flatten() for _ in range(self.post_M) ])
-            posterior_SSGE = SSGE( samples=posterior_samples, eta=self.post_eta, J=self.post_J )
-        #
-        # ~~~ By the chain rule, at these points we must compute the "scores," i.e., gradients of the log-densities (we use SSGE to compute them)
-        yhat = self(self.measurement_set).flatten()
-        #
-        # ~~~ Use SSGE to compute "the intractible parts of the chain rule"
-        with torch.no_grad():
-            posterior_score_at_yhat =  posterior_SSGE( yhat.reshape(1,-1) )
-            prior_score_at_yhat     = self.prior_SSGE( yhat.reshape(1,-1) )
-        #
-        # ~~~ Combine all the ingridents as per the chain rule 
-        log_posterior_density  =  ( posterior_score_at_yhat @ yhat ).squeeze()  # ~~~ the inner product from the chain rule
-        log_prior_density      =  ( prior_score_at_yhat @ yhat ).squeeze()      # ~~~ the inner product from the chain rule            
-        return log_posterior_density - log_prior_density
