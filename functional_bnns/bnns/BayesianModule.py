@@ -12,10 +12,6 @@ from quality_of_life.my_base_utils import my_warn
 ### ~~~
 
 #
-# ~~~ Set an error message explaining that the prior distribution must be setup
-message_about_priors =  "The prior distribution must be user-specified by defining the methods `log_prior_density` and `prior_forward` and, optionally (if an exact formula is available), `exact_weight_kl`. In lieu of a custom implementation, the following options are provided: TODO"
-
-#
 # ~~~ Main class: intended to mimic nn.Sequential
 class BayesianModule(nn.Module):
     def __init__(self):
@@ -30,19 +26,17 @@ class BayesianModule(nn.Module):
         self.post_eta  = "please specify"
         self.prior_M   = "please specify"
         self.post_M    = "please specify"
-        self.measurement_set = None
-        self.prior_SSGE      = None
     #
     # ~~~ Sample from the "variationally distributed" (i.e., learned) outputs of the network
     @abstractmethod
     def forward(self,x):
-        raise NotImplementedError("The base class BayesianModule leaves the `forward` method to be implemented by the user. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+        raise NotImplementedError("The base class BayesianModule leaves the `forward` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     #
     # ~~~ Return an estimate of `\int ln(f_{Y \mid X,W}(w,X,y)) q_\theta(w) dw` where `q_\theta(w)` is the variational density with trainable parameters `\theta` and `f_{Y \mid X,W}(w,X,y)` is the likelihood density
     @abstractmethod
     def log_likelihood_density( self, X, y ):
         # return something like loss_function( f(X;W), y )
-        raise NotImplementedError("The base class BayesianModule leaves the `log_likelihood_density` method to be implemented by the user. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+        raise NotImplementedError("The base class BayesianModule leaves the `log_likelihood_density` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     # ~~~
     #
     ### ~~~
@@ -52,17 +46,17 @@ class BayesianModule(nn.Module):
     # ~~~ Return the exact kl divergence between the variational distribution and the prior distribution
     @abstractmethod
     def exact_weight_kl(self):
-        raise NotImplementedError("The base class BayesianModule leaves the `exact_weight_kl` method to be implemented by the user. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+        raise NotImplementedError("The base class BayesianModule leaves the `exact_weight_kl` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     #
     # ~~~ Return an esimate of `\int ln(q_\theta(w)) q_\theta(w) dw` where `q_\theta(w)` is the variational density with trainable parameters `\theta`
     @abstractmethod
     def log_posterior_density(self):
-        raise NotImplementedError("The base class BayesianModule leaves the `log_posterior_density` method to be implemented by the user. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+        raise NotImplementedError("The base class BayesianModule leaves the `log_posterior_density` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     #
     # ~~~ Return an esimate of `\int \ln(f_W(w)) q_\theta(w) dw` where `q_\theta(w)` is the variational density with trainable parameters `\theta` and `f_W(w)` is a density function over network weights
     @abstractmethod
     def log_prior_density(self):
-        raise NotImplementedError("The base class BayesianModule leaves the `log_prior_density` method to be implemented by the user. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+        raise NotImplementedError("The base class BayesianModule leaves the `log_prior_density` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
         #
     # ~~~ Compute the kl divergence between posterior and prior distributions
     def weight_kl( self, exact_formula=True ):
@@ -83,12 +77,12 @@ class BayesianModule(nn.Module):
     # ~~~ Sample from the priorly distributed outputs of the network
     @abstractmethod
     def prior_forward( self, x, n=1 ):
-        raise NotImplementedError("The base class BayesianModule leaves the `prior_forward` method to be implemented by the user. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+        raise NotImplementedError("The base class BayesianModule leaves the `prior_forward` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     #
     # ~~~ Generate a fresh grid of several "points like our model's inputs" from the input domain
     @abstractmethod
     def sample_new_measurement_set(self,n=200):
-        raise NotImplementedError("The base class BayesianModule leaves the `sample_new_measurement_set` method to be implemented by the user. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+        raise NotImplementedError("The base class BayesianModule leaves the `sample_new_measurement_set` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     #
     # ~~~ Instantiate the SSGE estimator of the prior score, using samples from the prior distribution
     def setup_prior_SSGE(self):

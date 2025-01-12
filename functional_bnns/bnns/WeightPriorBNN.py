@@ -15,6 +15,7 @@ flatten_parameters = lambda model: torch.cat([ p.view(-1) for p in model.paramet
 
 #
 # ~~~ Implement `log_prior_density` and `prior_forward` for a "fully factored" Gaussian prior on the network weights
+# FullSupportIndependentWeightScalePrior
 class GaussianWeightPrior(IndependentLocationScaleBNN):
     def __init__(
                 self,

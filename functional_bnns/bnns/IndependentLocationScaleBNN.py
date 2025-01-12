@@ -7,7 +7,6 @@ from torch import nn
 from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
 
 from bnns.utils import log_gaussian_pdf
-from bnns.SSGE import SpectralSteinEstimator as SSGE
 from bnns.BayesianModule import BayesianModule
 
 from quality_of_life.my_base_utils import my_warn
@@ -47,10 +46,6 @@ def std_per_layer(linear_layer):
 # ~~~ Flatten and concatenate all the parameters in a model
 flatten_parameters = lambda model: torch.cat([ p.view(-1) for p in model.parameters() ])
 
-#
-# ~~~ Set an error message explaining that the prior distribution must be setup
-message_about_priors =  "The prior distribution must be user-specified by defining the methods `log_prior_density` and `prior_forward` and, optionally (if an exact formula is available), `exact_weight_kl`. In lieu of a custom implementation, the following options are provided: TODO"
-
 
 
 ### ~~~
@@ -58,7 +53,7 @@ message_about_priors =  "The prior distribution must be user-specified by defini
 ### ~~~
 
 #
-# ~~~ Main class: intended to mimic nn.Sequential
+# ~~~ Main class: intended to mimic nn.Sequential (STILL NO PRIOR DISTRIBUTION AT THIS LEVEL OF ABSTRACTION)
 class IndependentLocationScaleBNN(BayesianModule):
     def __init__(
                 self,
@@ -92,34 +87,14 @@ class IndependentLocationScaleBNN(BayesianModule):
         self.realized_standard_distribution = nonredundant_copy_of_module_list(self.model_mean)
         self.sample_from_standard_distribution()
         #
-        # ~~~ Define the assumed level of noise in the training data: when this is set to smaller values, the model "pays more attention" to the data, and fits it more aggresively (can also be a vector)
+        # ~~~ Attributes determining the log likelihood density
         self.likelihood_model = "Gaussian"
         self.conditional_std = conditional_std
-        #
-        # ~~~ Opt to project onto [projection_tol,Inf), rather than onto [0,Inf)
-        self.projection_tol = 1e-6
-        self.hard_projection = lambda x: torch.clamp( x, min=self.projection_tol )
-        #
-        # ~~~ Attributes for SSGE and functional training
-        self.prior_J   = "please specify"
-        self.post_J    = "please specify"
-        self.prior_eta = "please specify"
-        self.post_eta  = "please specify"
-        self.prior_M   = "please specify"
-        self.post_M    = "please specify"
-        self.measurement_set = None
-        self.prior_SSGE      = None
     # ~~~
     #
     ### ~~~
     ## ~~~ Basic methods such as "check that the weights are positive" and "make the weights positive" (`projection_step`)
     ### ~~~
-    #
-    # ~~~ Sample according to a "standard normal distribution in the shape of our neural network"
-    def sample_from_standard_distribution(self):
-        with torch.no_grad():   # ~~~ theoretically the `no_grad()` context is redundant and unnecessary, but idk why not use it
-            for p in self.realized_standard_distribution.parameters():
-                self.family_initializer(p)
     #
     # ~~~ Infer device and dtype
     def infer_device_and_dtype(self):
@@ -129,17 +104,31 @@ class IndependentLocationScaleBNN(BayesianModule):
                 dtype = layer.weight.dtype
                 return device, dtype
     #
+    # ~~~ Sample according to a "standard normal [or other] distribution in the shape of our neural network"
+    def sample_from_standard_distribution(self):
+        with torch.no_grad():   # ~~~ theoretically the `no_grad()` context is redundant and unnecessary, but idk why not use it
+            for p in self.realized_standard_distribution.parameters():
+                self.family_initializer(p)
+    #
     # ~~~ Check that all the posterior standard deviations are positive
-    def check_positive(self):
+    def check_positive( self, forceful=False ):
         with torch.no_grad():
             if not flatten_parameters(self.model_std).min() > 0:
-                my_warn("`model_std` contains negative values.")
+                if hasattr(self,"soft_projection"):
+                    my_warn("`model_std` contains negative values.")
+                if forceful:
+                    self.hard_projection()
+    #
+    # ~~~ Whatever constraints we want the standard deviations to satisfy, define a projection onto the constraint such that hard_projection(sigma)==sigma if sigma already already satisfies the constraints
+    @abstractmethod
+    def hard_projection( self, p, tol=1e-6 ):
+        raise NotImplementedError("The class IndependentLocationScaleBNN leaves the method `hard_projection` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
     #
     # ~~~ Project the standard deviations to be positive
     def projection_step(self,soft):
         with torch.no_grad():
-            for p in self.model_std.parameters():            
-                p.data = self.soft_projection(p.data) if soft else self.hard_projection(p.data)
+            for sigma in self.model_std.parameters():            
+                sigma.data = self.soft_projection(sigma.data) if soft else self.hard_projection(sigma.data)
     #
     # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" (as on page 4 of https://arxiv.org/pdf/1505.05424)
     def setup_soft_projection( self, method="Blundell" ):
@@ -180,12 +169,13 @@ class IndependentLocationScaleBNN(BayesianModule):
                 for p in self.model_std.parameters():
                     p.data = std_per_param(p)*torch.ones_like(p.data)
             #
-            # ~~~ Scale the range of output, much like the scale paramter in a GP
-            if isinstance( self.model_std[-1], nn.Linear ):
-                for p in self.model_std[-1].parameters():
-                    p.data *= scale
-            elif not scale==1:
-                my_warn(f"`scale` assumes the final layer is `nn.Linear`, but found instead {type(self.model_std[-1])}. The supplied `scale={scale}` was ignored.")
+            # ~~~ Scale the parameters of the last linear layer; for sequential models, the effect is comparable to the scale paramter in a GP
+            if scale is not None:
+                for layer in reversed(self.model_std):
+                    if isinstance( layer, nn.Linear ):
+                        for p in layer.parameters():
+                            p.data *= scale
+                        break
     #
     # ~~~ Sample the distribution of Y|X=x,W=w
     def forward( self, x, resample_weights=True ):
@@ -236,3 +226,8 @@ class IndependentLocationScaleBNN(BayesianModule):
         z_sampled = flatten_parameters(self.realized_standard_distribution)
         w_sampled = mu_post + sigma_post*z_sampled
         return self.family_log_density( where=w_sampled, mu=mu_post, sigma=sigma_post )
+    # def sample_new_measurement_set(self,n=200):
+    #     #
+    #     # ~~~ In the common case that the inputs are standardized, then standard random normal vectors are "points like our model's inputs"
+    #     device, dtype = self.infer_device_and_dtype()
+    #     self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
