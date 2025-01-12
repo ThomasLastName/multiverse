@@ -4,7 +4,8 @@ import torch
 from torch import nn, func, vmap
 import copy
 from bnns.SSGE import BaseScoreEstimator as SSGE_backend
-from bnns.utils import log_gaussian_pdf, get_std
+from bnns.utils import log_gaussian_pdf
+from bnns.IndependentLocationScaleBNN import std_per_param
 
 from quality_of_life.my_base_utils import my_warn
 from quality_of_life.my_torch_utils import get_flat_grads, set_flat_grads, nonredundant_copy_of_module_list
@@ -20,7 +21,7 @@ bandwidth_estimator = SSGE_backend().heuristic_sigma
 def log_prior_density(model):
     log_prior = 0.
     for p in model.parameters():
-        log_prior += log_gaussian_pdf( where=p, mu=torch.zeros_like(p), sigma=get_std(p) )
+        log_prior += log_gaussian_pdf( where=p, mu=torch.zeros_like(p), sigma=std_per_param(p) )
     return log_prior
 
 #
@@ -48,7 +49,7 @@ class SteinEnsemble(nn.Module):
                 self.conditional_std = conditional_std.to(inferred_device)
             #
             # ~~~ Stuff for parallelizing computation of the loss function
-            self.all_prior_sigma = torch.tile( torch.cat([ torch.tile(get_std(p),p.shape).flatten() for p in self.models[0].parameters() ]), (self.n_models,1) )
+            self.all_prior_sigma = torch.tile( torch.cat([ torch.tile(std_per_param(p),p.shape).flatten() for p in self.models[0].parameters() ]), (self.n_models,1) )
             self.failed_to_vectorize = False    # ~~~ flag if the generic attempt to vectorize the forward pass has failed
             self.iterative_sum = False          # ~~~ if False, then use einsum for a sub-routine, which is faster but more memory intensive then using an iterative sum
             #
