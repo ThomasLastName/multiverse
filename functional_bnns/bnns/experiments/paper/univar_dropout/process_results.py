@@ -1,15 +1,4 @@
 
-import numpy as np
-import torch
-from matplotlib import pyplot as plt
-from importlib import import_module
-from bnns.experiments.paper.univar_dropout import folder_name
-from bnns.utils import load_filtered_json_files, load_trained_model_from_dataframe, get_attributes_from_row_i, filter_by_attributes, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles
-from quality_of_life.my_base_utils import json_to_dict
-
-
-
-
 import os
 import torch
 import pandas as pd
@@ -41,6 +30,81 @@ except:
 
 
 
+### ~~~
+## ~~~ Process the dataframe slightly
+### ~~~
+
+results = infer_width_and_depth(results)
+
+#
+# ~~~ Verify that DATA==results.DATA.unique(), ARCHITECTURE==results.MODEL.unique(), and LR==results.LR.unique()
+if (
+        len(DATA) == 2 == len(results.DATA.unique())
+        and len(ARCHITECTURE) == 12 == len(results.MODEL.unique())
+        and len(LR) == 4 == len(results.LR.unique())
+    ):
+    if not (
+                all(DATA==results.DATA.unique())
+                and all(ARCHITECTURE==results.MODEL.unique())
+                and all(LR==results.LR.unique())
+            ):
+        my_warn(f"The hyperparameters specified in {folder_dir} do not match their expected values")
+else:
+    my_warn(f"The hyperparameters specified in {folder_dir} do not match their expected lengths")
+
+
+
+### ~~~
+## ~~~ For each width, from the 4 diffent depths tested with that width, choose the one that has the smallest median validation error, as well as the one that has the smallest validation error overall
+### ~~~
+
+mean_results = results.groupby(["width","depth"]).mean(numeric_only=True)
+min_results = results.groupby(["width","depth"]).min(numeric_only=True)         # ~~~ best results
+median_results = results.groupby(["width","depth"]).median(numeric_only=True)   # ~~~ more typical results
+
+
+
+if __name__=="__main__":
+    #
+    # ~~~ "Trim the fat" from a dataframe by saving only the listed columns
+    columns_to_save = [ "width", "depth", "METRIC_rmse_of_median", "METRIC_mae_of_median", "METRIC_max_norm_of_median" ]
+    trim = lambda df: df.reset_index()[columns_to_save].round(3).to_string(index=False)     # ~~~ reset the index, so that "width" and "depth" are restored to being columns (as opposed to being the index)
+    #
+    # ~~~ Print the average resutls by width and depth
+    print("")
+    print("    Average Resutls (across all other hyperparameters) by Width and Depth")
+    print("")
+    print(trim(mean_results))
+    #
+    # ~~~ Print the best resutls by width and depth
+    print("")
+    print("    Best Resutls (across all other hyperparameters) by Width and Depth")
+    print("")
+    print(trim(min_results))
+    #
+    # ~~~ Plot a model or two, as a sanity check
+    try:
+        import seaborn as sns
+        def plot(criterion):
+            plt.figure(figsize=(12,6))
+            sns.lineplot(
+                    data = results,
+                    x = "width",
+                    y = "METRIC_rmse",
+                    hue = "depth",
+                    marker = "o",
+                    estimator = criterion,
+                    errorbar = ("pi",95) if criterion=="median" else ("sd",2)
+                )
+            plt.title("Validation rMSE in Various Experiments by Model Width and Depth")
+            plt.xlabel("Width")
+            plt.ylabel(f"{criterion} rMSE")
+            plt.legend(title="Depth")
+            plt.show()
+    except ModuleNotFoundError:
+        pass
+    except:
+        raise
 
 # ### ~~~
 # ## ~~~ Load the json files from `folder_name` as dictionaries, process them to a format that pandas likes, and combine them into a pandas DataFrame
