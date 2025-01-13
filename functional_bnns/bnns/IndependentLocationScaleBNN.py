@@ -32,7 +32,7 @@ def std_per_param(p):
         # ~~~ For bias vectors, just use variance==1/len(p) because `_calculate_fan_in_and_fan_out` throws a ValueError(""Fan in and fan out can not be computed for tensor with fewer than 2 dimensions"")
         numb_pars = len(p)
         std = 1/math.sqrt(numb_pars)
-    return std
+    return torch.tensor( std, device=p.device, dtype=p.dtype )
 
 #
 # ~~~ Propose good a "prior" standard deviation for weights and biases of a linear layer; mimics pytorch's default initialization, but using a normal instead of uniform distribution (https://discuss.pytorch.org/t/how-are-layer-weights-and-biases-initialized-by-default/13073/2)
