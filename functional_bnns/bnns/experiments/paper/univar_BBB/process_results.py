@@ -1,5 +1,4 @@
 
-import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from importlib import import_module
@@ -25,7 +24,7 @@ unique_data = data.loc[:,data.nunique()>1]
 ## ~~~ Prepare plotting utils
 ### ~~~
 
-def plot_trained_model( dataframe, i, title="Trained Model" ):
+def plot_trained_model( dataframe, i, title="Trained Model", n_samples=500 ):
     data = import_module(f"bnns.data.{dataframe.iloc[i].DATA}")
     # x_train, y_train, x_test, y_test = data.x_rain, data.y_rain, data.x_test, data.y_test
     grid        =  data.x_test.cpu()
@@ -35,7 +34,7 @@ def plot_trained_model( dataframe, i, title="Trained Model" ):
     plot_predictions = plot_bnn_empirical_quantiles if dataframe.iloc[i].VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
     bnn = load_trained_model_from_dataframe(dataframe,i)
     with torch.no_grad():
-        predictions = torch.stack([ bnn(grid) for _ in range(500) ]).squeeze()
+        predictions = torch.stack([ bnn(grid) for _ in range(n_samples) ]).squeeze()
         fig, ax = plt.subplots(figsize=(12,6))
         fig, ax = plot_predictions(
             fig = fig,
@@ -59,7 +58,10 @@ def plot_trained_model( dataframe, i, title="Trained Model" ):
 
 for i in range(len(data)):
     if i>25:
-        print(unique_data.iloc[i,:5])
+        print("")
+        print(f"    i: {i}")
+        print("")
+        print(unique_data.iloc[i,:7])
         plot_trained_model(data,i)
         print("")
         print("-------------------------------")
