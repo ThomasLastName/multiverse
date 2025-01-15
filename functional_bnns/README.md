@@ -2,19 +2,15 @@
 
 **IMPORTANT: At this time, the package is still in development, and is not yet ready for use by a general audience.**
 
+## Main Features
+
 This package fulfills a need for reliable, modular, general, and efficient open source implementations of variational Bayesian neural networks (BNNs).
-Specifically, this package attempts to provide the following utilities.
+Specifically, this package attempts to provide the following features.
 1. Implementations of training methods other than Bayes-by-Backprop (BBB).
 2. A flexible, canonical framework for custom user-defined BNNs.
 3. A minimalist infrastructure for hyper-parameter tuning and model benchmarking.
 
-Many high quality implementations of (BBB) exist.
-However, BBB is only one of many possible ways to train a BNN.
-We sought to answer the question of whether or not BBB deserves its status as the default method to train a BNN, which it appears to have been awarded prematurely.
-Many different algorithms exist for training a BNN, other than BBB.
-However, high quality open source implementations exist only of BBB, and not of most other training methods.
-The prevalence of BBB above all other training methods can perhaps be attributed merely to the availability of software.
-This package exists in order to provide implementations of a wide variety of methods for training BNNs *at a sufficient level of quality* to support rigorously testing and comparing the performance of each method.
+### 1. Implementations of Training Methods Other than (BBB).
 
 The training methods implemented in this package are:
  - Bayes-by-backprop (BBB)  (citation needed)
@@ -29,13 +25,40 @@ as well as, for the sake of comparison,
  - Conventional neural network ensembles
  - Conventional Gaussian process regression
 
+### 2. A flexible, canonical framework for custom user-defined BNNs.
+
 The BNN structures implemented in this package are:
  - Mutually independent normally distributed weights
  - (pending) Mutually independent uniformly distributed weights
  - (pending) Mutually independent Laplace weights
 
-In addition to impelementations of each of the above training methods, this package also provides infrastructure for testing the performance of each method, including a pipeline for hyperparameter tuning and model evaluation.
+### 3. A minimalist infrastructure for hyper-parameter tuning and model benchmarking.
 
+TODO explain here how to use `tuning_loop.py`.
+
+## Purpose
+
+This package was developed in an effort to answer several research questions of increasing scope: (i) are "functional priors" better than "weight priors," (ii) what's the best way to train a BNN, and (iii) do BNN's even work all that well, frankly?
+
+For context, there are many possible ways to train a BNN, of which BBB is by far the most popular.
+In Bayesian modeling of any kind, the prior distribution is always extremely important.
+However, BBB supports only a limited variety of prior distributions (viz. ones specified on the weights of a neural network: "weight priors").
+Several of our scientists and many authors have hypothesized that "functional priors" may yield better predictive posterior models than weight priors.
+To test that hypothesis, at bare minimum, we thus required an implementation of some training method which supports functional priors.
+
+Moreover, we required an implementation *at a sufficient level of quality* to also support extensive and varied empirical experiments.
+Finally, in order to "control for" the role of the training method and attempt to "isolate" the role of the prior distribution, it would be uncscientific to test only 1 or 2 training methods.
+Rather, we felt that the most rigorous approach would be to implement several different training methods, in order to be confident that our conclusions are really the result of the prior distribution, and not merely an artifact of training.
+
+Unfortunately, production-level open source implementations existed only of BBB, and not (to our awareness) of the other training methods we wished to test.
+In fact, the prevalence of BBB above all other training methods may be merely a spurious result of the availability of software.
+Consequently, this package, also, serves to test whether or not BBB deserves its tentative status as the default method to train a BNN.
+
+So that is _why_ this package provides implementations of training methods other than (BBB).
+At the same time, modularizing the code and ensuring its flexibility became a necessity once we ramped up the variety of different architectures and priors we sought to test; that's _why_ this package provides a flexible, canonical framework for custom user-defined BNNs.
+Finally, since the original purpose of this package was to test rigorously which type of prior distribution gives the most desirable outcomes, of course a testing pipeline was necessary, as was a bunch of hyper-parameter tuning; that's _why_ this package provides a minimalist infrastructure for hyper-parameter tuning and model benchmarking.
+
+---
 
 # Setup
 
