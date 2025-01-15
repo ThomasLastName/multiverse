@@ -5,7 +5,7 @@
 ## Main Features
 
 This package fulfills a need for reliable, modular, general, and efficient open source implementations of variational Bayesian neural networks (BNNs).
-Specifically, this package attempts to provide the following 3 general features.
+Specifically, this package offers the following 3 general features.
 
 ### 1. Implementations of Training Methods Other than BBB (TODO: LINK TO TUTORIAL)
 
@@ -25,7 +25,7 @@ as well as, for the sake of comparison,
 ### 2. A Flexible, Canonical Framework for Custom User-Defined BNNs (TODO: LINK TO TUTORIAL)
 
 The base class `bnns.BayesianModule` is intended to provide a similar level of flexibility as its super-class `nn.Module`.
-Just as PyTorch provides the ready-to-use sub-class `nn.Sequential` of `nn.Module`, for convenience, this package provides several ready-to-use sub-classes of `bnns.BayesianModule` (TODO refer to them by name):
+Just as PyTorch provides the ready-to-use sub-class `nn.Sequential` of `nn.Module`, for convenience, this package also provides several ready-to-use sub-classes of `bnns.BayesianModule` (TODO refer to them by name):
  - Mutually independent normally distributed weights with
    * an independent normal prior distribution over those weights
    * a Gaussian process prior over network outputs
