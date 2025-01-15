@@ -5,12 +5,9 @@
 ## Main Features
 
 This package fulfills a need for reliable, modular, general, and efficient open source implementations of variational Bayesian neural networks (BNNs).
-Specifically, this package attempts to provide the following features.
-1. Implementations of training methods other than Bayes-by-Backprop (BBB) (TODO: LINK TO TUTORIAL).
-2. A flexible, canonical framework for custom user-defined BNNs (TODO: LINK TO TUTORIAL).
-3. A minimalist infrastructure for hyper-parameter tuning and model benchmarking (TODO: LINK TO TUTORIAL).
+Specifically, this package attempts to provide the following 3 general features.
 
-### 1. Implementations of Training Methods Other than BBB.
+### 1. Implementations of Training Methods Other than BBB (TODO: LINK TO TUTORIAL)
 
 The training methods implemented in this package are:
  - BBB ([Blundell et al. 2015](https://arxiv.org/pdf/1505.05424))
@@ -25,7 +22,7 @@ as well as, for the sake of comparison,
  - Conventional neural network ensembles
  - Conventional Gaussian process regression
 
-### 2. A flexible, canonical framework for custom user-defined BNNs.
+### 2. A Flexible, Canonical Framework for Custom User-Defined BNNs (TODO: LINK TO TUTORIAL)
 
 The base class `bnns.BayesianModule` is intended to provide a similar level of flexibility as its super-class `nn.Module`.
 For convenience, several ready-to-use sub-classes of `bnns.BayesianModule` are also provided:
@@ -38,7 +35,7 @@ For convenience, several ready-to-use sub-classes of `bnns.BayesianModule` are a
    * (pending) an independent uniform prior distribution over those weights
    * (pending) other location-scale priors over those weights with full support
 
-### 3. A minimalist infrastructure for hyper-parameter tuning and model benchmarking.
+### 3. A Minimalist Infrastructure for Hyper-Parameter Tuning and Model Benchmarking (TODO: LINK TO TUTORIAL)
 
 TODO explain here how to use `tuning_loop.py`.
 
