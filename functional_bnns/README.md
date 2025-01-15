@@ -6,14 +6,14 @@
 
 This package fulfills a need for reliable, modular, general, and efficient open source implementations of variational Bayesian neural networks (BNNs).
 Specifically, this package attempts to provide the following features.
-1. Implementations of training methods other than Bayes-by-Backprop (BBB).
-2. A flexible, canonical framework for custom user-defined BNNs.
-3. A minimalist infrastructure for hyper-parameter tuning and model benchmarking.
+1. Implementations of training methods other than Bayes-by-Backprop (BBB) (TODO: LINK TO TUTORIAL).
+2. A flexible, canonical framework for custom user-defined BNNs (TODO: LINK TO TUTORIAL).
+3. A minimalist infrastructure for hyper-parameter tuning and model benchmarking (TODO: LINK TO TUTORIAL).
 
-### 1. Implementations of Training Methods Other than (BBB).
+### 1. Implementations of Training Methods Other than BBB.
 
 The training methods implemented in this package are:
- - Bayes-by-backprop (BBB)  (citation needed)
+ - BBB ([Blundell et al. 2015](https://arxiv.org/pdf/1505.05424))
  - SVGD                     (citation needed)
  - The original fBNN method (citation needed)
  - Gaussian approximation   (citation needed)
@@ -27,10 +27,16 @@ as well as, for the sake of comparison,
 
 ### 2. A flexible, canonical framework for custom user-defined BNNs.
 
-The BNN structures implemented in this package are:
- - Mutually independent normally distributed weights
+The base class `bnns.BayesianModule` is intended to provide a similar level of flexibility as its super-class `nn.Module`.
+For convenience, several ready-to-use sub-classes of `bnns.BayesianModule` are also provided:
+ - Mutually independent normally distributed weights with
+   * an independent normal prior distribution over those weights
+   * a Gaussian process prior over network outputs
+   * (pending) other location-scale priors over those weights with full support
+   * (pending) the Gaussian mixture prior proposed in [Blundell et al. 2015](https://arxiv.org/pdf/1505.05424)
  - (pending) Mutually independent uniformly distributed weights
- - (pending) Mutually independent Laplace weights
+   * (pending) an independent uniform prior distribution over those weights
+   * (pending) other location-scale priors over those weights with full support
 
 ### 3. A minimalist infrastructure for hyper-parameter tuning and model benchmarking.
 
@@ -47,14 +53,13 @@ Several of our scientists and many authors have hypothesized that "functional pr
 To test that hypothesis, at bare minimum, we thus required an implementation of some training method which supports functional priors.
 
 Moreover, we required an implementation *at a sufficient level of quality* to also support extensive and varied empirical experiments.
-Finally, in order to "control for" the role of the training method and attempt to "isolate" the role of the prior distribution, it would be uncscientific to test only 1 or 2 training methods.
+Finally, in order to "control for" the role of the training method and "isolate" the role of the prior distribution, it would be uncscientific to test only 1 or 2 training methods.
 Rather, we felt that the most rigorous approach would be to implement several different training methods, in order to be confident that our conclusions are really the result of the prior distribution, and not merely an artifact of training.
-
 Unfortunately, production-level open source implementations existed only of BBB, and not (to our awareness) of the other training methods we wished to test.
 In fact, the prevalence of BBB above all other training methods may be merely a spurious result of the availability of software.
 Consequently, this package, also, serves to test whether or not BBB deserves its tentative status as the default method to train a BNN.
 
-So that is _why_ this package provides implementations of training methods other than (BBB).
+So that is _why_ this package provides implementations of training methods other than BBB.
 At the same time, modularizing the code and ensuring its flexibility became a necessity once we ramped up the variety of different architectures and priors we sought to test; that's _why_ this package provides a flexible, canonical framework for custom user-defined BNNs.
 Finally, since the original purpose of this package was to test rigorously which type of prior distribution gives the most desirable outcomes, of course a testing pipeline was necessary, as was a bunch of hyper-parameter tuning; that's _why_ this package provides a minimalist infrastructure for hyper-parameter tuning and model benchmarking.
 
