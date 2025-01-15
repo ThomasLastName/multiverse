@@ -2,7 +2,7 @@
 
 **IMPORTANT: At this time, the package is still in development, and is not yet ready for use by a general audience.**
 
-This package fulfills a need for reliable, modular, general, and efficient open source implementations of variational Bayesian neural networks (BNNs) methods, beyond only the one method that everyone implements.
+This package fulfills a need for reliable, modular, general, and efficient open source implementations of variational Bayesian neural networks (BNNs), going beyond only the one method that everyone implements.
 
 Many high quality implementations of Bayes-by-Backprop (BBB_ exist.
 However, BBB is only one of many possible ways to train a BNN.
