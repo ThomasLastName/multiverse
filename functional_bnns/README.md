@@ -2,9 +2,9 @@
 
 **IMPORTANT: At this time, the package is still in development, and is not yet ready for use by a general audience.**
 
-This package fulfills a need for reliable, modular, general, and efficient open source implementations of Bayesian neural networks (BNNs) beyond only Bayess-by-backprop (BBB) with normally distributed weights.
+This package fulfills a need for reliable, modular, general, and efficient open source implementations of variational Bayesian neural networks (BNNs) methods, beyond only the one method that everyone implements.
 
-Many high quality implementations of BBB exist.
+Many high quality implementations of Bayes-by-Backprop (BBB_ exist.
 However, BBB is only one of many possible ways to train a BNN.
 We sought to answer the question of whether or not BBB deserves its status as the default method to train a BNN, which it appears to have been awarded prematurely.
 Many different algorithms exist for training a BNN, other than BBB.
@@ -65,20 +65,6 @@ In addition to impelementations of each of the above training methods, this pack
 
 6. (_verify installation_) Try running one of the python files, e.g., `python scripts\SSGE_univar_demo.py`, which should create an plot with several curves.
 
-
-## Dependencies (installation thereof is handled by the setup instructions)
-
-Please note that if you follow either of the setup instructions above, then these dependencies will be installed automatically **with the exception of pytorch, as explained above**. The dependencies are lister here merely for the sake of completeness and transparency. 
-- [ ] pytorch (main machine learning library)
-- [ ] matplotlib (for creating images)
-- [ ] tqdm (for progress bars)
-- [ ] numpy (used for a little bit of data processing)
-- [ ] scipy (practically not used at all)
-- [ ] pandas (used for data manipulation)
-- [ ] fiona (used for one plotting routine)
-- [ ] https://github.com/ThomasLastName/quality-of-life (primarily used for creating `gif`'s; this repo has its own dependencies, but "the required parts" of this repo depend only on the other packages in this list, and the standard python library).
-
-From a development standpoint, reducing the list of dependencies would be very doable.
 
 # Usage
 
