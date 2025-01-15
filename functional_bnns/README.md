@@ -25,7 +25,7 @@ as well as, for the sake of comparison,
 ### 2. A Flexible, Canonical Framework for Custom User-Defined BNNs (TODO: LINK TO TUTORIAL)
 
 The base class `bnns.BayesianModule` is intended to provide a similar level of flexibility as its super-class `nn.Module`.
-For convenience, several ready-to-use sub-classes of `bnns.BayesianModule` are also provided:
+Just as PyTorch provides the ready-to-use sub-class `nn.Sequential` of `nn.Module`, for convenience, this package provides several ready-to-use sub-classes of `bnns.BayesianModule` (TODO refer to them by name):
  - Mutually independent normally distributed weights with
    * an independent normal prior distribution over those weights
    * a Gaussian process prior over network outputs
