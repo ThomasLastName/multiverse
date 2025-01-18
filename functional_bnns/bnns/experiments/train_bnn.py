@@ -366,6 +366,9 @@ while keep_training:
                     # ~~~ Draw a new sample
                     BNN.sample_from_standard_distribution()
                     #
+                    # ~~~ Compute the likelihood term (this is the same for all training methods)
+                    log_likelihood_density = BNN.estimate_expected_log_likelihood(X,y,use_input_in_next_measurement_set=True)
+                    #
                     # ~~~ Compute the KL divergence of the (approximate) posterior against the user-specified prior
                     if not FUNCTIONAL:
                         kl_div = BNN.weight_kl(exact_formula=EXACT_WEIGHT_KL)
@@ -376,20 +379,18 @@ while keep_training:
                     if FUNCTIONAL and GAUSSIAN_APPROXIMATION:
                         kl_div = BNN.gaussian_kl(approximate_mean=APPPROXIMATE_GAUSSIAN_MEAN)
                     #
-                    # ~~~ Compute the likelihood term (this is the same for all training methods)
-                    log_likelihood_density = BNN.log_likelihood_density(X,y)
-                    #
                     # ~~~ Compute the loss==negative_ELBO
                     alpha, beta = decide_weights( b=b, n_batches=n_batches, X=X, D_train=D_train )
                     negative_ELBO = ( alpha*kl_div - beta*log_likelihood_density )/N_MC_SAMPLES
                     negative_ELBO.backward()
                 #
                 # ~~~ Perform the gradient-based update
-                if not PROJECT:
+                if not PROJECTION_METHOD=="HARD":
                     BNN.apply_chain_rule_for_soft_projection()
                 optimizer.step()
                 optimizer.zero_grad()
-                BNN.projection_step( soft = not PROJECT )
+                if not PROJECTION_METHOD=="HARD":
+                    BNN.apply_soft_projection()
                 #
                 # ~~~ Report a moving average of train_loss as well as val_loss in the progress bar
                 if len(train_loss_curve)>0:
