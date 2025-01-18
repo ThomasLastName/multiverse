@@ -39,8 +39,8 @@ class BayesianModule(nn.Module):
     #
     # ~~~ Return an estimate of `\int ln(f_{Y \mid X,W}(w,X,y)) q_\theta(w) dw` where `q_\theta(w)` is the variational density with trainable parameters `\theta`, and `f_{Y \mid X,W}(w,X,y)` is the likelihood density
     @abstractmethod
-    def log_likelihood_density(self,X,y):
-        raise NotImplementedError("The base class BayesianModule leaves the `log_likelihood_density` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+    def estimate_expected_log_likelihood(self,X,y):
+        raise NotImplementedError("The base class BayesianModule leaves the `estimate_expected_log_likelihood` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     # ~~~
     #
     ### ~~~
@@ -183,13 +183,15 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         # ~~~ Attributes determining the log likelihood density
         self.likelihood_model = "Gaussian"
         self.conditional_std = conditional_std
+        #
+        # ~~~ Attributes used for testing validity of the default measurement set
+        self.first_moments_of_input_batches = []
+        self.second_moments_of_input_batches = []
     # ~~~
     #
     ### ~~~
     ## ~~~ Basic methods such as "check that the weights are positive" (`ensure_positive`) and "make the weights positive" (`apply_hard_projection` and `soft_projection`)
     ### ~~~
-    #
-    # ~~~ 
     #
     # ~~~ Infer device and dtype
     def infer_device_and_dtype(self):
@@ -302,7 +304,13 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         return x
     #
     # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def log_likelihood_density(self,X,y):
+    def estimate_expected_log_likelihood( self, X, y, use_input_in_next_measurement_set=False ):
+        #
+        # ~~~ Store the input itself, and/or descriptive statistics, for reference when generating the measurement set
+        self.first_moments_of_input_batches.append(X.mean(dim=0))
+        self.second_moments_of_input_batches.append((X**2).mean(dim=0))
+        if use_input_in_next_measurement_set:
+            self.desired_measurement_points = X
         #
         # ~~~ The likelihood depends on task criterion: classification or regression
         self.ensure_positive(forceful=True)
@@ -388,13 +396,31 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         return mu_theta, Sigma_theta
     #
     # ~~~ In the common case that the inputs are standardized, then standard random normal vectors are "points like our model's inputs"
-    def sample_new_measurement_set(self,n=64):
-        device, dtype = self.infer_device_and_dtype()
+    def sample_new_measurement_set( self, n=64, after_how_many_batches_to_warn=100, tol=0.25 ):
+        #
+        # ~~~ Attempt to assess validity of this default implementaiton
         if not isinstance( self.model_mean[0], nn.Linear ):
-            my_warn("Because the first model layer is not a linear layer, the default implementation of sample_new_measurement_set() may fail. If so (or to avoid this warning message), please sub-class the model you wish to use and implement sample_new_measurement_set() for the sub-class.")
-        if hasattr(self,"last_seen_X"):
-            del self.measurement_set
-        self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
+            my_warn("Because the first model layer is not a linear layer, the default implementation of `sample_new_measurement_set` may fail. If so (or to avoid this warning message), please sub-class the model you wish to use and implement sample_new_measurement_set() for the sub-class.")
+        if len(self.first_moments_of_input_batches)==after_how_many_batches_to_warn:   # ~~~ warn only once, with a sample size of 100
+            estimated_mean_of_all_inputs = torch.stack(self.first_moments_of_input_batches).mean(dim=0).max()
+            estimated_var_of_all_inputs  = torch.stack(self.second_moments_of_input_batches).mean(dim=0).max() - estimated_mean_of_all_inputs**2  # ~~~ var(X) = E(X^2) - E(X)^2
+            if estimated_mean_of_all_inputs.abs()>tol or estimated_var_of_all_inputs>1+tol:
+                my_warn("the default implementation of `sample_new_measurement_set` assumes inputs are N(0,1) however this assumption appears to be violated. Please consider programming a data-specific implementation of `sample_new_measurement_set` for better results.")
+        #
+        # ~~~ Do the default implementation
+        device, dtype = self.infer_device_and_dtype()
+        if hasattr(self,"desired_measurement_points"):
+            batch_size = self.desired_measurement_points
+            if batch_size>n:
+                my_warn("More desired measurement points are specified than the total number of measurement points (this is most likely the result batch size exceeding the specified number of measurement points). Only a randomly chosen subset of the desired measurement points will be used.")
+                self.measurement_set = self.desired_measurement_points[torch.randperm(batch_size)[:n]]
+            else:
+                self.measurement_set = torch.vstack([
+                        self.desired_measurement_points,
+                        torch.randn(n-batch_size,self.in_features, device=device, dtype=dtype )
+                    ])
+        else:
+            self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
 
 
 
