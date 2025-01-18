@@ -47,22 +47,26 @@ hyperparameter_template = {
     #
     # ~~~ Which problem
     "DATA" : "univar_missing_middle",
-    "MODEL" : "univar_BNN",
+	"ARCHITECTURE" : "univar_NN.univar_NN_100_100",
+	"MODEL": "MixtureWeightPrior2015BNN",
+    "pi" : 0.5,
+    "sigma1" : 1.0,
+    "sigma2" : 0.002,
     #
     # ~~~ For training
     "GAUSSIAN_APPROXIMATION" : True,    # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
     "APPPROXIMATE_GAUSSIAN_MEAN" : True,# ~~~ whether to compute exactly, or approximately, the mean from eq'n (14) in https://arxiv.org/pdf/2312.17199
-    "FUNCTIONAL" : False,       # ~~~ whether or to do functional training or (if False) BBB
-    "EXACT_WEIGHT_KL" : True,   # ~~~ whether to use the exact KL divergence between the prior and posterior (True) or a Monte-Carlo approximation (False)
-    "PROJECT" : True,           # ~~~ if True, use projected gradient descent; else use the weird thing from the paper
-    "PROJECTION_TOL" : 1e-6,    # ~~~ for numerical reasons, project onto [PROJECTION_TOL,Inf), rather than onto [0,Inft)
-    "PRIOR_J"   : 100,          # ~~~ `J` in the SSGE of the prior score
-    "POST_J"    : 10,           # ~~~ `J` in the SSGE of the posterior score
-    "PRIOR_eta" : 0.5,          # ~~~ `eta` in the SSGE of the prior score
-    "POST_eta"  : 0.5,          # ~~~ `eta` in the SSGE of the posterior score
-    "PRIOR_M"   : 4000,         # ~~~ `M` in the SSGE of the prior score
-    "POST_M"    : 40,           # ~~~ `M` in the SSGE of the posterior score
-    "POST_GP_eta" : 0.001,      # ~~~ the level of the "stabilizing noise" added to the Gaussian approximation of the posterior distribution if `gaussian_approximation` is True
+    "FUNCTIONAL" : False,           # ~~~ whether or to do functional training or (if False) BBB
+    "EXACT_WEIGHT_KL" : True,       # ~~~ whether to use the exact KL divergence between the prior and posterior (True) or a Monte-Carlo approximation (False)
+    "PROJECTION_METHOD" : "HARD",   # ~~~ if True, use projected gradient descent; else use the weird thing from the paper
+    "PROJECTION_TOL" : 1e-6,        # ~~~ for numerical reasons, project onto [PROJECTION_TOL,Inf), rather than onto [0,Inft)
+    "PRIOR_J"   : 100,              # ~~~ `J` in the SSGE of the prior score
+    "POST_J"    : 10,               # ~~~ `J` in the SSGE of the posterior score
+    "PRIOR_eta" : 0.5,              # ~~~ `eta` in the SSGE of the prior score
+    "POST_eta"  : 0.5,              # ~~~ `eta` in the SSGE of the posterior score
+    "PRIOR_M"   : 4000,             # ~~~ `M` in the SSGE of the prior score
+    "POST_M"    : 40,               # ~~~ `M` in the SSGE of the posterior score
+    "POST_GP_eta" : 0.001,          # ~~~ the level of the "stabilizing noise" added to the Gaussian approximation of the posterior distribution if `gaussian_approximation` is True
     "CONDITIONAL_STD" : 0.19,
     "OPTIMIZER" : "Adam",
     "LR" : 0.0005,
@@ -168,12 +172,20 @@ except:
 #
 # ~~~ Load the network architecture
 try:
-    model = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as model`
+    architecture = import_module(f"bnns.models.{ARCHITECTURE}").NN  # ~~~ this is equivalent to `from bnns.models.<ARCHITECTURE> import NN as architecture`
 except:
-    model = import_module(MODEL)                    # ~~~ this is equivalent to `import <MODEL> as model` (works if MODEL.py is in the cwd or anywhere on the path)
+    architecture = import_module(ARCHITECTURE).NN                   # ~~~ this is equivalent to `from <ARCHITECTURE> import NN as architecture` (works if MODEL.py is in the cwd or anywhere on the path)
 
-BNN = model.BNN.to( device=DEVICE, dtype=DTYPE )
-BNN.conditional_std = torch.tensor(CONDITIONAL_STD) # ~~~ relevant for all training methods
+#
+# ~~~ Load the Bayesian model of choice for this architecture
+try:
+    MODEL = getattr( import_module("bnns"), MODEL ) # ~~~ equivalent to `from bnns import <MODEL>`
+except:
+    MODEL = getattr( import_module(MODEL), MODEL )  # ~~~ equivalent to `from <MODEL> import <MODEL>`
+
+BNN = MODEL( *architecture, conditional_std=torch.tensor(CONDITIONAL_STD) )
+BNN = BNN.to( device=DEVICE, dtype=DTYPE )
+BNN.set_prior_hyperparameters( **hyperparameters )
 BNN.prior_J = PRIOR_J                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_J = POST_J                                 # ~~~ SSGE accuracyhyperparameter (only relevant for Sun et al. 2019)
 BNN.prior_eta = PRIOR_eta                           # ~~~ stabilizing noise for SSGE (only relevant for Sun et al. 2019)
@@ -182,21 +194,12 @@ BNN.prior_M = PRIOR_M                               # ~~~ SSGE accuracy hyperpar
 BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_GP_eta = POST_GP_eta                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
 
-if not PROJECT:
-    BNN.setup_soft_projection()
-
-try:
-    assert DEFAULT_INITIALIZATION in ("new","old")
+if DEFAULT_INITIALIZATION in ("new","old"):
     BNN.set_default_uncertainty(DEFAULT_INITIALIZATION=="new")
-    # BNN.set_fully_factored_prior(DEFAULT_INITIALIZATION=="new")
-except:
-    BNN.projection_step( soft = not PROJECT )
 
-if GP_PRIOR:
-    from bnns.GPR import simple_mean_zero_RPF_kernel_GP as GP
-    BNN.GP = GP( out_features=BNN.out_features, eta=GP_PRIOR_ETA )
-    if not FUNCTIONAL:
-        my_warn("The Gaussian process prior specified by `GP_PRIOR=True` will be ignored because `FUNCTIONAL==False`.")
+if not PROJECTION_METHOD=="HARD":
+    BNN.setup_soft_projection(PROJECTION_METHOD)
+    BNN.apply_soft_projection()
 
 
 
@@ -361,7 +364,7 @@ while keep_training:
                 for j in range(N_MC_SAMPLES):
                     #
                     # ~~~ Draw a new sample
-                    BNN.sample_from_standard_normal()
+                    BNN.sample_from_standard_distribution()
                     #
                     # ~~~ Compute the KL divergence of the (approximate) posterior against the user-specified prior
                     if not FUNCTIONAL:

@@ -1,5 +1,5 @@
 
-from bnns.WeightPriorBNN import SequentialGaussianBNN as SameClassNewLocation
+from bnns.WeightPriorBNNs import SequentialGaussianBNN as SameClassNewLocation
 from quality_of_life.my_base_utils import my_warn
 
 class SequentialGaussianBNN(SameClassNewLocation):

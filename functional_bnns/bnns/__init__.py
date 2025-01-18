@@ -6,8 +6,6 @@ dist = get_distribution('bnns')
 #
 # ~~~ Fetch local package version
 __version__ = dist.version
-
-#
-# ~~~ Fetch some of the main classes
-from bnns.SequentialGaussianBNN import SequentialGaussianBNN
-
+from .NoPriorBNNs import *
+from .WeightPriorBNNs import *
+from .GPPriorBNNs import *
