@@ -3,6 +3,9 @@ import math
 import numpy as np
 import pandas as pd
 import torch
+from torch import nn
+from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
+
 
 import os
 import pytz
@@ -25,6 +28,30 @@ except:
 ### ~~~
 ## ~~~ Math stuff
 ### ~~~
+
+#
+# ~~~ Propose a good "prior" standard deviation for a parameter group
+def std_per_param(p):
+    if len(p.shape)==2:
+        #
+        # ~~~ For weight matrices, use the standard deviation of pytorch's `xavier normal` initialization (https://pytorch.org/docs/stable/_modules/torch/nn/init.html#xavier_normal_)
+        fan_in, fan_out = _calculate_fan_in_and_fan_out(p)
+        gain = calculate_gain("relu")
+        std = gain * math.sqrt(2.0 / float(fan_in + fan_out))
+    elif len(p.shape)==1:
+        #
+        # ~~~ For bias vectors, just use variance==1/len(p) because `_calculate_fan_in_and_fan_out` throws a ValueError(""Fan in and fan out can not be computed for tensor with fewer than 2 dimensions"")
+        numb_pars = len(p)
+        std = 1/math.sqrt(numb_pars)
+    return torch.tensor( std, device=p.device, dtype=p.dtype )
+
+#
+# ~~~ Propose good a "prior" standard deviation for weights and biases of a linear layer; mimics pytorch's default initialization, but using a normal instead of uniform distribution (https://discuss.pytorch.org/t/how-are-layer-weights-and-biases-initialized-by-default/13073/2)
+def std_per_layer(linear_layer):
+    assert isinstance(linear_layer,nn.Linear)
+    bound = 1 / math.sqrt(linear_layer.weight.size(1))  # ~~~ see the link above (https://discuss.pytorch.org/t/how-are-layer-weights-and-biases-initialized-by-default/13073/2)
+    std = bound / math.sqrt(3)  # ~~~ our reference distribution `uniform_(-bound,bound)` from the deafult pytorch weight initialization has standard deviation bound/sqrt(3), the value of which we copy
+    return std
 
 #
 # ~~~ Compute the log pdf of a multivariate normal distribution with independent coordinates
@@ -65,7 +92,6 @@ def lm(y,x):
         slope = np.mean(x*y)/var - np.mean(x)*np.mean(y)/var
         intercept = np.mean(y) - slope*np.mean(x)
         return slope, intercept
-        
 
 #
 # ~~~ Compute the empirical correlation coefficient between two vectors
@@ -113,39 +139,6 @@ def process_grid_of_unit_cube( grid_of_unit_cube, bounds, extrapolation_percent=
     return (extrapolary_grid, interpolary_grid) if split else grid
 
 #
-# ~~~ Draw uniform random samples from the convex hull of `points` with shape (n_points,d)
-def sample_from_convex_hull( points, n_samples, noise=0.):
-    #
-    # ~~~ Reshape the points to (n_points,d) in case it's a flat vector, in which case d==1
-    n_points,d = points.reshape(points.shape[0],-1).shape
-    #
-    # ~~~ Sample uniformly at random from the probability simplex (https://mathoverflow.net/questions/368226/uniform-distribution-on-a-simplex)
-    exp_dist = torch.distributions.Exponential(rate=1.0) 
-    weights = exp_dist.sample(sample_shape=(n_samples,n_points)).to( device=points.device, dtype=points.dtype )
-    weights /= weights.sum( dim=1, keepdim=True )    
-    #
-    # ~~~ Compute convex combinations of the original points using the random weights
-    points_from_convex_hull = weights@points
-    return points_from_convex_hull + noise*torch.randn_like(points_from_convex_hull)
-
-# points = torch.randn(1000,5)
-# centroid = points.mean(dim=0)
-# magnitudes = (points**2).sum(dim=1).sqrt()
-# normalized_points = (points.T/magnitudes).T
-# assert normalized_points.shape==(1000,5) and (normalized_points**2).sum(dim=1).sqrt().allclose(torch.ones(1000))
-# samples = sample_from_convex_hull(normalized_points,900)
-# print("Average distance from the centroid:", (samples-centroid).norm(dim=1).mean().item())
-#
-# ~~~ Generate all the weight combinations (n1/res,n2/res,...,nd/res) where n1,...,nd are non-negative integers summing to `res`
-# def generate_Barycentric_grid(d,res,weights_only=True,points=None):
-#     if not weights_only:
-#         n_points, d = points.reshape(points.shape[0],-1).shape
-#     grid_of_weights = torch.tensor(list(product( *d*[[j for j in range(res+1)]])))      # ~~~ all combinations (n1,...,nd) where 0<=ni<=res for all i
-#     convex_weights = grid_of_weights[torch.where(grid_of_weights.sum(dim=1)==res)]/res  # ~~~ filter for only those which sum to `res`, and normalize to sum to 1
-#     assert convex_weights.shape == ( math.comb(res+d-1,res), d) # ~~~ https://en.wikipedia.org/wiki/Stars_and_bars_(combinatorics)#Theorem_two
-#     return convex_weights if weights_only else convex_weights@points
-
-#
 # ~~~ Apply the exact formula for KL( N(mu_0,diag(sigma_0**2)) || N(mu_1,diag(sigma_1**2)) ) (https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence#Multivariate_normal_distributions)
 def diagonal_gaussian_kl( mu_0, sigma_0, mu_1, sigma_1 ):
     assert mu_0.shape == mu_1.shape == sigma_0.shape == sigma_1.shape, "Shape assumptions violated."
@@ -161,6 +154,10 @@ def diagonal_gaussian_kl( mu_0, sigma_0, mu_1, sigma_1 ):
 ### ~~~
 ## ~~~ Non-math non-plotting stuff (e.g., data processing)
 ### ~~~
+
+#
+# ~~~ Flatten and concatenate all the parameters in a model
+flatten_parameters = lambda model: torch.cat([ p.view(-1) for p in model.parameters() ])
 
 #
 # ~~~ Convert x to [x] if x isn't a list to begin with, then verify the type of each item of x, along with any other user-specified requirement
