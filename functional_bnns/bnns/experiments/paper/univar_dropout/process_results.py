@@ -55,13 +55,22 @@ else:
 
 
 ### ~~~
-## ~~~ For each width, from the 4 diffent depths tested with that width, choose the one that has the smallest median validation error, as well as the one that has the smallest validation error overall
+## ~~~ For each width, from the 2 diffent depths tested with that width, choose the depth that has the smallest median validation error, as well as the one that has the smallest validation error overall
 ### ~~~
 
 mean_results = results.groupby(["width","depth"]).mean(numeric_only=True)
 min_results = results.groupby(["width","depth"]).min(numeric_only=True)         # ~~~ best results
 median_results = results.groupby(["width","depth"]).median(numeric_only=True)   # ~~~ more typical results
 
+widths = results.width.unique()
+WL = []
+for w in widths:
+    W,L = median_results.query(f"width=={w}").METRIC_rmse_of_mean.idxmin()
+    assert W==w
+    WL.append((W,L))
+
+assert len(set(WL))==len(WL)==6, f"Failed to identify 12 different models"
+BEST_6_ARCHITECTURES = [ f"univar_NN.univar_NN_{'_'.join(l*[str(w)])}" for (w,l) in WL ]
 
 
 if __name__=="__main__":
@@ -130,88 +139,88 @@ if __name__=="__main__":
 
 
 
-### ~~~
-## ~~~ Choose the "best" hyperparameters
-### ~~~
+# ### ~~~
+# ## ~~~ Choose the "best" hyperparameters
+# ### ~~~
 
-acceptable_results = mean_results[
-       ( mean_results.METRIC_uncertainty_vs_accuracy_slope_quantile > 0 ) &
-       ( mean_results.METRIC_uncertainty_vs_accuracy_cor_quantile > 0 ) &
-       ( mean_results.METRIC_extrapolation_uncertainty_vs_proximity_slope_quantile > 0 ) &
-       ( mean_results.METRIC_uncertainty_vs_proximity_cor_quantile > 0 ) &
-       ( mean_results.METRIC_interpolation_uncertainty_vs_proximity_slope_quantile > 0 ) &
-       ( mean_results.METRIC_uncertainty_vs_accuracy_slope_pm2_std > 0 ) &
-       ( mean_results.METRIC_uncertainty_vs_accuracy_cor_pm2_std > 0 ) &
-       ( mean_results.METRIC_extrapolation_uncertainty_vs_proximity_slope_pm2_std > 0 ) &
-       ( mean_results.METRIC_uncertainty_vs_proximity_cor_pm2_std > 0 ) &
-       ( mean_results.METRIC_interpolation_uncertainty_vs_proximity_slope_pm2_std > 0 )
-]
-top_25_percent_by_loss = mean_results[ mean_results.METRIC_rmse_of_mean <= mean_results.METRIC_rmse_of_mean.quantile(q=0.25) ]
-best_UQ = acceptable_results.METRIC_interpolation_uncertainty_spread_pm2_std.argmax()
-
-
-### ~~~
-## ~~~ Prepare plotting utils
-### ~~~
-
-def plot_trained_model( dataframe, i, title="Trained Model" ):
-    data = import_module(f"bnns.data.{dataframe.iloc[i].DATA}")
-    # x_train, y_train, x_test, y_test = data.x_rain, data.y_rain, data.x_test, data.y_test
-    grid        =  data.x_test.cpu()
-    green_curve =  data.y_test.cpu().squeeze()
-    x_train_cpu = data.x_train.cpu()
-    y_train_cpu = data.y_train.cpu().squeeze()
-    plot_predictions = plot_bnn_empirical_quantiles if dataframe.iloc[i].VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
-    nn = load_trained_model_from_dataframe(dataframe,i)
-    with torch.no_grad():
-        predictions = torch.stack([ nn(grid) for _ in range(1500) ]).squeeze()
-        fig, ax = plt.subplots(figsize=(12,6))
-        fig, ax = plot_predictions(
-            fig = fig,
-            ax = ax,
-            grid = grid,
-            green_curve = green_curve,
-            x_train = x_train_cpu,
-            y_train = y_train_cpu,
-            predictions = predictions,
-            extra_std = 0.,
-            how_many_individual_predictions = 0,
-            title = title
-            )
-        plt.show()
-
-best_UQ = acceptable_results.METRIC_interpolation_uncertainty_spread_pm2_std.argmax()
-model, lr, n = get_attributes_from_row_i( acceptable_results, best_UQ, "MODEL", "LR", "n_epochs" )
-good_models = filter_by_attributes( results, MODEL=model, LR=lr, n_epochs=n )
-plot_trained_model( good_models, 0, title="Model with the best UQ amongst acceptable results" )
-
-best_loss = acceptable_results.METRIC_rmse_of_mean.argmin()
-model, lr, n = get_attributes_from_row_i( acceptable_results, best_loss, "MODEL", "LR", "n_epochs" )
-good_models = filter_by_attributes( results, MODEL=model, LR=lr, n_epochs=n )
-plot_trained_model( good_models, 0, title="Model with the best loss amongst acceptable results" )
-
-plot_trained_model( results, results.METRIC_rmse_of_mean.argmin(), title="Model with the best loss amongst all results" )
-plot_trained_model( results, results.METRIC_uncertainty_vs_accuracy_cor_quantile.argmax(), title="Model with the best UQ amongst all results" )
-
-"""
- - full loss
- - average predictive error
- - interval score
-"""
+# acceptable_results = mean_results[
+#        ( mean_results.METRIC_uncertainty_vs_accuracy_slope_quantile > 0 ) &
+#        ( mean_results.METRIC_uncertainty_vs_accuracy_cor_quantile > 0 ) &
+#        ( mean_results.METRIC_extrapolation_uncertainty_vs_proximity_slope_quantile > 0 ) &
+#        ( mean_results.METRIC_uncertainty_vs_proximity_cor_quantile > 0 ) &
+#        ( mean_results.METRIC_interpolation_uncertainty_vs_proximity_slope_quantile > 0 ) &
+#        ( mean_results.METRIC_uncertainty_vs_accuracy_slope_pm2_std > 0 ) &
+#        ( mean_results.METRIC_uncertainty_vs_accuracy_cor_pm2_std > 0 ) &
+#        ( mean_results.METRIC_extrapolation_uncertainty_vs_proximity_slope_pm2_std > 0 ) &
+#        ( mean_results.METRIC_uncertainty_vs_proximity_cor_pm2_std > 0 ) &
+#        ( mean_results.METRIC_interpolation_uncertainty_vs_proximity_slope_pm2_std > 0 )
+# ]
+# top_25_percent_by_loss = mean_results[ mean_results.METRIC_rmse_of_mean <= mean_results.METRIC_rmse_of_mean.quantile(q=0.25) ]
+# best_UQ = acceptable_results.METRIC_interpolation_uncertainty_spread_pm2_std.argmax()
 
 
-### ~~~
-## ~~~ Load the json files from `folder_name` as dictionaries, process them to a format that pandas likes, and combine them into a pandas DataFrame
-### ~~~
+# ### ~~~
+# ## ~~~ Prepare plotting utils
+# ### ~~~
+
+# def plot_trained_model( dataframe, i, title="Trained Model" ):
+#     data = import_module(f"bnns.data.{dataframe.iloc[i].DATA}")
+#     # x_train, y_train, x_test, y_test = data.x_rain, data.y_rain, data.x_test, data.y_test
+#     grid        =  data.x_test.cpu()
+#     green_curve =  data.y_test.cpu().squeeze()
+#     x_train_cpu = data.x_train.cpu()
+#     y_train_cpu = data.y_train.cpu().squeeze()
+#     plot_predictions = plot_bnn_empirical_quantiles if dataframe.iloc[i].VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
+#     nn = load_trained_model_from_dataframe(dataframe,i)
+#     with torch.no_grad():
+#         predictions = torch.stack([ nn(grid) for _ in range(1500) ]).squeeze()
+#         fig, ax = plt.subplots(figsize=(12,6))
+#         fig, ax = plot_predictions(
+#             fig = fig,
+#             ax = ax,
+#             grid = grid,
+#             green_curve = green_curve,
+#             x_train = x_train_cpu,
+#             y_train = y_train_cpu,
+#             predictions = predictions,
+#             extra_std = 0.,
+#             how_many_individual_predictions = 0,
+#             title = title
+#             )
+#         plt.show()
+
+# best_UQ = acceptable_results.METRIC_interpolation_uncertainty_spread_pm2_std.argmax()
+# model, lr, n = get_attributes_from_row_i( acceptable_results, best_UQ, "MODEL", "LR", "n_epochs" )
+# good_models = filter_by_attributes( results, MODEL=model, LR=lr, n_epochs=n )
+# plot_trained_model( good_models, 0, title="Model with the best UQ amongst acceptable results" )
+
+# best_loss = acceptable_results.METRIC_rmse_of_mean.argmin()
+# model, lr, n = get_attributes_from_row_i( acceptable_results, best_loss, "MODEL", "LR", "n_epochs" )
+# good_models = filter_by_attributes( results, MODEL=model, LR=lr, n_epochs=n )
+# plot_trained_model( good_models, 0, title="Model with the best loss amongst acceptable results" )
+
+# plot_trained_model( results, results.METRIC_rmse_of_mean.argmin(), title="Model with the best loss amongst all results" )
+# plot_trained_model( results, results.METRIC_uncertainty_vs_accuracy_cor_quantile.argmax(), title="Model with the best UQ amongst all results" )
+
+# """
+#  - full loss
+#  - average predictive error
+#  - interval score
+# """
 
 
-import seaborn as sns
-import matplotlib.pyplot as plt
+# ### ~~~
+# ## ~~~ Load the json files from `folder_name` as dictionaries, process them to a format that pandas likes, and combine them into a pandas DataFrame
+# ### ~~~
 
-plt.figure(figsize=(10, 6))
-sns.lineplot(data=mean_results, x='METRIC_rmse_of_mean', y='METRIC_interpolation_uncertainty_spread_pm2_std', hue='MODEL', marker='o')
-plt.title('rMSE across Different Models and Epochs')
-# plt.xlabel('Number of Epochs')
-# plt.ylabel('Mean rMSE')
-# plt.legend(title='Model')
-plt.show()
+
+# import seaborn as sns
+# import matplotlib.pyplot as plt
+
+# plt.figure(figsize=(10, 6))
+# sns.lineplot(data=mean_results, x='METRIC_rmse_of_mean', y='METRIC_interpolation_uncertainty_spread_pm2_std', hue='MODEL', marker='o')
+# plt.title('rMSE across Different Models and Epochs')
+# # plt.xlabel('Number of Epochs')
+# # plt.ylabel('Mean rMSE')
+# # plt.legend(title='Model')
+# plt.show()
