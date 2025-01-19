@@ -31,6 +31,7 @@ class BayesianModule(nn.Module):
         self.post_eta  = "please specify"
         self.prior_M   = "please specify"
         self.post_M    = "please specify"
+        self.prior_SSGE = None
     #
     # ~~~ Return a sample from the "variationally distributed" (i.e., learned) outputs of the network; this is like f(x;w) where w is sampled from a varitaional (i.e., learned) distribution over network weights
     @abstractmethod
@@ -95,7 +96,7 @@ class BayesianModule(nn.Module):
         with torch.no_grad():
             #
             # ~~~ Sample from the prior distribution self.prior_M times (and flatten the samples)
-            prior_samples = self.prior_forward( self.measurement_set, n=self.prior_M ).reshape( self.prior_M, -1 )
+            prior_samples = self.prior_forward( self.measurement_set, n=self.prior_M )
             #
             # ~~~ Build an SSGE estimator using those samples
             try:
@@ -161,7 +162,7 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         self.model_mean = nn.Sequential(*args)
         self.model_std  = nonredundant_copy_of_module_list( self.model_mean, sequential=True )
         if auto_projection:
-            self.ensure_positive(forceful=True)
+            self.ensure_positive( forceful=True, verbose=False )
         #
         # ~~~ Basic information about the model: in_features, out_features, and n_layers
         self.n_layers = len(self.model_mean)
@@ -208,12 +209,12 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
                 self.model_initializer(p)
     #
     # ~~~ Check that all the posterior standard deviations are positive
-    def ensure_positive( self, forceful=False ):
+    def ensure_positive( self, forceful=False, verbose=False ):
         with torch.no_grad():
             if not flatten_parameters(self.model_std).min() >= 0:
                 #
                 # ~~~ If an attribute `soft_projection` is defined, assume that the user simply forgot to use it
-                if hasattr(self,"soft_projection"):
+                if hasattr(self,"soft_projection") or verbose:
                     my_warn("`model_std` contains negative values.")
                 #
                 # ~~~ This is fine to use even when a soft_projection is intended, since `apply_hard_projection` is assumed to leave any values that are already in the desired range unaffected
@@ -225,24 +226,6 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     def apply_hard_projection( self, tol=1e-6 ):
         with torch.no_grad():
             raise NotImplementedError("The class IndependentLocationScaleSequentialBNN leaves the method `apply_hard_projection` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
-    # #
-    # # ~~~ Whatever constraints we want the standard deviations to satisfy, a function that maps each parameter group to a value satisfying the constraintgs
-    # @abstractmethod
-    # def soft_projection(self):
-    #     with torch.no_grad():
-    #         raise NotImplementedError("The class IndependentLocationScaleSequentialBNN leaves the method `soft_projection` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
-    # #
-    # # ~~~ Apply the inverse operation of soft_projection
-    # @abstractmethod
-    # def soft_projection_inv(self):
-    #     with torch.no_grad():
-    #         raise NotImplementedError("The class IndependentLocationScaleSequentialBNN leaves the method `soft_projection_inv` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
-    # #
-    # # ~~~ The derivative of `soft_projection`
-    # @abstractmethod
-    # def soft_projection_prime(self):
-    #     with torch.no_grad():
-    #         raise NotImplementedError("The class IndependentLocationScaleSequentialBNN leaves the method `soft_projection_prime` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
     #
     # ~~~ Multiply parameter gradients by the transpose of the Jacobian of `soft_projection` (as in Blundell et al. 2015 https://arxiv.org/abs/1505.05424, where the Jacobian is diagonal and you just simply divide by 1+exp(-rho) )
     def apply_chain_rule_for_soft_projection(self):
@@ -299,8 +282,9 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
                 mean_layer = self.model_mean[j]     # ~~~ the trainable (posterior) means of this layer's parameters
                 std_layer  =  self.model_std[j]     # ~~~ the trainable (posterior) standard deviations of this layer's parameters
                 A = mean_layer.weight + std_layer.weight * z.weight # ~~~ A = F_\theta(z.weight) is normal with the trainable (posterior) mean and std
-                b = mean_layer.bias   +   std_layer.bias * z.bias   # ~~~ b = F_\theta(z.bias)   is normal with the trainable (posterior) mean and std
-                x = x@A.T + b                                       # ~~~ apply the appropriately distributed weights to this layer's input
+                x = x@A.T                                           # ~~~ apply the appropriately distributed weights to this layer's input
+                if z.bias is not None:
+                    x = x + (mean_layer.bias + std_layer.bias * z.bias) # ~~~ apply the appropriately distributed biases
         return x
     #
     # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
@@ -347,9 +331,12 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         #
         # ~~~ Assume that the final layer of the architecture is linear, as per the paper's suggestion to take \beta as the parameters of the final layer (very bottom of pg. 4 https://arxiv.org/pdf/2312.17199)
         if not isinstance( self.model_mean[-1] , nn.Linear ):
-            raise NotImplementedError('Currently, the only case implemented is the the case from the paper where `beta` is "the set of parameters in the final neural network layer" (bottom of pg. 4 of the paper).')
+            raise NotImplementedError('Currently, the only case implemented is the the case from the paper where `beta` is "the set of parameters in the final neural network layer" (bottom of pg. 4 of the paper). Moreover, this is only implemented when the final layer has a bias term.')
+        elif self.model_mean[-1].bias is None:
+            raise NotImplementedError('Currently, the only case implemented is the the case from the paper where `beta` is "the set of parameters in the final neural network layer" (bottom of pg. 4 of the paper). Moreover, this is only implemented when the final layer has a bias term.')
         #
         # ~~~ Compute the mean and covariance of a normal distribution approximating that of the (random) output of the network on the measurement set
+        self.ensure_positive(forceful=True)
         n_meas = self.measurement_set.shape[0]
         out_features = self.model_mean[-1].out_features
         if not approximate_mean:
@@ -410,14 +397,14 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         # ~~~ Do the default implementation
         device, dtype = self.infer_device_and_dtype()
         if hasattr(self,"desired_measurement_points"):
-            batch_size = self.desired_measurement_points
+            batch_size = len(self.desired_measurement_points)
             if batch_size>n:
                 my_warn("More desired measurement points are specified than the total number of measurement points (this is most likely the result batch size exceeding the specified number of measurement points). Only a randomly chosen subset of the desired measurement points will be used.")
                 self.measurement_set = self.desired_measurement_points[torch.randperm(batch_size)[:n]]
             else:
                 self.measurement_set = torch.vstack([
                         self.desired_measurement_points,
-                        torch.randn(n-batch_size,self.in_features, device=device, dtype=dtype )
+                        torch.randn( n-batch_size, self.in_features, device=device, dtype=dtype )
                     ])
         else:
             self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
