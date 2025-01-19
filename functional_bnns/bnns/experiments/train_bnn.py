@@ -56,7 +56,9 @@ hyperparameter_template = {
     # ~~~ For training
     "GAUSSIAN_APPROXIMATION" : True,    # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
     "APPPROXIMATE_GAUSSIAN_MEAN" : True,# ~~~ whether to compute exactly, or approximately, the mean from eq'n (14) in https://arxiv.org/pdf/2312.17199
-    "FUNCTIONAL" : False,           # ~~~ whether or to do functional training or (if False) BBB
+    "FUNCTIONAL" : False,                   # ~~~ whether or to do functional training or (if False) BBB
+    "MEASUREMENT_SET_SAMPLER" : "data_only",# ~~~ load this function from the same file where data is loaded from
+    "N_MEAS" : 100,                 # ~~~ desired size of measurement set
     "EXACT_WEIGHT_KL" : True,       # ~~~ whether to use the exact KL divergence between the prior and posterior (True) or a Monte-Carlo approximation (False)
     "PROJECTION_METHOD" : "HARD",   # ~~~ if True, use projected gradient descent; else use the weird thing from the paper
     "PROJECTION_TOL" : 1e-6,        # ~~~ for numerical reasons, project onto [PROJECTION_TOL,Inf), rather than onto [0,Inft)
@@ -183,7 +185,27 @@ try:
 except:
     MODEL = getattr( import_module(MODEL), MODEL )  # ~~~ equivalent to `from <MODEL> import <MODEL>`
 
-BNN = MODEL( *architecture, conditional_std=torch.tensor(CONDITIONAL_STD) )
+#
+# ~~~ Specify the scheme by which the measurment set is to be sampled
+try:
+    sampler = getattr( data, MEASUREMENT_SET_SAMPLER )
+    class MODEL_WITH_MEAS_SET_SAMPLER(MODEL):
+        def __init__(self,*args,**kwargs):
+            super().__init__(*args,**kwargs)
+        def sample_new_measurement_set(self,n=N_MEAS):
+            return sampler(self,n)
+    BNN = MODEL_WITH_MEAS_SET_SAMPLER(
+            *architecture,
+            conditional_std = torch.tensor(CONDITIONAL_STD),
+            auto_projection = (PROJECTION_METHOD=="HARD")
+        )
+except:
+    BNN = MODEL(
+            *architecture,
+            conditional_std = torch.tensor(CONDITIONAL_STD),
+            auto_projection = (PROJECTION_METHOD=="HARD")
+        )
+
 BNN = BNN.to( device=DEVICE, dtype=DTYPE )
 BNN.set_prior_hyperparameters( **hyperparameters )
 BNN.prior_J = PRIOR_J                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
@@ -362,22 +384,18 @@ while keep_training:
                 #
                 # ~~~ Compute the gradient of the loss function on the batch (X,y)
                 for j in range(N_MC_SAMPLES):
-                    #
-                    # ~~~ Draw a new sample
-                    BNN.sample_from_standard_distribution()
-                    #
-                    # ~~~ Compute the likelihood term (this is the same for all training methods)
-                    log_likelihood_density = BNN.estimate_expected_log_likelihood(X,y,use_input_in_next_measurement_set=True)
+
                     #
                     # ~~~ Compute the KL divergence of the (approximate) posterior against the user-specified prior
                     if not FUNCTIONAL:
                         kl_div = BNN.weight_kl(exact_formula=EXACT_WEIGHT_KL)
-                    else:
-                        BNN.sample_new_measurement_set()
-                    if FUNCTIONAL and not GAUSSIAN_APPROXIMATION:
+                    elif not GAUSSIAN_APPROXIMATION:
                         kl_div = BNN.functional_kl()
-                    if FUNCTIONAL and GAUSSIAN_APPROXIMATION:
+                    else:
                         kl_div = BNN.gaussian_kl(approximate_mean=APPPROXIMATE_GAUSSIAN_MEAN)
+                    #
+                    # ~~~ Compute the likelihood term (this is the same for all training methods)
+                    log_likelihood_density = BNN.estimate_expected_log_likelihood( X, y, use_input_in_next_measurement_set=True )
                     #
                     # ~~~ Compute the loss==negative_ELBO
                     alpha, beta = decide_weights( b=b, n_batches=n_batches, X=X, D_train=D_train )
@@ -405,13 +423,13 @@ while keep_training:
                 # ~~~ Every so often, do some additional stuff, too...
                 if (pbar.n+1)%HOW_OFTEN==0:
                     #
-                    # ~~~ Plotting logic
-                    if data_is_univariate and MAKE_GIF:
-                        fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
-                        gif.capture()
-                    #
                     # ~~~ Record a little diagnostic info
                     with torch.no_grad():
+                        #
+                        # ~~~ Plotting logic
+                        if data_is_univariate and MAKE_GIF:
+                            fig,ax = plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, BNN )
+                            gif.capture()
                         #
                         # ~~~ Misc.
                         iter_count.append(pbar.n)
@@ -431,7 +449,7 @@ while keep_training:
                         for b, (X,y) in enumerate(testloader):
                             X, y = X.to(DEVICE), y.to(DEVICE)
                             if b==this_one:
-                                val_lik = BNN.log_likelihood_density(X,y).item()
+                                val_lik = BNN.estimate_expected_log_likelihood(X,y).item()
                                 val_lik_curve.append(val_lik)
                                 alpha, beta = decide_weights( b=b, n_batches=n_test_batches, X=X, D_train=D_train )
                                 val_loss = alpha*kl_div - beta*val_lik
@@ -489,11 +507,11 @@ while keep_training:
                 data_is_unlabeled = isinstance( next(iter(loader)), torch.Tensor )
                 predictions = []
                 for _ in range(n):
-                    BNN.sample_from_standard_normal()
+                    BNN.sample_from_standard_distribution()
                     predictions.append(torch.row_stack([
-                                BNN( batch if data_is_unlabeled else batch[0], resample_weights=False )
-                                for batch in loader
-                            ]))
+                            BNN( batch if data_is_unlabeled else batch[0], resample_weights=False )
+                            for batch in loader
+                        ]))
                 predictions = torch.stack(predictions)
                 if EXTRA_STD:
                     predictions += CONDITIONAL_STD*torch.randn_like(predictions)
