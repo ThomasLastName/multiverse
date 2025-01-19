@@ -33,9 +33,14 @@ class BayesianModule(nn.Module):
         self.post_M    = "please specify"
         self.prior_SSGE = None
     #
+    # ~~~ Resample from whatever is source is used to seed the samples which are drawn from the variational distribution
+    @abstractmethod
+    def resample_weights(self):
+        raise NotImplementedError("The base class BayesianModule leaves the `resample_weights` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+    #
     # ~~~ Return a sample from the "variationally distributed" (i.e., learned) outputs of the network; this is like f(x;w) where w is sampled from a varitaional (i.e., learned) distribution over network weights
     @abstractmethod
-    def forward(self,x):
+    def forward( self, x, resample_weights=True ):
         raise NotImplementedError("The base class BayesianModule leaves the `forward` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     #
     # ~~~ Return an estimate of `\int ln(f_{Y \mid X,W}(w,X,y)) q_\theta(w) dw` where `q_\theta(w)` is the variational density with trainable parameters `\theta`, and `f_{Y \mid X,W}(w,X,y)` is the likelihood density
@@ -65,6 +70,7 @@ class BayesianModule(nn.Module):
     #
     # ~~~ Return an estimate (or the exact value) of the kl divergence between variational and prior distributions over newtork weights
     def weight_kl( self, exact_formula=True ):
+        self.resample_weights()
         if exact_formula:
             try:
                 return self.exact_weight_kl()
@@ -74,7 +80,9 @@ class BayesianModule(nn.Module):
                     self.already_warned_that_exact_weight_formula_not_implemented = "yup"
             except:
                 raise
-        return self.estimate_expected_log_posterior() - self.estimate_expected_log_prior()
+        estimate_of_weight_kl =  self.estimate_expected_log_posterior() - self.estimate_expected_log_prior()
+        self.kl_was_just_computed = True
+        return estimate_of_weight_kl
     # ~~~
     #
     ### ~~~
@@ -120,6 +128,8 @@ class BayesianModule(nn.Module):
             if (self.prior_SSGE is None) or resample_measurement_set:
                 self.setup_prior_SSGE()
             posterior_samples = torch.row_stack([ self(self.measurement_set).flatten() for _ in range(self.post_M) ])
+            if posterior_samples.std(dim=0).max()==0:
+                raise ValueError("The posterior samples have zero variance. This is likely because the forward method neglects to resample weights from the variational distribution.")
             posterior_SSGE = SSGE( samples=posterior_samples, eta=self.post_eta, J=self.post_J )
         #
         # ~~~ By the chain rule, at these points we must compute the "scores," i.e., gradients of the log-densities (we use SSGE to compute them)
@@ -137,6 +147,7 @@ class BayesianModule(nn.Module):
         # ~~~ Combine all the ingridents as per the chain rule 
         estimate_of_log_posterior_expectation = ( posterior_score_at_yhat @ yhat ).squeeze()  # ~~~ the inner product from the chain rule
         estimate_of_log_prior_expectation     = ( prior_score_at_yhat @ yhat ).squeeze()      # ~~~ the inner product from the chain rule            
+        self.kl_was_just_computed = True
         return estimate_of_log_posterior_expectation - estimate_of_log_prior_expectation
 
 
@@ -188,6 +199,9 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         # ~~~ Attributes used for testing validity of the default measurement set
         self.first_moments_of_input_batches = []
         self.second_moments_of_input_batches = []
+        #
+        # ~~~ A flag used for warning of a easily occuring possible failure case
+        self.kl_was_just_computed = False
     # ~~~
     #
     ### ~~~
@@ -207,6 +221,11 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         with torch.no_grad():   # ~~~ theoretically the `no_grad()` context is redundant and unnecessary, but idk why not use it
             for p in self.realized_standard_distribution.parameters():
                 self.model_initializer(p)
+    #
+    # ~~~
+    def resample_weights(self):
+        self.sample_from_standard_distribution()
+
     #
     # ~~~ Check that all the posterior standard deviations are positive
     def ensure_positive( self, forceful=False, verbose=False ):
@@ -288,7 +307,7 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         return x
     #
     # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def estimate_expected_log_likelihood( self, X, y, use_input_in_next_measurement_set=False ):
+    def estimate_expected_log_likelihood( self, X, y, use_input_in_next_measurement_set=False, verbose=True ):
         #
         # ~~~ Store the input itself, and/or descriptive statistics, for reference when generating the measurement set
         self.first_moments_of_input_batches.append(X.mean(dim=0))
@@ -296,12 +315,18 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         if use_input_in_next_measurement_set:
             self.desired_measurement_points = X
         #
+        # ~~~ Attempt to warn about a common pitfall
+        if verbose and not self.kl_was_just_computed:
+            my_warn("It seems that `estimate_expected_log_likelihood` was called BEFORE the KL divergence was estimated. For at least one training method (viz. Sun et al. 2019), this is nigh impossible to support (due to the need to generate fresh samples to construct the SSGE, entailing inplace modification of variables used in the graph computational created by `estimate_expected_log_likelihood`). Therefore, `bnns` refuses to support it entirely. Please do not call `estimate_expected_log_likelihood` until AFTER the KL divergence has been estimated.")
+        #
         # ~~~ The likelihood depends on task criterion: classification or regression
         self.ensure_positive(forceful=True)
         if self.likelihood_model == "Gaussian":
-            return log_gaussian_pdf( where=y, mu=self(X,resample_weights=False), sigma=self.conditional_std )  # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.conditional_std (the latter being a tunable hyper-parameter)
+            log_lik = log_gaussian_pdf( where=y, mu=self(X,resample_weights=False), sigma=self.conditional_std )    # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.conditional_std (the latter being a tunable hyper-parameter)
         else:
             raise NotImplementedError("In the current version of the code, only the Gaussian likelihood (i.e., mean squared error) is implemented See issue ?????.")
+        self.kl_was_just_computed = False
+        return log_lik
     # ~~~
     #
     ### ~~~
