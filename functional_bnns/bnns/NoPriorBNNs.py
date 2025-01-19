@@ -55,8 +55,8 @@ class BayesianModule(nn.Module):
     #
     # ~~~ Return the exact kl divergence between the variational distribution and a prior distribution over weights, if applicable
     @abstractmethod
-    def exact_weight_kl(self):
-        raise NotImplementedError("The base class BayesianModule leaves the `exact_weight_kl` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+    def compute_exact_weight_kl(self):
+        raise NotImplementedError("The base class BayesianModule leaves the `compute_exact_weight_kl` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     #
     # ~~~ Return an esimate of `\int ln(q_\theta(w)) q_\theta(w) dw` where `q_\theta(w)` is the variational density with trainable parameters `\theta`
     @abstractmethod
@@ -73,10 +73,10 @@ class BayesianModule(nn.Module):
         self.resample_weights()
         if exact_formula:
             try:
-                return self.exact_weight_kl()
+                return self.compute_exact_weight_kl()
             except NotImplementedError:
                 if not hasattr(self,"already_warned_that_exact_weight_formula_not_implemented"):
-                    my_warn("`exact_weight_kl(exact_formula=True)` method raised a NotImplementedError; will fall back to using `weight_kl(exact_formula=False)` instead.")
+                    my_warn("`compute_exact_weight_kl()` method raised a NotImplementedError; will fall back to using `weight_kl(exact_formula=False)` instead.")
                     self.already_warned_that_exact_weight_formula_not_implemented = "yup"
             except:
                 raise
@@ -222,10 +222,9 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
             for p in self.realized_standard_distribution.parameters():
                 self.model_initializer(p)
     #
-    # ~~~
+    # ~~~ When using hte reparameterization trick, the only "source of randomness" is the standard distribution
     def resample_weights(self):
         self.sample_from_standard_distribution()
-
     #
     # ~~~ Check that all the posterior standard deviations are positive
     def ensure_positive( self, forceful=False, verbose=False ):
