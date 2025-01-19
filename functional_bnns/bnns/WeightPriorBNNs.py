@@ -1,4 +1,5 @@
 
+import math
 import torch
 from torch import nn
 
@@ -69,9 +70,15 @@ class MixtureWeightPrior2015BNN(ConventionalSequentialBNN):
         w_sampled   =  mu_post + sigma_post*z_sampled   # ~~~ w_sampled==F_\theta(z_sampled)
         #
         # ~~~ Note, a few flops could be saved by re-using the intermediate values defined in log_gaussian_pdf, NBD
-        log_density1 = log_gaussian_pdf( where=w_sampled, mu=torch.zeros_like(w_sampled), sigma=self.sigma1 )
-        log_density2 = log_gaussian_pdf( where=w_sampled, mu=torch.zeros_like(w_sampled), sigma=self.sigma2 )
-        return ( self.pi*log_density1.exp() + (1-self.pi)*log_density2.exp() ).log()
+        marginal_log_probs1  = -(w_sampled/self.sigma1)**2/2 - torch.log( math.sqrt(2*torch.pi)*self.sigma1 )
+        marginal_log_probs2  = -(w_sampled/self.sigma2)**2/2 - torch.log( math.sqrt(2*torch.pi)*self.sigma2 )
+        marginal_log_density =  ( self.pi*marginal_log_probs1.exp() + (1-self.pi)*marginal_log_probs2.exp() ).log()
+        #
+        # ~~~ If underflow/overflow, employ the approximation log( a*exp(x) + b*exp(y) ) \approx max( log(a)+x, log(b)+y )
+        return marginal_log_density.sum() if marginal_log_density.abs().max()<torch.inf else torch.maximum(
+                    self.pi.log() + marginal_log_probs1,
+                (1-self.pi).log() + marginal_log_probs2
+            ).sum()
     #
     # ~~~ Generate samples of a model with weights distributed according to the prior distribution (equation (7) in https://arxiv.org/abs/1505.05424)
     def prior_forward( self, x, n=1 ):
@@ -91,12 +98,13 @@ class MixtureWeightPrior2015BNN(ConventionalSequentialBNN):
                     #
                     # ~~~ To build samples from a Gaussian mixture, we first sample from U[0,1] (see https://stats.stackexchange.com/questions/70855/generating-random-variables-from-a-mixture-of-normal-distributions)
                     u_weight = torch.rand_like(z.weight)
-                    u_bias   = torch.rand_like(z.bias)
                     #
-                    # ~~~ Define A and b which are samples from the Gaussian mixture prior (see https://stats.stackexchange.com/questions/70855/generating-random-variables-from-a-mixture-of-normal-distributions)
-                    A = torch.where( u_weight<self.pi, self.sigma1*z.weight, self.sigma2*z.weight ) # ~~~ indices where u<pi are a sample from N(0,sigma1^2), and...
-                    b = torch.where( u_bias<self.pi,   self.sigma1*z.bias,   self.sigma2*z.bias   ) # ~~~ indices where u>pi are a sample from N(0,sigma2^2)
-                    x = x@A.T + b  # ~~~ apply the appropriately distributed weights to this layer's input
+                    # ~~~ Define a matrix full of samples from the Gaussian mixture prior (see https://stats.stackexchange.com/questions/70855/generating-random-variables-from-a-mixture-of-normal-distributions)
+                    A = torch.where( u_weight<self.pi, self.sigma1*z.weight, self.sigma2*z.weight ) # ~~~ indices where u<pi are a sample from N(0,sigma1^2), and indices where u>pi are a sample from N(0,sigma2^2)
+                    x = x@A.T   # ~~~ apply the appropriately distributed weights to this layer's input
+                    if z.bias is not None:
+                        u_bias = torch.rand_like(z.bias)
+                        x = x + torch.where( u_bias<self.pi, self.sigma1*z.bias, self.sigma2*z.bias )   # ~~~ apply the appropriately distributed biases
             return x
         else:
             return torch.row_stack([ self.prior_forward(x,n=1).flatten() for _ in range(n) ])
@@ -106,7 +114,7 @@ class MixtureWeightPrior2015BNN(ConventionalSequentialBNN):
 
 
 #
-class ConventionalWeightPriorSequentialBNN(ConventionalSequentialBNN):
+class ConventionalWeightPriorBNN(ConventionalSequentialBNN):
     def __init__(
                 self,
                 *args,
@@ -220,16 +228,17 @@ class ConventionalWeightPriorSequentialBNN(ConventionalSequentialBNN):
                 else:
                     mean_layer = self.prior_mean[j]     # ~~~ the user-specified prior means of this layer's parameters
                     std_layer  =  self.prior_std[j]     # ~~~ the user-specified prior standard deviations of this layer's parameters
-                    A = mean_layer.weight + std_layer.weight * z.weight # ~~~ A = F_\theta(z.weight) is normal with the user-specified prior mean and std
-                    b = mean_layer.bias   +   std_layer.bias * z.bias   # ~~~ b = F_\theta(z.bias)   is normal with the user-specified prior mean and std
-                    x = x@A.T + b                       # ~~~ apply the appropriately distributed weights to this layer's input
+                    A = mean_layer.weight + std_layer.weight * z.weight # ~~~ A = is normal with user-specified proir mean and std
+                    x = x@A.T                                           # ~~~ apply the appropriately distributed weights to this layer's input
+                    if z.bias is not None:
+                        x = x + (mean_layer.bias + std_layer.bias * z.bias) # ~~~ apply the appropriately distributed biases
             return x
         else:
             return torch.row_stack([ self.prior_forward(x,n=1).flatten() for _ in range(n) ])
 
 #
 # ~~~ Define what most people are talking about when they say talk about BNN's
-class SequentialGaussianBNN(ConventionalWeightPriorSequentialBNN):
+class SequentialGaussianBNN(ConventionalWeightPriorBNN):
     def __init__(
                 self,
                 *args,
