@@ -55,16 +55,26 @@ def std_per_layer(linear_layer):
 
 #
 # ~~~ Compute the log pdf of a multivariate normal distribution with independent coordinates
-def log_gaussian_pdf( where, mu, sigma ):
-    assert mu.shape==where.shape
+def log_gaussian_pdf( where, mu, sigma, multivar=True ):
+    #
+    # ~~~ Verify that `where-mu` will work
+    try:
+        assert mu.shape==where.shape
+    except:
+        assert isinstance(sigma,(float,int))
+    #
+    # ~~~ Verify that `(where-mu)/sigma` will work
     try:
         assert len(sigma.shape)==0 or sigma.shape==mu.shape # ~~~ either scalar, or a matrix of the same shape is `mu` and `where`
         assert (sigma>0).all()
     except:
         assert isinstance(sigma,(float,int))
         assert sigma>0
+        sigma = torch.tensor( sigma, device=where.device, dtype=where.dtype )
+    #
+    # ~~~ Compute the formula
     marginal_log_probs = -((where-mu)/sigma)**2/2 - torch.log( math.sqrt(2*torch.pi)*sigma )   # ~~~ note: isn't (x-mu)/sigma numerically unstable, like numerical differentiation?
-    return marginal_log_probs.sum()
+    return marginal_log_probs.sum() if multivar else marginal_log_probs
 
 #
 # ~~~ Compute the (appropriately shaped) Jacobian of the final layer of a nerural net (I came up with the formula for the Jacobian, and chat-gpt came up with the generalized vectorized pytorch implementation)
