@@ -2,6 +2,7 @@
 import math
 import numpy as np
 import pandas as pd
+from scipy.integrate import quad
 import torch
 from torch import nn
 from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
@@ -52,6 +53,47 @@ def std_per_layer(linear_layer):
     bound = 1 / math.sqrt(linear_layer.weight.size(1))  # ~~~ see the link above (https://discuss.pytorch.org/t/how-are-layer-weights-and-biases-initialized-by-default/13073/2)
     std = bound / math.sqrt(3)  # ~~~ our reference distribution `uniform_(-bound,bound)` from the deafult pytorch weight initialization has standard deviation bound/sqrt(3), the value of which we copy
     return std
+
+#
+# ~~~ Define a class that extends a simple density function into a location scale distribution 
+class LocationScaleLogDensity:
+    #
+    # ~~~ Store the standard log density and test that it is, indeed, standard
+    def __init__( self, standard_log_density ):
+        self.standard_log_density = standard_log_density
+        try:
+            self.test_mean_zero_unit_variance()
+        except:
+            my_warn("Unable to verify mean zero and unit variance in the standard log density")
+    #
+    # ~~~ Test that the supposedly "standard" log density has mean zero and unit variance
+    def test_mean_zero_unit_variance( self, tol=1e-5 ):
+        mean, err_mean = quad( lambda z: z*np.exp(self.standard_log_density(z)), -np.inf, np.inf )
+        var, err_var = quad( lambda z: z**2*np.exp(self.standard_log_density(z)), -np.inf, np.inf )
+        if abs(mean)>tol or abs(var-1)>tol or err_mean>tol or err_var>tol:
+            raise RuntimeError(f"The mean is {mean} and the variance is {var} (should be 0 and 1)")
+    #
+    # ~~~ Evaluate the log density of mu + sigma*z where z is distributed according to self.standard_log_density
+    def __call__( self, where, mu, sigma, multivar=True ):
+        #
+        # ~~~ Verify that `where-mu` will work
+        try:
+            assert mu.shape==where.shape
+        except:
+            assert isinstance(sigma,(float,int))
+        #
+        # ~~~ Verify that `(where-mu)/sigma` will work
+        try:
+            assert len(sigma.shape)==0 or sigma.shape==mu.shape # ~~~ either scalar, or a matrix of the same shape is `mu` and `where`
+            assert (sigma>0).all()
+        except:
+            assert isinstance(sigma,(float,int))
+            assert sigma>0
+            sigma = torch.tensor( sigma, device=where.device, dtype=where.dtype )
+        #
+        # ~~~ Compute the formula
+        marginal_log_probs = self.standard_log_density( (where-mu)/sigma ) - torch.log(sigma)
+        return marginal_log_probs.sum() if multivar else marginal_log_probs
 
 #
 # ~~~ Compute the log pdf of a multivariate normal distribution with independent coordinates
