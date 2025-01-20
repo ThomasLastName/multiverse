@@ -202,13 +202,6 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         self.n_mc_samples = 0
         self.n_calls_to_likelihood = 0
         self.watch_the_count = True
-        # for mu in self.model_mean.parameters():
-        #     self.current_mu = nn.Parameter(requires_grad=False)
-        #     self.current_mu.data = mu.data.clone()  # ~~~ just record a copy of the initial value of the first parameter group
-        #     self.n_mc_samples = 0
-        #     self.n_par_updates = 0
-        #     self.keep_counting_updates = True
-        #     break
     # ~~~
     #
     ### ~~~
@@ -226,20 +219,6 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     # ~~~ Sample according to a "standard normal [or other] distribution in the shape of our neural network"
     def sample_from_standard_distribution( self, counter_on=True ):
         with torch.no_grad():   # ~~~ theoretically the `no_grad()` context is redundant and unnecessary, but idk why not use it
-            # #
-            # # ~~~ Implent a safety feature to try to catch a common failure case: forgetting to call self.reample_weights() between gradient updates
-            # if counter_on:
-            #     if self.keep_counting_updates:
-            #         for mu in self.model_mean.parameters():         # ~~~ check whether or not the first parameter group is still equal to `self.current_mu`
-            #             if (mu-self.current_mu).abs().max() > 1e-3: # ~~~ if they're non-equal
-            #                 self.n_par_updates += 1                 # ~~~ then assume that parameters have been updated since last we recorded `self.current_mu`
-            #                 self.current_mu.data = mu.data.clone()  # ~~~ update our recorded copy of the current values in the first parameter group
-            #             break                                       # ~~~ only do all of this for the very first parameter group
-            #         if self.n_par_updates>0 and abs( self.n_mc_samples - self.n_par_updates )>5:
-            #             my_warn("The number of Monte-Carlo samples does not appear to match the number of gradient updates. If you forget to call self.reample_weights() between gradient updates, you may accidentally recycle the same Monte-Carlo sample too many times, resulting in poor estimations and poor training. If this is intentional, set `self.keep_counting_updates = False` before training or use to disable this warning.")
-            #             self.keep_counting_updates = False  # ~~~ don't reissue this warning more than once
-            #         if self.n_par_updates > 100:
-            #             self.keep_counting_updates = False  # ~~~ conclude that we're probably fine if no issue has been detected after 100 parameter updates
             #
             # ~~~ Implement the actual funcitonality of this method
             for p in self.realized_standard_distribution.parameters():
