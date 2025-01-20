@@ -122,7 +122,7 @@ class BayesianModule(nn.Module):
         #
         # ~~~ Prepare for using SSGE to estimate some of the gradient terms
         with torch.no_grad():
-            if (self.prior_SSGE is None) or resample_measurement_set:
+            if self.prior_SSGE is None:
                 self.setup_prior_SSGE()
             posterior_samples = self( self.measurement_set, n=self.post_M ).reshape( self.post_M, -1 )
             if posterior_samples.std(dim=0).max()==0:
