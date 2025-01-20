@@ -160,6 +160,7 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
                 *args,
                 model_log_density,  # ~~~ should be a function of `where`, `mu`, and `sigma`
                 model_initializer,  # ~~~ should modify its argument's `data` attribute in place and return None
+                model_sampler,      # ~~~ should return a tensor of random samples from the reference distribution
                 conditional_std = torch.tensor(0.001),
                 auto_projection = True
             ):
@@ -186,7 +187,8 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         self.model_log_density = model_log_density
         self.model_initializer = model_initializer # ~~~ this is "ducky" (https://en.wikipedia.org/wiki/Duck_typing); can be anything that modifies the input's `data` attribute in place
         self.realized_standard_distribution = nonredundant_copy_of_module_list(self.model_mean)
-        self.sample_from_standard_distribution()
+        self.model_sampler = model_sampler
+        self.sample_from_standard_distribution(counter_on=False)
         #
         # ~~~ Attributes determining the log likelihood density
         self.likelihood_model = "Gaussian"
@@ -195,6 +197,18 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         # ~~~ Attributes used for testing validity of the default measurement set
         self.first_moments_of_input_batches = []
         self.second_moments_of_input_batches = []
+        #
+        # ~~~ Attribute used for testing whether or not a common failure cases is occurring
+        self.n_mc_samples = 0
+        self.n_calls_to_likelihood = 0
+        self.watch_the_count = True
+        # for mu in self.model_mean.parameters():
+        #     self.current_mu = nn.Parameter(requires_grad=False)
+        #     self.current_mu.data = mu.data.clone()  # ~~~ just record a copy of the initial value of the first parameter group
+        #     self.n_mc_samples = 0
+        #     self.n_par_updates = 0
+        #     self.keep_counting_updates = True
+        #     break
     # ~~~
     #
     ### ~~~
@@ -210,10 +224,28 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
                 return device, dtype
     #
     # ~~~ Sample according to a "standard normal [or other] distribution in the shape of our neural network"
-    def sample_from_standard_distribution(self):
+    def sample_from_standard_distribution( self, counter_on=True ):
         with torch.no_grad():   # ~~~ theoretically the `no_grad()` context is redundant and unnecessary, but idk why not use it
+            # #
+            # # ~~~ Implent a safety feature to try to catch a common failure case: forgetting to call self.reample_weights() between gradient updates
+            # if counter_on:
+            #     if self.keep_counting_updates:
+            #         for mu in self.model_mean.parameters():         # ~~~ check whether or not the first parameter group is still equal to `self.current_mu`
+            #             if (mu-self.current_mu).abs().max() > 1e-3: # ~~~ if they're non-equal
+            #                 self.n_par_updates += 1                 # ~~~ then assume that parameters have been updated since last we recorded `self.current_mu`
+            #                 self.current_mu.data = mu.data.clone()  # ~~~ update our recorded copy of the current values in the first parameter group
+            #             break                                       # ~~~ only do all of this for the very first parameter group
+            #         if self.n_par_updates>0 and abs( self.n_mc_samples - self.n_par_updates )>5:
+            #             my_warn("The number of Monte-Carlo samples does not appear to match the number of gradient updates. If you forget to call self.reample_weights() between gradient updates, you may accidentally recycle the same Monte-Carlo sample too many times, resulting in poor estimations and poor training. If this is intentional, set `self.keep_counting_updates = False` before training or use to disable this warning.")
+            #             self.keep_counting_updates = False  # ~~~ don't reissue this warning more than once
+            #         if self.n_par_updates > 100:
+            #             self.keep_counting_updates = False  # ~~~ conclude that we're probably fine if no issue has been detected after 100 parameter updates
+            #
+            # ~~~ Implement the actual funcitonality of this method
             for p in self.realized_standard_distribution.parameters():
                 self.model_initializer(p)
+            if counter_on:
+                self.n_mc_samples += 1
     #
     # ~~~ When using hte reparameterization trick, the only "source of randomness" is the standard distribution
     def resample_weights(self):
@@ -275,37 +307,54 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     # ~~~ Sample the distribution of Y|X=x,W=w
     def forward( self, x, n=None, resample_weights=True ):
         #
-        # ~~~ The realized sample of the distribution of Y|X=x,W=w is entirely determined by self.realized_standard_distribution
-        if resample_weights:
-            self.sample_from_standard_distribution()      # ~~~ this method re-generates the values of weights and biases in `self.realized_standard_distribution` (IID standard normal)
-        #
         # ~~~ Basically, `x=layer(x)` for each layer in model, but with a twist on the weights
         self.ensure_positive(forceful=True)
-        for j in range(self.n_layers):
-            z = self.realized_standard_distribution[j]    # ~~~ the network's j'th layer, but with IID standard normal weights and biases
+        if resample_weights:
+            #
+            # ~~~ Stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
+            x = torch.stack(n*[x])
+        for j, layer in enumerate(self.realized_standard_distribution):
             #
             # ~~~ If this layer is just like relu or something, then there aren't any weights; just apply the layer and be done
-            if not isinstance( z, nn.Linear ):
-                x = z(x)                            # ~~~ x = layer(x)
+            if not isinstance( layer, nn.Linear ):
+                x = layer(x) 
             #
             # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
             else:
                 mean_layer = self.model_mean[j]     # ~~~ the trainable (posterior) means of this layer's parameters
                 std_layer  =  self.model_std[j]     # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                A = mean_layer.weight + std_layer.weight * z.weight # ~~~ A = F_\theta(z.weight) is normal with the trainable (posterior) mean and std
-                x = x@A.T                                           # ~~~ apply the appropriately distributed weights to this layer's input
-                if z.bias is not None:
-                    x = x + (mean_layer.bias + std_layer.bias * z.bias) # ~~~ apply the appropriately distributed biases
+                if resample_weights:
+                    z_weight = self.model_sampler( n,*layer.weight.shape, dtype=x.dtype, device=x.device )
+                    A = mean_layer.weight + std_layer.weight * z_weight
+                    x = torch.bmm(x, A.transpose(1, 2))
+                    if layer.bias is not None:
+                        z_bias = self.model_sampler( n, 1, *layer.bias.shape, dtype=x.dtype, device=x.device )
+                        b = mean_layer.bias + std_layer.bias * z_bias
+                        x += b
+                else:
+                    z_weight = layer.weight
+                    A = mean_layer.weight + std_layer.weight * z_weight # ~~~ A = F_\theta(z.weight) is normal with the trainable (posterior) mean and std
+                    x = x@A.T                                           # ~~~ apply the appropriately distributed weights to this layer's input
+                    if layer.bias is not None:
+                        z_bias = layer.bias
+                        x = x + (mean_layer.bias + std_layer.bias * z_bias) # ~~~ apply the appropriately distributed biases
         return x
     #
     # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def estimate_expected_log_likelihood( self, X, y, use_input_in_next_measurement_set=False, verbose=True ):
+    def estimate_expected_log_likelihood( self, X, y, use_input_in_next_measurement_set=False ):
         #
         # ~~~ Store the input itself, and/or descriptive statistics, for reference when generating the measurement set
         self.first_moments_of_input_batches.append(X.mean(dim=0))
         self.second_moments_of_input_batches.append((X**2).mean(dim=0))
         if use_input_in_next_measurement_set:
             self.desired_measurement_points = X
+        #
+        # ~~~ Count how many times this function has been called
+        self.n_calls_to_likelihood += 1
+        if self.watch_the_count:
+            if self.n_mc_samples<5 and self.n_calls_to_likelihood>50:
+                my_warn("The number of Monte-Carlo samples does not appear to match the number of gradient updates. If you forget to call self.reample_weights() between gradient updates, you may accidentally recycle the same Monte-Carlo sample too many times, resulting in poor estimations and poor training. If this is intentional, set `self.watch_the_count = False` before training or use to disable this warning.")
+                self.watch_the_count = False # ~~~ don't reissue this warning more than once
         #
         # ~~~ The likelihood depends on task criterion: classification or regression
         self.ensure_positive(forceful=True)
@@ -354,8 +403,8 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         if not approximate_mean:
             #
             # ~~~ Compute the mean and covariance from the paper's equation (14): https://arxiv.org/abs/2312.17199, page 4
-            S_sqrt = torch.cat([ p.flatten() for p in self.model_std.parameters() ])  # ~~~ covariance of the joint (diagonal) normal distribution of all network weights is then S_sqrt.diag()**2
-            theta_minus_m = S_sqrt*flatten_parameters(self.realized_standard_distribution)            # ~~~ theta-m == S_sqrt*z because theta = m+S_sqrt*z
+            S_sqrt = torch.cat([ p.flatten() for p in self.model_std.parameters() ])        # ~~~ covariance of the joint (diagonal) normal distribution of all network weights is then S_sqrt.diag()**2
+            theta_minus_m = S_sqrt*flatten_parameters(self.realized_standard_distribution)  # ~~~ theta-m == S_sqrt*z because theta = m+S_sqrt*z
             J_dict = jacrev( functional_call, argnums=1 )(
                     self.model_mean,
                     dict(self.model_mean.named_parameters()),
