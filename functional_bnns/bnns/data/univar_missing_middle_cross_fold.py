@@ -1,6 +1,7 @@
 
 import torch
-from bnns.data.univar_missing_middle import x_train, y_train, x_val, y_val, x_test, y_test, n_train, n_val, f, grid, interpolary_grid, extrapolary_grid
+from bnns.data.univar_missing_middle import x_train, y_train, x_val, y_val, x_test, y_test, n_train, n_val
+from bnns.data.univar_missing_middle import f, grid, interpolary_grid, extrapolary_grid, random_points_only, data_only, current_batch_and_random_data
 from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
 
 #
