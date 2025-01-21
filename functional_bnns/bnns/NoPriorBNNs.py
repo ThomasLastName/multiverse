@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.func import jacrev, functional_call
 
-from bnns.utils import manual_Jacobian, flatten_parameters, std_per_param, std_per_layer
+from bnns.utils import manual_Jacobian, flatten_parameters, std_per_param, std_per_layer, LocationScaleLogDensity
 from bnns.SSGE import SpectralSteinEstimator as SSGE
 from bnns.utils import log_gaussian_pdf
 
@@ -15,7 +15,7 @@ from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
 
 ### ~~~
-## ~~~ Define a very broad BNN which does little more than implement SSGE
+## ~~~ Define a very broad noition of BNN which does little more than implement SSGE
 ### ~~~
 
 #
@@ -24,7 +24,7 @@ class BayesianModule(nn.Module):
     def __init__(self):
         super().__init__()
         #
-        # ~~~ Attributes for SSGE and functional training
+        # ~~~ Attributes for SSGE, used for computing gradients of the loss from Sun et al. 2019 (https://arxiv.org/abs/1903.05779)
         self.prior_J   = "please specify"
         self.post_J    = "please specify"
         self.prior_eta = "please specify"
@@ -33,7 +33,7 @@ class BayesianModule(nn.Module):
         self.post_M    = "please specify"
         self.prior_SSGE = None
     #
-    # ~~~ Resample from whatever is source is used to seed the samples which are drawn from the variational distribution
+    # ~~~ Resample from whatever is source is used to seed the samples drawn from the variational distribution
     @abstractmethod
     def resample_weights(self):
         raise NotImplementedError("The base class BayesianModule leaves the `resample_weights` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
@@ -60,13 +60,13 @@ class BayesianModule(nn.Module):
     #
     # ~~~ Return an esimate of `\int ln(q_\theta(w)) q_\theta(w) dw` where `q_\theta(w)` is the variational density with trainable parameters `\theta`
     @abstractmethod
-    def estimate_expected_log_posterior(self):
-        raise NotImplementedError("The base class BayesianModule leaves the `estimate_expected_log_posterior` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+    def estimate_expected_posterior_log_density(self):
+        raise NotImplementedError("The base class BayesianModule leaves the `estimate_expected_posterior_log_density` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     #
     # ~~~ Return an esimate of `\int \ln(f_W(w)) q_\theta(w) dw` where `q_\theta(w)` is the variational density with trainable parameters `\theta`, and `f_W(w)` is a prior density function over network weights
     @abstractmethod
-    def estimate_expected_log_prior(self):
-        raise NotImplementedError("The base class BayesianModule leaves the `estimate_expected_log_prior` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+    def estimate_expected_prior_log_density(self):
+        raise NotImplementedError("The base class BayesianModule leaves the `estimate_expected_prior_log_density` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
     #
     # ~~~ Return an estimate (or the exact value) of the kl divergence between variational and prior distributions over newtork weights
     def weight_kl( self, exact_formula=True ):
@@ -79,7 +79,7 @@ class BayesianModule(nn.Module):
                     self.already_warned_that_exact_weight_formula_not_implemented = "yup"
             except:
                 raise
-        return self.estimate_expected_log_posterior() - self.estimate_expected_log_prior()
+        return self.estimate_expected_posterior_log_density() - self.estimate_expected_prior_log_density()
     # ~~~
     #
     ### ~~~
@@ -95,6 +95,7 @@ class BayesianModule(nn.Module):
     @abstractmethod
     def sample_new_measurement_set(self,n=64):
         raise NotImplementedError("The base class BayesianModule leaves the `sample_new_measurement_set` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+        self.measurement_set = some_grid_of_n_points
     #
     # ~~~ Instantiate the SSGE estimator of the prior score, using samples from the prior distribution
     def setup_prior_SSGE(self):
@@ -130,7 +131,7 @@ class BayesianModule(nn.Module):
             posterior_SSGE = SSGE( samples=posterior_samples, eta=self.post_eta, J=self.post_J )
         #
         # ~~~ By the chain rule, at these points we must compute the "scores," i.e., gradients of the log-densities (we use SSGE to compute them)
-        yhat = self( self.measurement_set, resample_weights=False ).flatten()
+        yhat = self(self.measurement_set).flatten()
         #
         # ~~~ Use SSGE to compute "the intractible parts of the chain rule"
         with torch.no_grad():
@@ -153,46 +154,46 @@ class BayesianModule(nn.Module):
 ### ~~~
 
 #
-# ~~~ Main class: intended to mimic nn.Sequential (STILL NO PRIOR DISTRIBUTION AT THIS LEVEL OF ABSTRACTION)
+# ~~~ Main class: variational family models weights as independent, all from the same location scale family (STILL NO PRIOR DISTRIBUTION AT THIS LEVEL OF ABSTRACTION)
 class IndependentLocationScaleSequentialBNN(BayesianModule):
     def __init__(
                 self,
                 *args,
-                model_log_density,  # ~~~ should be a function of `where`, `mu`, and `sigma`
-                model_initializer,  # ~~~ should modify its argument's `data` attribute in place and return None
-                model_sampler,      # ~~~ should return a tensor of random samples from the reference distribution
-                conditional_std = torch.tensor(0.001),
-                auto_projection = True
+                likelihood_std = torch.tensor(0.001),
+                auto_projection = True,
+                posterior_standard_log_density, # ~~~ should be a callable that accepts generic torch.tensors as input but also works on numpy arrays, e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
+                posterior_standard_initializer, # ~~~ should modify its argument's `data` attribute in place and return None
+                posterior_standard_sampler      # ~~~ should return a tensor of random samples from the reference distribution
             ):
         #
         # ~~~ Means and standard deviations for each network parameter
         super().__init__()
-        self.model_mean = nn.Sequential(*args)
-        self.model_std  = nonredundant_copy_of_module_list( self.model_mean, sequential=True )
+        self.posterior_mean = nn.Sequential(*args)
+        self.posterior_std  = nonredundant_copy_of_module_list( self.posterior_mean, sequential=True )
         if auto_projection:
             self.ensure_positive( forceful=True, verbose=False )
         #
         # ~~~ Basic information about the model: in_features, out_features, and n_layers
-        self.n_layers = len(self.model_mean)
-        for layer in self.model_mean:
+        self.n_layers = len(self.posterior_mean)
+        for layer in self.posterior_mean:
             if hasattr(layer,"in_features"):    # ~~~ the first layer with an `in_features` attribute
                 self.in_features = layer.in_features 
                 break
-        for layer in reversed(self.model_mean):
+        for layer in reversed(self.posterior_mean):
             if hasattr(layer,"out_features"):   # ~~~ the last layer with an `out_features` attribute
                 self.out_features = layer.out_features
                 break
         #
-        # ~~~ Define a "standard normal [or whatever else] distribution in the shape of our neural network"
-        self.model_log_density = model_log_density
-        self.model_initializer = model_initializer # ~~~ this is "ducky" (https://en.wikipedia.org/wiki/Duck_typing); can be anything that modifies the input's `data` attribute in place
-        self.realized_standard_distribution = nonredundant_copy_of_module_list(self.model_mean)
-        self.model_sampler = model_sampler
-        self.sample_from_standard_distribution(counter_on=False)
+        # ~~~ Define information about the location scale family
+        self.posterior_log_density               =  LocationScaleLogDensity(posterior_standard_log_density)   # ~~~ the log density
+        self.realized_standard_posterior_sample  =  nonredundant_copy_of_module_list(self.posterior_mean)  # ~~~ a "standard normal [or whatever] distribution in the shape of our neural network"
+        self.posterior_standard_initializer      =  posterior_standard_initializer    # ~~~ modifies its argument's data argument in place, which is "ducky" (https://en.wikipedia.org/wiki/Duck_typing)
+        self.posterior_standard_sampler          =  posterior_standard_sampler        # ~~~ returns random samples from the
+        self.sample_from_standard_posterior(counter_on=False)
         #
         # ~~~ Attributes determining the log likelihood density
         self.likelihood_model = "Gaussian"
-        self.conditional_std = conditional_std
+        self.likelihood_std = likelihood_std
         #
         # ~~~ Attributes used for testing validity of the default measurement set
         self.first_moments_of_input_batches = []
@@ -210,34 +211,34 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     #
     # ~~~ Infer device and dtype
     def infer_device_and_dtype(self):
-        for layer in self.model_mean:
+        for layer in self.posterior_mean:
             if hasattr(layer,"weight"):         # ~~~ the first layer with weights
                 device = layer.weight.device
                 dtype = layer.weight.dtype
                 return device, dtype
     #
     # ~~~ Sample according to a "standard normal [or other] distribution in the shape of our neural network"
-    def sample_from_standard_distribution( self, counter_on=True ):
+    def sample_from_standard_posterior( self, counter_on=True ):
         with torch.no_grad():   # ~~~ theoretically the `no_grad()` context is redundant and unnecessary, but idk why not use it
             #
             # ~~~ Implement the actual funcitonality of this method
-            for p in self.realized_standard_distribution.parameters():
-                self.model_initializer(p)
+            for p in self.realized_standard_posterior_sample.parameters():
+                self.posterior_standard_initializer(p)
             if counter_on:
                 self.n_mc_samples += 1
     #
     # ~~~ When using hte reparameterization trick, the only "source of randomness" is the standard distribution
     def resample_weights(self):
-        self.sample_from_standard_distribution()
+        self.sample_from_standard_posterior()
     #
     # ~~~ Check that all the posterior standard deviations are positive
     def ensure_positive( self, forceful=False, verbose=False ):
         with torch.no_grad():
-            if not flatten_parameters(self.model_std).min() >= 0:
+            if not flatten_parameters(self.posterior_std).min() >= 0:
                 #
                 # ~~~ If an attribute `soft_projection` is defined, assume that the user simply forgot to use it
                 if hasattr(self,"soft_projection") or verbose:
-                    my_warn("`model_std` contains negative values.")
+                    my_warn("`posterior_std` contains negative values. Did you forget to call self.apply_soft_projection() after the gradient update? (P.S. Remember to also call self.apply_chain_rule_for_soft_projection() before the gradient update)")
                 #
                 # ~~~ This is fine to use even when a soft_projection is intended, since `apply_hard_projection` is assumed to leave any values that are already in the desired range unaffected
                 if forceful:
@@ -252,7 +253,7 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     # ~~~ Multiply parameter gradients by the transpose of the Jacobian of `soft_projection` (as in Blundell et al. 2015 https://arxiv.org/abs/1505.05424, where the Jacobian is diagonal and you just simply divide by 1+exp(-rho) )
     def apply_chain_rule_for_soft_projection(self):
         with torch.no_grad():
-            for p in self.model_std.parameters():
+            for p in self.posterior_std.parameters():
                 p.data = self.soft_projection_inv(p.data)           # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
                 try:
                     p.grad *= self.soft_projection_prime(p.data)    # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
@@ -265,34 +266,30 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     def set_default_uncertainty( self, comparable_to_default_torch_init=False, scale=1.0 ):
         with torch.no_grad():
             if comparable_to_default_torch_init:
-                for layer in self.model_std:
+                for layer in self.posterior_std:
                     if isinstance(layer,nn.Linear):
                         std = std_per_layer(layer)
                         layer.weight.data = std * torch.ones_like(layer.weight.data)
                         if layer.bias is not None:
                             layer.bias.data = std * torch.ones_like(layer.bias.data)
             else:
-                for p in self.model_std.parameters():
+                for p in self.posterior_std.parameters():
                     p.data = std_per_param(p)*torch.ones_like(p.data)
             #
-            # ~~~ Scale the parameters of the last linear layer; for sequential models, the effect is comparable to the scale paramter in a GP
-            if scale is not None:
-                for layer in reversed(self.model_std):
-                    if isinstance( layer, nn.Linear ):
-                        for p in layer.parameters():
-                            p.data *= scale
-                        break
+            # ~~~ Scale the parameters of the last linear layer; the effect is comparable to the scale paramter in a GP
+            for layer in reversed(self.posterior_std):
+                if isinstance( layer, nn.Linear ):
+                    for p in layer.parameters():
+                        p.data *= scale
+                    break
     #
     # ~~~ Sample the distribution of Y|X=x,W=w
-    def forward( self, x, n=None, resample_weights=True ):
+    def forward( self, x, n=0 ):
         #
-        # ~~~ Basically, `x=layer(x)` for each layer in model, but with a twist on the weights
+        # ~~~ Basically, do `x=layer(x)` for each layer in model, but with a twist on the weights
         self.ensure_positive(forceful=True)
-        if resample_weights:
-            #
-            # ~~~ Stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
-            x = torch.stack(n*[x])
-        for j, layer in enumerate(self.realized_standard_distribution):
+        if n>0: x=torch.stack(n*[x]) # ~~~ stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
+        for j, layer in enumerate(self.realized_standard_posterior_sample):
             #
             # ~~~ If this layer is just like relu or something, then there aren't any weights; just apply the layer and be done
             if not isinstance( layer, nn.Linear ):
@@ -300,23 +297,24 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
             #
             # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
             else:
-                mean_layer = self.model_mean[j]     # ~~~ the trainable (posterior) means of this layer's parameters
-                std_layer  =  self.model_std[j]     # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                if resample_weights:
-                    z_weight = self.model_sampler( n,*layer.weight.shape, dtype=x.dtype, device=x.device )
-                    A = mean_layer.weight + std_layer.weight * z_weight
-                    x = torch.bmm(x, A.transpose(1, 2))
+                mean_layer = self.posterior_mean[j]     # ~~~ the trainable (posterior) means of this layer's parameters
+                std_layer  =  self.posterior_std[j]     # ~~~ the trainable (posterior) standard deviations of this layer's parameters
+                if n==0:
+                    #
+                    # ~~~ Use self.realized_standard_posterior_sample for the random sample
+                    A = mean_layer.weight + std_layer.weight * layer.weight # ~~~ A = F_\theta(z_sampled) is sample with trainable (posterior) mean and std
+                    x = x@A.T                                               # ~~~ apply the appropriately distributed weights to this layer's input
                     if layer.bias is not None:
-                        z_bias = self.model_sampler( n, 1, *layer.bias.shape, dtype=x.dtype, device=x.device )
-                        b = mean_layer.bias + std_layer.bias * z_bias
+                        b = (mean_layer.bias + std_layer.bias * layer.bias) # ~~~ apply the appropriately distributed biases
                         x += b
                 else:
-                    z_weight = layer.weight
-                    A = mean_layer.weight + std_layer.weight * z_weight # ~~~ A = F_\theta(z.weight) is normal with the trainable (posterior) mean and std
-                    x = x@A.T                                           # ~~~ apply the appropriately distributed weights to this layer's input
+                    z_sampled = self.posterior_standard_sampler( n,*layer.weight.shape, dtype=x.dtype, device=x.device )
+                    A = mean_layer.weight + std_layer.weight * z_sampled
+                    x = torch.bmm( x, A.transpose(1,2) )
                     if layer.bias is not None:
-                        z_bias = layer.bias
-                        x = x + (mean_layer.bias + std_layer.bias * z_bias) # ~~~ apply the appropriately distributed biases
+                        z_sampled = self.posterior_standard_sampler( n,1,*layer.bias.shape, dtype=x.dtype, device=x.device )
+                        b = mean_layer.bias + std_layer.bias * z_sampled
+                        x += b
         return x
     #
     # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
@@ -332,13 +330,13 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         self.n_calls_to_likelihood += 1
         if self.watch_the_count:
             if self.n_mc_samples<5 and self.n_calls_to_likelihood>50:
-                my_warn("The number of Monte-Carlo samples does not appear to match the number of gradient updates. If you forget to call self.reample_weights() between gradient updates, you may accidentally recycle the same Monte-Carlo sample too many times, resulting in poor estimations and poor training. If this is intentional, set `self.watch_the_count = False` before training or use to disable this warning.")
+                my_warn("The number of Monte-Carlo samples does not appear to match the number of gradient updates. If you forget to call self.reample_weights() between gradient updates, you may accidentally recycle the same Monte-Carlo sample too many times, resulting in poor estimations and poor training. If this is intentional, set `self.watch_the_count = False` before training to disable this warning.")
                 self.watch_the_count = False # ~~~ don't reissue this warning more than once
         #
         # ~~~ The likelihood depends on task criterion: classification or regression
         self.ensure_positive(forceful=True)
         if self.likelihood_model == "Gaussian":
-            log_lik = log_gaussian_pdf( where=y, mu=self(X,resample_weights=False), sigma=self.conditional_std )    # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.conditional_std (the latter being a tunable hyper-parameter)
+            log_lik = log_gaussian_pdf( where=y, mu=self(X), sigma=self.likelihood_std )    # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.likelihood_std (the latter being a tunable hyper-parameter)
         else:
             raise NotImplementedError("In the current version of the code, only the Gaussian likelihood (i.e., mean squared error) is implemented See issue ?????.")
         return log_lik
@@ -349,13 +347,13 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     ### ~~~
     #
     # ~~~ Compute \ln( q_\theta(F_\theta(z)) ) at a point z sampled from the standard MVN distribution, where q_\theta is the posterior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def estimate_expected_log_posterior(self):
+    def estimate_expected_posterior_log_density(self):
         self.ensure_positive(forceful=True)
-        mu_post = flatten_parameters(self.model_mean)
-        sigma_post = flatten_parameters(self.model_std)
-        z_sampled = flatten_parameters(self.realized_standard_distribution)
+        mu_post = flatten_parameters(self.posterior_mean)
+        sigma_post = flatten_parameters(self.posterior_std)
+        z_sampled = flatten_parameters(self.realized_standard_posterior_sample)
         w_sampled = mu_post + sigma_post*z_sampled
-        return self.model_log_density( where=w_sampled, mu=mu_post, sigma=sigma_post )
+        return self.posterior_log_density( where=w_sampled, mu=mu_post, sigma=sigma_post )
     # ~~~
     #
     ### ~~~
@@ -370,55 +368,59 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
             self.sample_new_measurement_set()
         #
         # ~~~ Assume that the final layer of the architecture is linear, as per the paper's suggestion to take \beta as the parameters of the final layer (very bottom of pg. 4 https://arxiv.org/pdf/2312.17199)
-        if not isinstance( self.model_mean[-1] , nn.Linear ):
+        if not isinstance( self.posterior_mean[-1], nn.Linear ):
             raise NotImplementedError('Currently, the only case implemented is the the case from the paper where `beta` is "the set of parameters in the final neural network layer" (bottom of pg. 4 of the paper). Moreover, this is only implemented when the final layer has a bias term.')
-        elif self.model_mean[-1].bias is None:
+        elif self.posterior_mean[-1].bias is None:
             raise NotImplementedError('Currently, the only case implemented is the the case from the paper where `beta` is "the set of parameters in the final neural network layer" (bottom of pg. 4 of the paper). Moreover, this is only implemented when the final layer has a bias term.')
         #
         # ~~~ Compute the mean and covariance of a normal distribution approximating that of the (random) output of the network on the measurement set
         self.ensure_positive(forceful=True)
         n_meas = self.measurement_set.shape[0]
-        out_features = self.model_mean[-1].out_features
+        out_features = self.posterior_mean[-1].out_features
         if not approximate_mean:
             #
             # ~~~ Compute the mean and covariance from the paper's equation (14): https://arxiv.org/abs/2312.17199, page 4
-            S_sqrt = torch.cat([ p.flatten() for p in self.model_std.parameters() ])        # ~~~ covariance of the joint (diagonal) normal distribution of all network weights is then S_sqrt.diag()**2
-            theta_minus_m = S_sqrt*flatten_parameters(self.realized_standard_distribution)  # ~~~ theta-m == S_sqrt*z because theta = m+S_sqrt*z
+            S_sqrt = flatten_parameters(self.posterior_std)                                     # ~~~ the covariance of the joint posterior distribution of all network weights is then S_sqrt.diag()**2
+            theta_minus_m = S_sqrt*flatten_parameters(self.realized_standard_posterior_sample)  # ~~~ theta-m == S_sqrt*z because theta = m+S_sqrt*z
+            #
+            # ~~~ Compute the Jacobian of model outputs with respect to model parameters
             J_dict = jacrev( functional_call, argnums=1 )(
-                    self.model_mean,
-                    dict(self.model_mean.named_parameters()),
+                    self.posterior_mean,
+                    dict(self.posterior_mean.named_parameters()),
                     (self.measurement_set,)
                 )
             full_Jacobian = torch.column_stack([
-                    tens.reshape( out_features*n_meas, -1 )
+                    tens.reshape( out_features*n_meas, -1 ) # ~~~ trial and error led me here; not sure how well (or not) this use of `reshape` generalizes to other network architectures
                     for tens in J_dict.values()
                 ])  # ~~~ has shape ( n_meas*out_features, n_params ) where n_params is the total number of weights/biases in a network of this architecture
-            how_many_params_from_not_last_layer = len(flatten_parameters( self.model_mean[:-1] ))
+            #
+            # ~~~ Split the Jacbian, covariance and mean into two groups, for one of which the computations are performed exactly, and for one of which they are not
+            how_many_params_from_not_last_layer = len(flatten_parameters( self.posterior_mean[:-1] ))
             J_alpha = full_Jacobian[ :, :how_many_params_from_not_last_layer ]              # ~~~ Jacobian with respect to parameters in not the last layer, same as what the paper calls J_\alpha
             J_beta = full_Jacobian[ :, how_many_params_from_not_last_layer: ]               # ~~~ Jacobian with respect to parameters in only last layer,    same as what the paper calls J_\beta
             S_beta_sqrt = S_sqrt[ how_many_params_from_not_last_layer: ]                    # ~~~ our S_beta.diag()**2 is what the paper calls S_\beta (which is a diagonal matrix by design)
             theta_alpha_minus_m_alpha = theta_minus_m[:how_many_params_from_not_last_layer] # ~~~ same as what the paper calls theta_\alpha - m_\alpha
-            mu_theta = self.model_mean(self.measurement_set).flatten() + J_alpha@theta_alpha_minus_m_alpha  # ~~~ mean from the paper's eq'n (14)
-            Sigma_theta = (S_beta_sqrt*J_beta) @ (S_beta_sqrt*J_beta).T                                     # ~~~ cov. from the paper's eq'n (14)    
+            mu_theta = self.posterior_mean(self.measurement_set).flatten() + J_alpha@theta_alpha_minus_m_alpha  # ~~~ mean from the paper's eq'n (14)
+            Sigma_theta = (S_beta_sqrt*J_beta) @ (S_beta_sqrt*J_beta).T                                         # ~~~ cov. from the paper's eq'n (14)
         if approximate_mean:
             #
             # ~~~ Only estimate the mean from the paper's eq'n (14), still computing the covariance exactly
             S_beta_sqrt = torch.cat([   # ~~~ the covaraince matrix of the weights and biases of the final layer is then S_beta_sqrt.diag()**2
-                    self.model_std[-1].weight.flatten(),
-                    self.model_std[-1].bias.flatten()
+                    self.posterior_std[-1].weight.flatten(),
+                    self.posterior_std[-1].bias.flatten()
                 ])
-            z = torch.cat([             # ~~~ equivalent to `flatten_parameters(self.realized_standard_distribution)[ how_many_params_from_not_last_layer: ]`
-                    self.realized_standard_distribution[-1].weight.flatten(),
-                    self.realized_standard_distribution[-1].bias.flatten()
+            z = torch.cat([             # ~~~ equivalent to `flatten_parameters(self.realized_standard_posterior_sample)[ how_many_params_from_not_last_layer: ]`
+                    self.realized_standard_posterior_sample[-1].weight.flatten(),
+                    self.realized_standard_posterior_sample[-1].bias.flatten()
                 ])
             theta_beta_minus_m_beta = S_beta_sqrt * z  # ~~~ theta_beta = mu_theta + Sigma_beta*z is sampled as theta_sampled = mu_theta + Sigma_theta*z_sampled (a flat 1d vector)
             #
             # ~~~ Jacbian w.r.t. the final layer's weights is easy to compute by hand: viz. the Jacobian of A@whatever w.r.t. A is, simply `whatever`; we first compute the `whatever` and then just shape it correctly
-            whatever = self.model_mean[:-1](self.measurement_set)           # ~~~ just don't apply the final layer of self.model_mean
+            whatever = self.posterior_mean[:-1](self.measurement_set)       # ~~~ just don't apply the final layer of self.posterior_mean
             J_beta = manual_Jacobian( whatever, out_features, bias=True )   # ~~~ simply shape it correctly
             #
             # ~~~ Deviate slightly from the paper by not actually computing J_alpha, and instead only approximating the requried sample
-            mu_theta = self( self.measurement_set, resample_weights=False ).flatten() - J_beta @ theta_beta_minus_m_beta   # ~~~ solving for the mean of the paper's eq'n (14) by subtracting J_beta(theta_beta-m_beta) from the paper's equation (12)
+            mu_theta = self(self.measurement_set).flatten() - J_beta @ theta_beta_minus_m_beta  # ~~~ solving for the mean of the paper's eq'n (14) by subtracting J_beta(theta_beta-m_beta) from the paper's equation (12)
             Sigma_theta = (S_beta_sqrt*J_beta) @ (S_beta_sqrt*J_beta).T
         return mu_theta, Sigma_theta
     #
@@ -426,12 +428,12 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     def sample_new_measurement_set( self, n=64, after_how_many_batches_to_warn=100, tol=0.25 ):
         #
         # ~~~ Attempt to assess validity of this default implementaiton
-        if not isinstance( self.model_mean[0], nn.Linear ):
+        if not isinstance( self.posterior_mean[0], nn.Linear ):
             my_warn("Because the first model layer is not a linear layer, the default implementation of `sample_new_measurement_set` may fail. If so (or to avoid this warning message), please sub-class the model you wish to use and implement sample_new_measurement_set() for the sub-class.")
-        if len(self.first_moments_of_input_batches)==after_how_many_batches_to_warn:   # ~~~ warn only once, with a sample size of 100
-            estimated_mean_of_all_inputs = torch.stack(self.first_moments_of_input_batches).mean(dim=0).max()
-            estimated_var_of_all_inputs  = torch.stack(self.second_moments_of_input_batches).mean(dim=0).max() - estimated_mean_of_all_inputs**2  # ~~~ var(X) = E(X^2) - E(X)^2
-            if estimated_mean_of_all_inputs.abs()>tol or estimated_var_of_all_inputs>1+tol:
+        if len(self.first_moments_of_input_batches)==after_how_many_batches_to_warn:   # ~~~ warn only once, using a sample size of 100
+            estimated_mean_of_all_inputs = torch.stack(self.first_moments_of_input_batches).mean(dim=0)
+            estimated_var_of_all_inputs  = torch.stack(self.second_moments_of_input_batches).mean(dim=0) - estimated_mean_of_all_inputs**2  # ~~~ var(X) = E(X^2) - E(X)^2
+            if estimated_mean_of_all_inputs.abs().max()>tol or estimated_var_of_all_inputs.max()>1+tol:
                 my_warn("the default implementation of `sample_new_measurement_set` assumes inputs are N(0,1) however this assumption appears to be violated. Please consider programming a data-specific implementation of `sample_new_measurement_set` for better results.")
         #
         # ~~~ Do the default implementation
@@ -439,13 +441,15 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         if hasattr(self,"desired_measurement_points"):
             batch_size = len(self.desired_measurement_points)
             if batch_size>n:
-                my_warn("More desired measurement points are specified than the total number of measurement points (this is most likely the result batch size exceeding the specified number of measurement points). Only a randomly chosen subset of the desired measurement points will be used.")
+                my_warn("More desired measurement points are specified than the total number of measurement points (this is most likely the result of the batch size used in training exceeding the specified number of measurement points). Only a randomly chosen subset of the desired measurement points will be used.")
                 self.measurement_set = self.desired_measurement_points[torch.randperm(batch_size)[:n]]
             else:
                 self.measurement_set = torch.vstack([
                         self.desired_measurement_points,
                         torch.randn( n-batch_size, self.in_features, device=device, dtype=dtype )
                     ])
+                if n-batch_size <= 5:
+                    my_warn("there are almost as many `desired_measurement_points` as total measurement points. Please consider using slightly more measurement points.")
         else:
             self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
 
@@ -455,7 +459,7 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
 ## ~~~ Implement the projection methods assuming that any positive variacne, and any mean at all are acceptable
 ### ~~~
 
-class ConventionalSequentialBNN(IndependentLocationScaleSequentialBNN):
+class ConventionalVariationalFamilyBNN(IndependentLocationScaleSequentialBNN):
     def __init__(self,*args,**kwargs): super().__init__(*args,**kwargs)
     #
     # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
@@ -474,11 +478,11 @@ class ConventionalSequentialBNN(IndependentLocationScaleSequentialBNN):
     # ~~~ If using projected gradient descent, then project onto the non-negative orthant
     def apply_hard_projection( self, tol=1e-6 ):
         with torch.no_grad():
-            for p in self.model_std.parameters():
+            for p in self.posterior_std.parameters():
                 p.data.clamp_(min=tol)
     #
     # ~~~ If using projected gradient descent, then project onto the non-negative orthant
     def apply_soft_projection(self):
         with torch.no_grad():
-            for p in self.model_std.parameters():
+            for p in self.posterior_std.parameters():
                 p.data = self.soft_projection(p.data)

@@ -49,13 +49,15 @@ hyperparameter_template = {
     "DATA" : "univar_missing_middle",
 	"ARCHITECTURE" : "univar_NN.univar_NN_100_100",
 	"MODEL": "MixtureWeightPrior2015BNN",
+    #
+    # ~~~ Any prior-specific hyper-parameters
     "pi" : 0.5,
     "sigma1" : 1.0,
     "sigma2" : 0.002,
     #
     # ~~~ For training
-    "GAUSSIAN_APPROXIMATION" : True,    # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
-    "APPPROXIMATE_GAUSSIAN_MEAN" : True,# ~~~ whether to compute exactly, or approximately, the mean from eq'n (14) in https://arxiv.org/pdf/2312.17199
+    "GAUSSIAN_APPROXIMATION" : True,        # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
+    "APPPROXIMATE_GAUSSIAN_MEAN" : False,   # ~~~ whether to compute exactly (False), or approximately (True), the mean from eq'n (14) in https://arxiv.org/pdf/2312.17199
     "FUNCTIONAL" : False,                   # ~~~ whether or to do functional training or (if False) BBB
     "MEASUREMENT_SET_SAMPLER" : "data_only",# ~~~ load this function from the same file where data is loaded from
     "N_MEAS" : 100,                 # ~~~ desired size of measurement set
@@ -69,7 +71,7 @@ hyperparameter_template = {
     "PRIOR_M"   : 4000,             # ~~~ `M` in the SSGE of the prior score
     "POST_M"    : 40,               # ~~~ `M` in the SSGE of the posterior score
     "POST_GP_eta" : 0.001,          # ~~~ the level of the "stabilizing noise" added to the Gaussian approximation of the posterior distribution if `gaussian_approximation` is True
-    "CONDITIONAL_STD" : 0.19,
+    "LIKELIHOOD_STD" : 0.19,
     "OPTIMIZER" : "Adam",
     "LR" : 0.0005,
     "BATCH_SIZE" : 64,
@@ -196,13 +198,13 @@ try:
             return sampler(self,n)
     BNN = MODEL_WITH_MEAS_SET_SAMPLER(
             *architecture,
-            conditional_std = torch.tensor(CONDITIONAL_STD),
+            likelihood_std = torch.tensor(LIKELIHOOD_STD),
             auto_projection = (PROJECTION_METHOD=="HARD")
         )
 except:
     BNN = MODEL(
             *architecture,
-            conditional_std = torch.tensor(CONDITIONAL_STD),
+            likelihood_std = torch.tensor(LIKELIHOOD_STD),
             auto_projection = (PROJECTION_METHOD=="HARD")
         )
 
@@ -236,7 +238,7 @@ testloader = torch.utils.data.DataLoader( (D_test if final_test else D_val), bat
 optimizer = Optimizer( BNN.parameters(), lr=LR )
 n_batches = len(dataloader)
 n_test_batches = len(testloader)
-n_params = sum( p.numel() for p in BNN.model_mean.parameters() )
+n_params = sum( p.numel() for p in BNN.posterior_mean.parameters() )
 
 #
 # ~~~ Some naming stuff
@@ -265,13 +267,13 @@ if data_is_univariate:
     #
     # ~~~ Define the main plotting routine
     plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
-    def plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, bnn, extra_std=(CONDITIONAL_STD if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, n_posterior_samples=N_POSTERIOR_SAMPLES, title=title, prior=False ):
+    def plot_bnn( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, bnn, extra_std=(LIKELIHOOD_STD if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, n_posterior_samples=N_POSTERIOR_SAMPLES, title=title, prior=False ):
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
             forward = bnn.prior_forward if prior else ( lambda x: bnn(x,resample_weights=True) )
-            predictions = torch.stack([ forward(grid) for _ in range(N_POSTERIOR_SAMPLES) ]).squeeze()
-        return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, HOW_MANY_INDIVIDUAL_PREDICTIONS, title )
+            predictions = bnn.prior_forward( grid, n=N_POSTERIOR_SAMPLES ) if prior else bnn( grid, n=N_POSTERIOR_SAMPLES )
+        return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions.squeeze(), extra_std, HOW_MANY_INDIVIDUAL_PREDICTIONS, title )
     #
     # ~~~ Plot the state of the posterior predictive distribution upon its initialization
     if MAKE_GIF:
@@ -384,7 +386,9 @@ while keep_training:
                 #
                 # ~~~ Compute the gradient of the loss function on the batch (X,y)
                 for j in range(N_MC_SAMPLES):
-
+                    #
+                    # ~~~ Draw a new monte carlo sample from the approximate posterior
+                    BNN.resample_weights()
                     #
                     # ~~~ Compute the KL divergence of the (approximate) posterior against the user-specified prior
                     if not FUNCTIONAL:
@@ -403,12 +407,10 @@ while keep_training:
                     negative_ELBO.backward()
                 #
                 # ~~~ Perform the gradient-based update
-                if not PROJECTION_METHOD=="HARD":
-                    BNN.apply_chain_rule_for_soft_projection()
+                if not PROJECTION_METHOD=="HARD": BNN.apply_chain_rule_for_soft_projection()
                 optimizer.step()
                 optimizer.zero_grad()
-                if not PROJECTION_METHOD=="HARD":
-                    BNN.apply_soft_projection()
+                if not PROJECTION_METHOD=="HARD": BNN.apply_soft_projection()
                 #
                 # ~~~ Report a moving average of train_loss as well as val_loss in the progress bar
                 if len(train_loss_curve)>0:
@@ -436,7 +438,7 @@ while keep_training:
                         #
                         # ~~~ Diagnostic info specific to the last seen batch of training data
                         train_loss_curve.append(negative_ELBO.item())
-                        predictions_train = torch.stack([ BNN(X,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ])
+                        predictions_train = BNN( X, n=N_POSTERIOR_SAMPLES )
                         train_acc_curve.append(rmse_of_mean( predictions_train, y ))
                         train_lik_curve.append(log_likelihood_density.item())
                         #
@@ -455,7 +457,7 @@ while keep_training:
                                 val_loss = alpha*kl_div - beta*val_lik
                                 break
                         val_loss_curve.append(val_loss)
-                        predictions_val = torch.stack([ BNN(X,resample_weights=True) for _ in range(N_POSTERIOR_SAMPLES) ])
+                        predictions_val = BNN( X, n=N_POSTERIOR_SAMPLES )
                         val_acc_curve.append(rmse_of_mean( predictions_val, y ))
                         #
                         # ~~~ Save only the "best" parameters thus far
@@ -507,14 +509,14 @@ while keep_training:
                 data_is_unlabeled = isinstance( next(iter(loader)), torch.Tensor )
                 predictions = []
                 for _ in range(n):
-                    BNN.sample_from_standard_distribution()
+                    BNN.resample_weights()
                     predictions.append(torch.row_stack([
-                            BNN( batch if data_is_unlabeled else batch[0], resample_weights=False )
+                            BNN(batch if data_is_unlabeled else batch[0])
                             for batch in loader
                         ]))
                 predictions = torch.stack(predictions)
                 if EXTRA_STD:
-                    predictions += CONDITIONAL_STD*torch.randn_like(predictions)
+                    predictions += LIKELIHOOD_STD*torch.randn_like(predictions)
                 return predictions
         #
         # ~~~ Compute the posterior predictive distribution on the testing dataset(s)
@@ -576,15 +578,16 @@ while keep_training:
             def predict(loader,n):
                 with torch.no_grad():
                     data_is_unlabeled = isinstance( next(iter(loader)), torch.Tensor )
-                    predictions = torch.stack([
-                            torch.row_stack([
-                                    BNN( batch if data_is_unlabeled else batch[0], resample_weights=True )
-                                    for batch in loader
-                                ])
-                            for _ in range(n)
-                        ])
+                    predictions = []
+                    for _ in range(n):
+                        BNN.resample_weights()
+                        predictions.append(torch.row_stack([
+                                BNN(batch if data_is_unlabeled else batch[0])
+                                for batch in loader
+                            ]))
+                    predictions = torch.stack(predictions)
                     if EXTRA_STD:
-                        predictions += CONDITIONAL_STD*torch.randn_like(predictions)
+                        predictions += LIKELIHOOD_STD*torch.randn_like(predictions)
                     return predictions.mean(dim=0,keepdim=True) * S @ V.T
             predictions = predict( x_test, N_POSTERIOR_SAMPLES_EVALUATION )
             predictions_on_interpolary_grid = predict( batched_interpolary_grid, N_POSTERIOR_SAMPLES_EVALUATION )
@@ -665,7 +668,7 @@ if data.__name__ == "bnns.data.bivar_trivial":
     x_test = data.D_test.X.to( device=DEVICE, dtype=DTYPE )
     y_test = data.D_test.y.to( device=DEVICE, dtype=DTYPE )
     with torch.no_grad():
-        predictions = torch.column_stack([ BNN(x_test,resample_weights=True).mean(dim=-1) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
+        predictions = torch.column_stack([ BNN(x_test,n=1).squeeze().mean(dim=-1) for _ in range(N_POSTERIOR_SAMPLES_EVALUATION) ])
     fig,ax = plt.subplots(figsize=(12,6))
     plt.plot( x_test.cpu(), y_test.cpu(), "--", color="green" )
     y_pred = predictions.mean(dim=-1)
