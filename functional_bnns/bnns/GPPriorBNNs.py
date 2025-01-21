@@ -38,10 +38,10 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
                 posterior_standard_initializer = posterior_standard_initializer,
                 posterior_standard_sampler     = posterior_standard_sampler
             )
-        self.default_bw = None          # ~~~ the median distance between training data is used if `None`
-        self.default_prior_scale = None # ~~~ a list of all 1.'s is used if `None`
-        self.default_eta = 0.001        # ~~~ add eta*I to the covariance matrices in the GP for numerical stability
-        self.set_prior_hyperparameters( bw=self.default_bw, prior_scale=self.default_prior_scale, eta=self.default_eta )
+        self.default_bw = None      # ~~~ the median distance between training data is used if `None`
+        self.default_scale = None   # ~~~ a list of all 1.'s is used if `None`
+        self.default_eta = 0.001    # ~~~ add eta*I to the covariance matrices in the GP for numerical stability
+        self.set_prior_hyperparameters( bw=self.default_bw, scale=self.default_scale, eta=self.default_eta )
     #
     # ~~~ Allow these to be set at runtime
     def set_prior_hyperparameters( self, **kwargs ):
@@ -53,10 +53,10 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
             bw = self.default_bw
             my_warn(f'Hyper-parameter "bw" not specified. Using default value of {self.default_bw}.')
         try:
-            prior_scale = kwargs["prior_scale"]
+            scale = kwargs["scale"]
         except KeyError:
-            prior_scale = self.default_prior_scale
-            my_warn(f'Hyper-parameter "prior_scale" not specified. Using default value of {self.default_prior_scale}.')
+            scale = self.default_scale
+            my_warn(f'Hyper-parameter "scale" not specified. Using default value of {self.default_scale}.')
         try:
             eta = kwargs["eta"]
         except KeyError:
@@ -64,7 +64,7 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
             my_warn(f'Hyper-parameter "eta" not specified. Using default value of {self.default_eta}.')
         #
         # ~~~ Define a mean zero RBF kernel GP with independent output channels all sharing the same value bw, scale, and eta
-        self.GP = simple_mean_zero_RPF_kernel_GP( out_features=self.out_features, bw=bw, scale=prior_scale, eta=eta )
+        self.GP = simple_mean_zero_RPF_kernel_GP( out_features=self.out_features, bw=bw, scale=scale, eta=eta )
     #
     # ~~~ Get the mean and sqare root of the covariance matrix of the GP from each output feature
     @abstractmethod

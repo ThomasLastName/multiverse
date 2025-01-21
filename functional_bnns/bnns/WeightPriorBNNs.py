@@ -171,8 +171,8 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
             #
             # ~~~ Set the prior standard deviations
             self.default_prior_type = "torch.nn.init"   # ~~~ also supported are "Tom" and "IID"
-            self.default_prior_scale = torch.tensor(1.)
-            self.set_prior_hyperparameters( prior_type=self.default_prior_type, prior_scale=self.default_prior_scale )
+            self.default_scale = torch.tensor(1.)
+            self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale )
     #
     # ~~~ Allow these to be set at runtime
     def set_prior_hyperparameters( self, **kwargs ):
@@ -184,19 +184,19 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
             prior_type = self.default_prior_type
             my_warn(f'Key word argument `prior_type` not specified; using default "{prior_type}". Available options are "torch.nn.init", "Tom", and "IID".')
         try:
-            prior_scale = kwargs["prior_scale"]
+            scale = kwargs["scale"]
         except KeyError:
-            prior_scale = self.prior_scale
-            my_warn(f'Key word argument `prior_scale` not specified (should be positive, float); using default "{prior_scale}".')
+            scale = self.scale
+            my_warn(f'Key word argument `scale` not specified (should be positive, float); using default "{scale}".')
         #
         # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
-        if not prior_scale>0:
-            raise ValueError(f'Variable `prior_scale` should be a positive float.')
+        if not scale>0:
+            raise ValueError(f'Variable `scale` should be a positive float.')
         if not prior_type in ("torch.nn.init","Tom","IID"):
             raise ValueError('Variable `prior_type` should be one of "torch.nn.init", "Tom", or "IID".')
-        prior_scale = prior_scale if isinstance(prior_scale,torch.Tensor) else torch.tensor(prior_scale)
+        scale = scale if isinstance(scale,torch.Tensor) else torch.tensor(scale)
         #
-        # ~~~ Implement prior_type=="torch.nn.init" (`prior_scale` used later)
+        # ~~~ Implement prior_type=="torch.nn.init" (`scale` used later)
         if prior_type=="torch.nn.init": # ~~~ use the stanard deviation of the distribution of pytorch's default initialization
             for layer in self.prior_std:
                 if isinstance(layer,nn.Linear):
@@ -205,23 +205,23 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
                     if layer.bias is not None:
                         layer.bias.data = std * torch.ones_like(layer.bias.data)
         #
-        # ~~~ Implement prior_type=="Tom" (`prior_scale` used later)
+        # ~~~ Implement prior_type=="Tom" (`scale` used later)
         if prior_type=="Tom":
             for p in self.prior_std.parameters():
                 p.data = std_per_param(p)*torch.ones_like(p.data)
         #
-        # ~~~ Implement prior_type=="IID" and use `prior_scale`
+        # ~~~ Implement prior_type=="IID" and use `scale`
         if prior_type=="IID":
             for p in self.prior_std.parameters():
-                p.data = prior_scale*torch.ones_like(p.data)
+                p.data = scale*torch.ones_like(p.data)
         else:
             #
             # ~~~ Scale the range of output, by scaling the parameters of the final linear layer, much like the scale paramter in a GP
             for layer in reversed(self.prior_std):
                 if isinstance(layer,nn.Linear):
-                    layer.weight.data *= prior_scale
+                    layer.weight.data *= scale
                     if layer.bias is not None:
-                        layer.bias.data *= prior_scale
+                        layer.bias.data *= scale
                     break
     #
     # ~~~ Sample according to a "standard normal [or other] distribution in the shape of our neural network"
