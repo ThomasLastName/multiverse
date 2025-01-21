@@ -1,17 +1,26 @@
 
 import torch
-from bnns.models.bivar_BNN_GP_prior import BNN
-from bnns.data.bivar_trivial import x_test
+from torch import nn
 from matplotlib import pyplot as plt
 
-BNN.GP.etas *= 0.
-BNN.GP.bandwidths = torch.tensor(BNN.out_features*[0.1])
+import bnns
+from bnns.data.bivar_trivial import x_test
+
+BNN = bnns.GPPrior2023BNN(
+        nn.Linear(2, 100),
+        nn.ReLU(),
+        nn.Linear(100, 100),
+        nn.ReLU(),
+        nn.Linear(100, 2)
+    )
+
+BNN.set_prior_hyperparameters( bw=0.1, scale=1., eta=0 )
 
 try:
     y_prior = BNN.prior_forward(x_test)
 except torch._C._LinAlgError:
     try:
-        BNN.GP.etas += 0.00001
+        BNN.set_prior_hyperparameters( bw=0.1, scale=1., eta=0.00001 )
         y_prior = BNN.prior_forward(x_test)
         print("")
         print(f"eta={BNN.GP.etas[0]} achieved numerical stability with torch.float")
@@ -26,7 +35,7 @@ except torch._C._LinAlgError:
 
 
 x =  x_test[:,0].squeeze().cpu().numpy()
-y = y_prior[:,0].squeeze().cpu().numpy()
+y = y_prior[0,:,0].squeeze().cpu().numpy()
 plt.plot(x,y)
 plt.show()
 
