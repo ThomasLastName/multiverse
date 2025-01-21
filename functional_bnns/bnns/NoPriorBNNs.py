@@ -297,8 +297,8 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
             #
             # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
             else:
-                mean_layer = self.posterior_mean[j]     # ~~~ the trainable (posterior) means of this layer's parameters
-                std_layer  =  self.posterior_std[j]     # ~~~ the trainable (posterior) standard deviations of this layer's parameters
+                mean_layer = self.posterior_mean[j] # ~~~ the trainable (posterior) means of this layer's parameters
+                std_layer  =  self.posterior_std[j] # ~~~ the trainable (posterior) standard deviations of this layer's parameters
                 if n==0:
                     #
                     # ~~~ Use self.realized_standard_posterior_sample for the random sample
