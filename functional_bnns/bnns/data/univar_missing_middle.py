@@ -83,13 +83,15 @@ def current_batch_and_random_data(self,n):
     if hasattr(self,"desired_measurement_points"):
         batch_size = len(self.desired_measurement_points)
         if batch_size>n:
-            my_warn("More desired measurement points are specified than the total number of measurement points (this is most likely the result batch size exceeding the specified number of measurement points). Only a randomly chosen subset of the desired measurement points will be used.")
+            my_warn("More desired measurement points are specified than the total number of measurement points (this is most likely the training result batch size exceeding the specified number of measurement points). Only a randomly chosen subset of the desired measurement points will be used.")
             self.measurement_set = self.desired_measurement_points[torch.randperm(batch_size)[:n]]
         else:
             self.measurement_set = torch.concatenate([
                     self.desired_measurement_points,
                     torch.rand(n-batch_size, device=device, dtype=dtype )*(hi-lo) +lo
                 ])
+            if n-batch_size <= 10:
+                    my_warn("There are almost as many `desired_measurement_points` as total measurement points. Please consider using slightly more measurement points.")
     else:
         my_warn("Failed to find training data batch to be included in the measurement set. Please verify that `use_input_in_next_measurement_set=True` in `estimate_expected_log_likelihood(X,y,use_input_in_next_measurement_set)` and that this is called before the kl is computed.")
         self.measurement_set = torch.rand( n, device=device, dtype=dtype )*(hi-lo) +lo

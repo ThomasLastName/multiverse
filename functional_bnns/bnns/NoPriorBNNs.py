@@ -441,15 +441,15 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         if hasattr(self,"desired_measurement_points"):
             batch_size = len(self.desired_measurement_points)
             if batch_size>n:
-                my_warn("More desired measurement points are specified than the total number of measurement points (this is most likely the result of the batch size used in training exceeding the specified number of measurement points). Only a randomly chosen subset of the desired measurement points will be used.")
+                my_warn("More desired measurement points are specified than the total number of measurement points (this is most likely the result of the training batch size used in training exceeding the specified number of measurement points). Only a randomly chosen subset of the desired measurement points will be used.")
                 self.measurement_set = self.desired_measurement_points[torch.randperm(batch_size)[:n]]
             else:
                 self.measurement_set = torch.vstack([
                         self.desired_measurement_points,
                         torch.randn( n-batch_size, self.in_features, device=device, dtype=dtype )
                     ])
-                if n-batch_size <= 5:
-                    my_warn("there are almost as many `desired_measurement_points` as total measurement points. Please consider using slightly more measurement points.")
+                if n-batch_size <= 10:
+                    my_warn("There are almost as many `desired_measurement_points` as total measurement points. Please consider using slightly more measurement points.")
         else:
             self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
 
