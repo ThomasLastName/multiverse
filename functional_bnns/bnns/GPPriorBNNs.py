@@ -41,7 +41,7 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
         self.default_bw = None          # ~~~ the median distance between training data is used if `None`
         self.default_prior_scale = None # ~~~ a list of all 1.'s is used if `None`
         self.default_eta = 0.001        # ~~~ add eta*I to the covariance matrices in the GP for numerical stability
-        self.set_prior_hyperparameters( bw=self.default_bw, prior_scale=self.defaul_prior_scale, eta=self.default_eta )
+        self.set_prior_hyperparameters( bw=self.default_bw, prior_scale=self.default_prior_scale, eta=self.default_eta )
     #
     # ~~~ Allow these to be set at runtime
     def set_prior_hyperparameters( self, **kwargs ):
@@ -64,7 +64,7 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
             my_warn(f'Hyper-parameter "eta" not specified. Using default value of {self.default_eta}.')
         #
         # ~~~ Define a mean zero RBF kernel GP with independent output channels all sharing the same value bw, scale, and eta
-        self.GP = simple_mean_zero_RPF_kernel_GP( out_features=self.out_features, bw=bw, prior_scale=prior_scale, eta=eta )
+        self.GP = simple_mean_zero_RPF_kernel_GP( out_features=self.out_features, bw=bw, scale=prior_scale, eta=eta )
     #
     # ~~~ Get the mean and sqare root of the covariance matrix of the GP from each output feature
     @abstractmethod
@@ -73,12 +73,15 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
     #
     # ~~~ Define how to sample from the priorly distributed outputs of the network (just sample from the normal distribution with mean and covariance specified by the GP)
     def prior_forward( self, x, n=1 ):
-        mu, root_Sigma = self.GP.prior_mu_and_Sigma( x, cholesky=True )  # ~~~ return the cholesky square roots of the covariance matrices
-        Z = torch.randn( size=( n, x.shape[0] ), device=x.device, dtype=x.dtype )
-        SZ = root_Sigma@Z.T # ~~~ SZ[:,:,j] is the matrix you get from stacking the vectors Sigma_i^{1/2}z_j for i=1,...,self.out_features, where z_j==Z[j] and Sigma_i is the covariance matrix of the model's i-th output
         #
-        # ~~~ Sample from the N(mu,Sigma) distribution by taking mu+Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
-        return torch.row_stack([ (mu + SZ[:,:,j].T).flatten() for j in range(n) ])
+        # ~~~ return the cholesky square roots of the covariance matrices;
+        mu, root_Sigma = self.GP.prior_mu_and_Sigma( x, cholesky=True )
+        assert root_Sigma.shape == ( self.out_features, x.shape[0], x.shape[0] )
+        assert mu.shape == ( x.shape[0], self.out_features )
+        IID_standard_normal_samples = torch.randn( self.out_features,x.shape[0],n, device=x.device, dtype=x.dtype )
+        #
+        # ~~~ Sample from the N(mu,Sigma) distribution by taking m u +Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
+        return mu + torch.bnn( root_Sigma, IID_standard_normal_samples ).permute(2,1,0) # ~~~ returns a shape consistent with the output of `forward` and the assumption bnns.metrics: ( n_samples, n_test, n_out_features ), i.e., ( n, x.shape[0], self.out_features )
 
 
 
