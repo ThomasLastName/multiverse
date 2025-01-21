@@ -247,28 +247,25 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
     #
     # ~~~ Define how to sample from the priorly distributed outputs of the network (just replace `posterior_mean` and `posterior_std` with `prior_mean` and `prior_std` in `forward`)
     def prior_forward( self, x, n=1 ):
-        if n==1:
+        x = torch.stack(n*[x])  # ~~~ stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
+        for j, layer in enumerate(self.posterior_mean):
             #
-            # ~~~ Basically, `x=layer(x)` for each layer in model, but with a twist on the weights
-            self.sample_from_standard_posterior()          # ~~~ this method re-generates the values of weights and biases in `self.realized_standard_posterior_sample_sample` (IID standard normal)
-            for j in range(self.n_layers):
-                z = self.realized_standard_prior_sample[j]    # ~~~ the network's j'th layer, but with IID standard normal weights and biases
-                #
-                # ~~~ If this layer is just like relu or something, then there aren't anny weights; just apply the layer and be done
-                if not isinstance( z, nn.Linear ):
-                    x = z(x)                            # ~~~ x = layer(x)
-                #
-                # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
-                else:
-                    mean_layer = self.prior_mean[j]     # ~~~ the user-specified prior means of this layer's parameters
-                    std_layer  =  self.prior_std[j]     # ~~~ the user-specified prior standard deviations of this layer's parameters
-                    A = mean_layer.weight + std_layer.weight * z.weight # ~~~ A = is normal with user-specified proir mean and std
-                    x = x@A.T                                           # ~~~ apply the appropriately distributed weights to this layer's input
-                    if z.bias is not None:
-                        x = x + (mean_layer.bias + std_layer.bias * z.bias) # ~~~ apply the appropriately distributed biases
-            return x
-        else:
-            return torch.row_stack([ self.prior_forward(x,n=1).flatten() for _ in range(n) ])
+            # ~~~ If this layer is just like relu or something, then there aren't any weights; just apply the layer and be done
+            if not isinstance( layer, nn.Linear ):
+                x = layer(x)
+            #
+            # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
+            else:
+                mean_layer = self.prior_mean[j] # ~~~ the trainable (posterior) means of this layer's parameters
+                std_layer  =  self.prior_std[j] # ~~~ the trainable (posterior) standard deviations of this layer's parameters
+                z_sampled  =  self.prior_standard_sampler( n,*layer.weight.shape, dtype=x.dtype, device=x.device )
+                A = mean_layer.weight + std_layer.weight * z_sampled
+                x = torch.bmm( x, A.transpose(1,2) )
+                if layer.bias is not None:
+                    z_sampled = self.prior_standard_sampler( n,1,*layer.bias.shape, dtype=x.dtype, device=x.device )
+                    b = mean_layer.bias + std_layer.bias * z_sampled
+                    x += b
+        return x
 
 
 
@@ -298,12 +295,11 @@ class ConventionalBNN(ConventionalWeightPriorBNN):
                 prior_standard_initializer = nn.init.normal_,
                 prior_standard_sampler     = torch.randn,
             )
-    #
-    # ~~~ Use the same "random seed" for both the prior and posterior (see eq'n (2) "this is an instance of a variance reduction technique known as common random numbers" in https://arxiv.org/abs/1505.05424)
-    def resample_weights(self):
-        self.sample_from_standard_posterior()
-        for (z_post,z_prior) in zip( self.realized_standard_posterior_sample, self.realized_standard_prior_sample ):
-            z_post.copy_(z_prior)
+        #
+        # ~~~ Use the same "random seed" for both the prior and posterior ("this is an instance of a variance reduction technique known as common random numbers" source: https://arxiv.org/abs/1505.05424)
+        for (z_post,z_prior) in zip( self.realized_standard_posterior_sample.parameters(), self.realized_standard_prior_sample.parameters() ):
+            z_post.data = z_prior.data  # ~~~ updates to one are, also, reflected in the other after this
+        self.sample_from_standard_posterior(counter_on=False)
     #
     # ~~~ Specify an exact formula for the KL divergence
     def compute_exact_weight_kl(self):
