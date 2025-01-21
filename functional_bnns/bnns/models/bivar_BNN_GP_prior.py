@@ -2,7 +2,7 @@
 import torch
 from torch import nn
 from bnns.models.bivar_BNN import BNN
-from bnns.GPR import simple_mean_zero_RPF_kernel_GP
+from bnns.GPPriorBNN import simple_mean_zero_RPF_kernel_GP
 
 BNN.GP = simple_mean_zero_RPF_kernel_GP(
         out_features = BNN.out_features,
