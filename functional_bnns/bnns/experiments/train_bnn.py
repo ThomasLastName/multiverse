@@ -84,8 +84,6 @@ hyperparameter_template = {
     "WEIGHTING" : "standard",           # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
     "DEFAULT_INITIALIZATION" : "new",   # ~~~ whether or not to take the prior as the initialization of the posterior
     "DEFAULT_PRIOR" : "old",
-    "GP_PRIOR" : False,                 # ~~~ whether or not to use a Gaussian process prior
-    "GP_PRIOR_ETA" : 0.001,             # ~~~ "stabilizing noise" added to the variance of the Gaussian process
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
@@ -271,7 +269,6 @@ if data_is_univariate:
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
-            forward = bnn.prior_forward if prior else ( lambda x: bnn(x,resample_weights=True) )
             predictions = bnn.prior_forward( grid, n=N_POSTERIOR_SAMPLES ) if prior else bnn( grid, n=N_POSTERIOR_SAMPLES )
         return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions.squeeze(), extra_std, HOW_MANY_INDIVIDUAL_PREDICTIONS, title )
     #
