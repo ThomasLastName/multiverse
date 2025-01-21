@@ -187,12 +187,14 @@ class simple_mean_zero_RPF_kernel_GP(RPF_kernel_GP):
     def __init__(
                 self,
                 out_features,
-                eta
+                bw = None,
+                scale = 1.,
+                eta = 0.001,
             ):
         super().__init__(
                 out_features = out_features,
-                etas = out_features*[eta],
-                bandwidths = None,
-                scales = None,
-                means = lambda x: torch.zeros( x.shape[0], self.out_features ).to( device=x.device, dtype=x.dtype )
+                means = lambda x: torch.zeros( x.shape[0], out_features ).to( device=x.device, dtype=x.dtype ),
+                bandwidths = None if (bw is None) else out_features*[bw],
+                scales = None if (scale is None) else out_features*[scale],
+                etas = out_features*[eta]
             )
