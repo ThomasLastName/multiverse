@@ -4,7 +4,7 @@ import os
 import torch
 import numpy as np
 from quality_of_life.my_base_utils import dict_to_json
-from bnns.experiments.paper.univar_det_nn import folder_name, DATA, ARCHITECTURE, LR
+from bnns.experiments.paper.univar.det_nn import folder_name, DATA, ARCHITECTURE, LR
 
 
 

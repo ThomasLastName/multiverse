@@ -4,7 +4,7 @@ import os
 import torch
 import numpy as np
 from quality_of_life.my_base_utils import dict_to_json, my_warn
-from bnns.experiments.paper.univar_BBB import folder_name
+from bnns.experiments.paper.univar.BBB import folder_name
 
 
 
