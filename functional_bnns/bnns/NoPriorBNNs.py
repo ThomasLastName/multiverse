@@ -170,8 +170,9 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         super().__init__()
         self.posterior_mean = nn.Sequential(*args)
         self.posterior_std  = nonredundant_copy_of_module_list( self.posterior_mean, sequential=True )
-        if auto_projection:
-            self.ensure_positive( forceful=True, verbose=False )
+        self.realized_standard_posterior_sample  =  nonredundant_copy_of_module_list(self.posterior_mean)  # ~~~ a "standard normal [or whatever] distribution in the shape of our neural network"
+        for p in self.realized_standard_posterior_sample.parameters(): p.requires_grad = False
+        if auto_projection: self.ensure_positive( forceful=True, verbose=False )
         #
         # ~~~ Basic information about the model: in_features, out_features, and n_layers
         self.n_layers = len(self.posterior_mean)
@@ -186,7 +187,6 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         #
         # ~~~ Define information about the location scale family
         self.posterior_log_density               =  LocationScaleLogDensity(posterior_standard_log_density)   # ~~~ the log density
-        self.realized_standard_posterior_sample  =  nonredundant_copy_of_module_list(self.posterior_mean)  # ~~~ a "standard normal [or whatever] distribution in the shape of our neural network"
         self.posterior_standard_initializer      =  posterior_standard_initializer    # ~~~ modifies its argument's data argument in place, which is "ducky" (https://en.wikipedia.org/wiki/Duck_typing)
         self.posterior_standard_sampler          =  posterior_standard_sampler        # ~~~ returns random samples from the
         self.sample_from_standard_posterior(counter_on=False)
@@ -254,9 +254,9 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     def apply_chain_rule_for_soft_projection(self):
         with torch.no_grad():
             for p in self.posterior_std.parameters():
-                p.data = self.soft_projection_inv(p.data)           # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
+                p.data = self.soft_projection_inv(p.data)               # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
                 try:
-                    p.grad *= self.soft_projection_prime(p.data)    # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
+                    p.grad.data *= self.soft_projection_prime(p.data)    # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
                 except:
                     if p.grad is None:
                         my_warn("`apply_chain_rule_for_soft_projection` operates directly on the `grad` attributes of the parameters. It should be applied *after* `backwards` is called.")
@@ -425,7 +425,7 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         return mu_theta, Sigma_theta
     #
     # ~~~ In the common case that the inputs are standardized, then standard random normal vectors are "points like our model's inputs"
-    def sample_new_measurement_set( self, n=64, after_how_many_batches_to_warn=100, tol=0.25 ):
+    def sample_new_measurement_set( self, n=64, after_how_many_batches_to_warn=500, tol=0.25 ):
         #
         # ~~~ Attempt to assess validity of this default implementaiton
         if not isinstance( self.posterior_mean[0], nn.Linear ):
@@ -464,11 +464,11 @@ class ConventionalVariationalFamilyBNN(IndependentLocationScaleSequentialBNN):
     #
     # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
     def setup_soft_projection( self, method="Blundell" ):
-        if method=="Blundell":
+        if method == "Blundell":
             self.soft_projection = lambda x: torch.log( 1 + torch.exp(x) )
             self.soft_projection_inv = lambda x: torch.log( torch.exp(x) - 1 )
             self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
-        elif method=="torchbnn":
+        elif method == "torchbnn":
             self.soft_projection = lambda x: torch.exp(x)
             self.soft_projection_inv = lambda x: torch.log(x)
             self.soft_projection_prime = lambda x: torch.exp(x)
