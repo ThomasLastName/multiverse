@@ -84,11 +84,20 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
         marginal_log_probs1  = -(w_sampled/self.sigma1)**2/2 - torch.log( math.sqrt(2*torch.pi)*self.sigma1 )
         marginal_log_probs2  = -(w_sampled/self.sigma2)**2/2 - torch.log( math.sqrt(2*torch.pi)*self.sigma2 )
         # marginal_log_density =  ( self.pi * marginal_log_probs1.exp() + (1-self.pi) * marginal_log_probs2.exp() ).log()
+        # marginal_log_density = torch.where(
+        #         torch.bitwise_or(
+        #                 torch.isnan(marginal_log_density),
+        #                 marginal_log_density.abs() == torch.inf
+        #             ),
+        #         torch.maximum(
+        #                 self.pi.log() + marginal_log_probs1,
+        #             (1-self.pi).log() + marginal_log_probs2
+        #         ),
+        #         marginal_log_density
+        #     )
+        # return marginal_log_density.sum()
         #
-        # ~~~ If underflow/overflow, employ the approximation log( a*exp(x) + b*exp(y) ) \approx max( log(a)+x, log(b)+y )
-        # self.marginal_log_probs1 = marginal_log_probs1
-        # self.marginal_log_probs2 = marginal_log_probs2
-        # return marginal_log_density.sum() if marginal_log_density.abs().max()<torch.inf else
+        # ~~~ If underflow/overflow, employ the approximation log( a*exp(x) + b*exp(y) ) \approx max( log(a)+x, log(b)+y ); viz. latter \leq former \leq \ln(2) + latter
         return torch.maximum(
                     self.pi.log() + marginal_log_probs1,
                 (1-self.pi).log() + marginal_log_probs2
