@@ -77,7 +77,7 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
         # ~~~ Gather the posterior parameters with repsect to which the expectation is computed
         mu_post     =  flatten_parameters(self.posterior_mean)
         sigma_post  =  flatten_parameters(self.posterior_std)
-        z_sampled   =  flatten_parameters(self.realized_standard_posterior_sample_sample)
+        z_sampled   =  flatten_parameters(self.realized_standard_posterior_sample)
         w_sampled   =  mu_post + sigma_post*z_sampled   # ~~~ w_sampled==F_\theta(z_sampled)
         #
         # ~~~ Compute the log_density of a Gaussian mixture (equation (7) in https://arxiv.org/abs/1505.05424)
@@ -157,6 +157,7 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
             self.prior_mean = nonredundant_copy_of_module_list(self.posterior_mean)
             self.prior_std  = nonredundant_copy_of_module_list(self.posterior_mean)
             self.realized_standard_prior_sample = nonredundant_copy_of_module_list(self.posterior_mean)
+            for p in self.realized_standard_prior_sample.parameters(): p.requires_grad = False
             #
             # ~~~ Don't train the prior
             for (mu,sigma) in zip( self.prior_mean.parameters(), self.prior_std.parameters() ):
@@ -186,13 +187,13 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
         try:
             scale = kwargs["scale"]
         except KeyError:
-            scale = self.scale
+            scale = self.default_scale
             my_warn(f'Key word argument `scale` not specified (should be positive, float); using default "{scale}".')
         #
         # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
         if not scale>0:
             raise ValueError(f'Variable `scale` should be a positive float.')
-        if not prior_type in ("torch.nn.init","Tom","IID"):
+        if not prior_type in ( "torch.nn.init", "Tom", "IID" ):
             raise ValueError('Variable `prior_type` should be one of "torch.nn.init", "Tom", or "IID".')
         scale = scale if isinstance(scale,torch.Tensor) else torch.tensor(scale)
         #
