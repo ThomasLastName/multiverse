@@ -83,10 +83,13 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
         # ~~~ Compute the log_density of a Gaussian mixture (equation (7) in https://arxiv.org/abs/1505.05424)
         marginal_log_probs1  = -(w_sampled/self.sigma1)**2/2 - torch.log( math.sqrt(2*torch.pi)*self.sigma1 )
         marginal_log_probs2  = -(w_sampled/self.sigma2)**2/2 - torch.log( math.sqrt(2*torch.pi)*self.sigma2 )
-        marginal_log_density =  ( self.pi * marginal_log_probs1.exp() + (1-self.pi) * marginal_log_probs2.exp() ).log()
+        # marginal_log_density =  ( self.pi * marginal_log_probs1.exp() + (1-self.pi) * marginal_log_probs2.exp() ).log()
         #
         # ~~~ If underflow/overflow, employ the approximation log( a*exp(x) + b*exp(y) ) \approx max( log(a)+x, log(b)+y )
-        return marginal_log_density.sum() if marginal_log_density.abs().max()<torch.inf else torch.maximum(
+        # self.marginal_log_probs1 = marginal_log_probs1
+        # self.marginal_log_probs2 = marginal_log_probs2
+        # return marginal_log_density.sum() if marginal_log_density.abs().max()<torch.inf else
+        return torch.maximum(
                     self.pi.log() + marginal_log_probs1,
                 (1-self.pi).log() + marginal_log_probs2
             ).sum()
