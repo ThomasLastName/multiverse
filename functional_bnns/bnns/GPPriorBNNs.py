@@ -24,6 +24,7 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
                 *args,
                 likelihood_std = torch.tensor(0.001),
                 auto_projection = True,
+                prior_sample_generator = None,
                 #
                 # ~~~ Specify the location-scale family of the variational distribution
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ), # ~~~ should be a callable that accepts generic torch.tensors as input but also works on numpy arrays
@@ -36,6 +37,7 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
                 posterior_standard_log_density = posterior_standard_log_density,
                 posterior_standard_sampler     = posterior_standard_sampler
             )
+        self.prior_sample_generator = prior_sample_generator
         self.default_bw = None      # ~~~ the median distance between training data is used if `None`
         self.default_scale = None   # ~~~ a list of all 1.'s is used if `None`
         self.default_eta = 0.001    # ~~~ add eta*I to the covariance matrices in the GP for numerical stability
@@ -76,7 +78,7 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
         mu, root_Sigma = self.GP.prior_mu_and_Sigma( x, cholesky=True )
         assert root_Sigma.shape == ( self.out_features, x.shape[0], x.shape[0] )
         assert mu.shape == ( x.shape[0], self.out_features )
-        IID_standard_normal_samples = torch.randn( self.out_features,x.shape[0],n, device=x.device, dtype=x.dtype )
+        IID_standard_normal_samples = torch.randn( self.out_features,x.shape[0],n, generator=self.prior_sample_generator, device=x.device, dtype=x.dtype )
         #
         # ~~~ Sample from the N(mu,Sigma) distribution by taking m u +Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
         return mu + torch.bmm( root_Sigma, IID_standard_normal_samples ).permute(2,1,0) # ~~~ returns a shape consistent with the output of `forward` and the assumption bnns.metrics: ( n_samples, n_test, n_out_features ), i.e., ( n, x.shape[0], self.out_features )
@@ -92,14 +94,17 @@ class GPPrior2023BNN(GPPriorBNN):
                 self,
                 *args,
                 likelihood_std = torch.tensor(0.001),
-                auto_projection = True
+                auto_projection = True,
+                posterior_sample_generator = None,
+                prior_sample_generator = None
             ):
         super().__init__(
                 *args,
                 likelihood_std = likelihood_std,
                 auto_projection = auto_projection,
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                posterior_standard_sampler     = torch.randn,
+                posterior_standard_sampler     = lambda *args, **kwargs: torch.randn( *args, generator=posterior_sample_generator, **kwargs ),
+                prior_sample_generator = prior_sample_generator
             )
         self.post_approximation_eta = 0.01
     # ~~~

@@ -23,6 +23,7 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
                 *args,
                 likelihood_std  = torch.tensor(0.001),
                 auto_projection = True,
+                prior_sample_generator = None,
                 #
                 # ~~~ For the variational family, use "fully factored Gaussian weights" by default (to use another location-scale family, change these 3 argumetns)
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
@@ -37,6 +38,7 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
             )
         #
         # ~~~ Set default values for hyper-parameters of the prior found here: https://github.com/danielkelshaw/WeightUncertainty/blob/master/torchwu/bayes_linear.py
+        self.prior_sample_generator = prior_sample_generator
         self.default_pi = torch.tensor(0.5) # ~~~ WARNING: this is not the mathematical constant pi\approx3.14. I don't appreciate Blundell et al.'s use of "\pi" to refer to a value between 0 and 1...
         self.default_sigma1 = torch.tensor(1.)
         self.default_sigma2 = torch.tensor(0.002)
@@ -116,13 +118,13 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
             else:
                 #
                 # ~~~ Define a matrix full of samples from the Gaussian mixture prior (see https://stats.stackexchange.com/questions/70855/generating-random-variables-from-a-mixture-of-normal-distributions)
-                u_weight =  torch.rand( n,*layer.weight.shape, dtype=x.dtype, device=x.device )
-                z_weight = torch.randn( n,*layer.weight.shape, dtype=x.dtype, device=x.device )
+                u_weight =  torch.rand( n,*layer.weight.shape, generator=self.prior_sample_generator, dtype=x.dtype, device=x.device )
+                z_weight = torch.randn( n,*layer.weight.shape, generator=self.prior_sample_generator, dtype=x.dtype, device=x.device )
                 A = torch.where( u_weight<self.pi, self.sigma1*z_weight, self.sigma2*z_weight ) # ~~~ indices where u<pi are a sample from N(0,sigma1^2), and indices where u>pi are a sample from N(0,sigma2^2)
                 x = torch.bmm( x, A.transpose(1,2) )                                             # ~~~ apply the appropriately distributed weights to this layer's input using batched matrix multiplication
                 if layer.bias is not None:
-                    u_bias =  torch.rand( n, 1, *layer.bias.shape, dtype=x.dtype, device=x.device )
-                    z_bias = torch.randn( n, 1, *layer.bias.shape, dtype=x.dtype, device=x.device )
+                    u_bias =  torch.rand( n, 1, *layer.bias.shape, generator=self.prior_sample_generator, dtype=x.dtype, device=x.device )
+                    z_bias = torch.randn( n, 1, *layer.bias.shape, generator=self.prior_sample_generator, dtype=x.dtype, device=x.device )
                     x += torch.where( u_bias<self.pi, self.sigma1*z_bias, self.sigma2*z_bias )  # ~~~ apply the appropriately distributed biases
         return x
 
@@ -272,7 +274,9 @@ class ConventionalBNN(ConventionalWeightPriorBNN):
                 self,
                 *args,
                 likelihood_std = torch.tensor(0.001),
-                auto_projection = True
+                auto_projection = True,
+                posterior_sample_generator = None,
+                prior_sample_generator = None
             ):
         super().__init__(
                 *args,
@@ -281,11 +285,11 @@ class ConventionalBNN(ConventionalWeightPriorBNN):
                 #
                 # ~~~ For the variational family, use "fully factored Gaussian weights"
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                posterior_standard_sampler     = torch.randn,
+                posterior_standard_sampler     = lambda *args, **kwargs: torch.randn( *args, generator=posterior_sample_generator, **kwargs ),
                 #
                 # ~~~ Use a "fully factored Gaussian prior" on weights
                 prior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                prior_standard_sampler     = torch.randn,
+                prior_standard_sampler     = lambda *args, **kwargs: torch.randn( *args, generator=prior_sample_generator, **kwargs ),
             )
     #
     # ~~~ Specify an exact formula for the KL divergence
