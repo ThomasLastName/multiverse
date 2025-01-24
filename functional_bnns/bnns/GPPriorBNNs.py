@@ -103,7 +103,8 @@ class GPPrior2023BNN(GPPriorBNN):
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
                 posterior_standard_initializer = nn.init.normal_,
                 posterior_standard_sampler     = torch.randn,
-        )
+            )
+        self.post_approximation_eta = 0.01
     # ~~~
     #
     ### ~~~
