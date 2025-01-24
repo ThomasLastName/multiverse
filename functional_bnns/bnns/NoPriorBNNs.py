@@ -159,7 +159,7 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     def __init__(
                 self,
                 *args,
-                likelihood_std = torch.tensor(0.001),
+                likelihood_std = torch.tensor(0.01),
                 auto_projection = True,
                 posterior_standard_log_density, # ~~~ should be a callable that accepts generic torch.tensors as input but also works on numpy arrays, e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
                 posterior_standard_initializer, # ~~~ should modify its argument's `data` attribute in place and return None
