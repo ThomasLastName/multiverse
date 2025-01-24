@@ -69,14 +69,14 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
         self.sigma1 = sigma1 if isinstance(sigma1,torch.Tensor) else torch.tensor(sigma1)
         self.sigma2 = sigma2 if isinstance(sigma2,torch.Tensor) else torch.tensor(sigma2)
     #
-    # ~~~ Evaluate the log of the prior density (equation (7) in https://arxiv.org/abs/1505.05424)
+    # ~~~ Evaluate the log of the prior density (equation (7) in https://arxiv.org/abs/1505.05424) at a point sampled from the variational distribution
     def estimate_expected_prior_log_density(self):
         #
         # ~~~ Gather the posterior parameters with repsect to which the expectation is computed
         mu_post     =  flatten_parameters(self.posterior_mean)
         sigma_post  =  flatten_parameters(self.posterior_std)
         z_sampled   =  flatten_parameters(self.realized_standard_posterior_sample)
-        w_sampled   =  mu_post + sigma_post*z_sampled   # ~~~ w_sampled==F_\theta(z_sampled)
+        w_sampled   =  mu_post + sigma_post*z_sampled   # ~~~ w_sampled == F_\theta(z_sampled) is a sample from the variational distribution
         #
         # ~~~ Compute the log_density of a Gaussian mixture (equation (7) in https://arxiv.org/abs/1505.05424)
         marginal_log_probs1  = -(w_sampled/self.sigma1)**2/2 - torch.log( math.sqrt(2*torch.pi)*self.sigma1 )
@@ -163,8 +163,6 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
             # ~~~ First copy the architecture
             self.prior_mean = nonredundant_copy_of_module_list(self.posterior_mean)
             self.prior_std  = nonredundant_copy_of_module_list(self.posterior_mean)
-            self.realized_standard_prior_sample = nonredundant_copy_of_module_list(self.posterior_mean)
-            for p in self.realized_standard_prior_sample.parameters(): p.requires_grad = False
             #
             # ~~~ Don't train the prior
             for (mu,sigma) in zip( self.prior_mean.parameters(), self.prior_std.parameters() ):
@@ -231,24 +229,13 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
                         layer.bias.data *= scale
                     break
     #
-    # ~~~ Sample according to a "standard normal [or other] distribution in the shape of our neural network"
-    def sample_from_standard_prior(self):
-        with torch.no_grad():   # ~~~ theoretically the `no_grad()` context is redundant and unnecessary, but idk why not use it
-            for p in self.realized_standard_prior_sample.parameters():
-                p.data = self.prior_standard_sampler( *p.shape, device=p.device, dtype=p.dtype )
-    #
-    # ~~~ Allow a different standard distribution for the prior and posterior
-    def resample_weights(self):
-        self.sample_from_standard_posterior()
-        self.sample_from_standard_prior()
-    #
     # ~~~ Compute \ln( f_W(F_\theta(z)) ) at a point w sampled from the standard MVN distribution, where f_W is the prior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
     def estimate_expected_prior_log_density(self):
         mu_post     =  flatten_parameters(self.posterior_mean)
         sigma_post  =  flatten_parameters(self.posterior_std)
         mu_prior    =  flatten_parameters(self.prior_mean)
         sigma_prior =  flatten_parameters(self.prior_std)
-        z_sampled   =  flatten_parameters(self.realized_standard_prior_sample)
+        z_sampled   =  flatten_parameters(self.realized_standard_posterior_sample)
         w_sampled   =  mu_post + sigma_post*z_sampled   # ~~~ w_sampled==F_\theta(z_sampled)
         return self.prior_log_density( where=w_sampled, mu=mu_prior, sigma=sigma_prior )
     #
@@ -300,11 +287,6 @@ class ConventionalBNN(ConventionalWeightPriorBNN):
                 prior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
                 prior_standard_sampler     = torch.randn,
             )
-        #
-        # ~~~ Use the same "random seed" for both the prior and posterior ("this is an instance of a variance reduction technique known as common random numbers" source: https://arxiv.org/abs/1505.05424)
-        for (z_post,z_prior) in zip( self.realized_standard_posterior_sample.parameters(), self.realized_standard_prior_sample.parameters() ):
-            z_post.data = z_prior.data  # ~~~ updates to one are, also, reflected in the other after this
-        self.sample_from_standard_posterior(counter_on=False)
     #
     # ~~~ Specify an exact formula for the KL divergence
     def compute_exact_weight_kl(self):
