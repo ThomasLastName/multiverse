@@ -114,9 +114,10 @@ class GPPrior2023BNN(GPPriorBNN):
     def gaussian_kl( self, resample_measurement_set=True, add_stabilizing_noise=True, approximate_mean=False ):
         #
         # ~~~ If the variational farmily on the weights is not independent normal, then the formula for the KL divergence is not valid
-        if (not self.passed_normal_test) and (not self.already_warned_about_normal_test):
-            my_warn("The formula for the KL divergence implemented currently is invalid when the weights are not modeled as independent normal.")
-            self.already_warned_about_normal_test = True
+        # TODO implement normal test
+        # if (not self.passed_normal_test) and (not self.already_warned_about_normal_test):
+        #     my_warn("The formula for the KL divergence implemented currently is invalid when the weights are not modeled as independent normal.")
+        #     self.already_warned_about_normal_test = True
         #
         # ~~~ Get the mean and covariance of (the Gaussian approximation of) the predicted distribution of yhat
         mu_theta, Sigma_theta = self.mean_and_covariance_of_first_order_approximation( resample_measurement_set=resample_measurement_set, approximate_mean=approximate_mean )
