@@ -190,7 +190,7 @@ try:
     class MODEL_WITH_MEAS_SET_SAMPLER(MODEL):
         def __init__(self,*args,**kwargs):
             super().__init__(*args,**kwargs)
-        def sample_new_measurement_set(self,n=N_MEAS):
+        def resample_measurement_set(self,n=N_MEAS):
             return sampler(self,n)
     BNN = MODEL_WITH_MEAS_SET_SAMPLER(
             *architecture,
@@ -199,7 +199,7 @@ try:
         )
 except:
     if MEASUREMENT_SET_SAMPLER is not None:
-        my_warn("Unable to load/define the `sample_new_measurement_set` method.")
+        my_warn("Unable to load/define the `resample_measurement_set` method.")
     BNN = MODEL(
             *architecture,
             likelihood_std = torch.tensor(LIKELIHOOD_STD),

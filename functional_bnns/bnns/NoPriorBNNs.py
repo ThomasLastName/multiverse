@@ -93,8 +93,8 @@ class BayesianModule(nn.Module):
     #
     # ~~~ Generate a fresh grid of several "points like our model's inputs" from the input domain
     @abstractmethod
-    def sample_new_measurement_set(self,n=64):
-        raise NotImplementedError("The base class BayesianModule leaves the `sample_new_measurement_set` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
+    def resample_measurement_set(self,n=64):
+        raise NotImplementedError("The base class BayesianModule leaves the `resample_measurement_set` method to be implemented in user-defined sub-classes. For a ready-to-use implementation, please see the sub-classes of BayesianModule that are provided with the package.")
         self.measurement_set = some_grid_of_n_points
     #
     # ~~~ Instantiate the SSGE estimator of the prior score, using samples from the prior distribution
@@ -119,7 +119,7 @@ class BayesianModule(nn.Module):
         #
         # ~~~ If `resample_measurement_set==True` then generate a new meausrement set
         if resample_measurement_set:
-            self.sample_new_measurement_set()
+            self.resample_measurement_set()
         #
         # ~~~ Prepare for using SSGE to estimate some of the gradient terms
         with torch.no_grad():
@@ -365,7 +365,7 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         #
         # ~~~ If `resample_measurement_set==True` then generate a new meausrement set
         if resample_measurement_set:
-            self.sample_new_measurement_set()
+            self.resample_measurement_set()
         #
         # ~~~ Assume that the final layer of the architecture is linear, as per the paper's suggestion to take \beta as the parameters of the final layer (very bottom of pg. 4 https://arxiv.org/pdf/2312.17199)
         if not isinstance( self.posterior_mean[-1], nn.Linear ):
@@ -425,16 +425,16 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         return mu_theta, Sigma_theta
     #
     # ~~~ In the common case that the inputs are standardized, then standard random normal vectors are "points like our model's inputs"
-    def sample_new_measurement_set( self, n=64, after_how_many_batches_to_warn=500, tol=0.25 ):
+    def resample_measurement_set( self, n=64, after_how_many_batches_to_warn=500, tol=0.25 ):
         #
         # ~~~ Attempt to assess validity of this default implementaiton
         if not isinstance( self.posterior_mean[0], nn.Linear ):
-            my_warn("Because the first model layer is not a linear layer, the default implementation of `sample_new_measurement_set` may fail. If so (or to avoid this warning message), please sub-class the model you wish to use and implement sample_new_measurement_set() for the sub-class.")
+            my_warn("Because the first model layer is not a linear layer, the default implementation of `resample_measurement_set` may fail. If so (or to avoid this warning message), please sub-class the model you wish to use and implement resample_measurement_set() for the sub-class.")
         if len(self.first_moments_of_input_batches)==after_how_many_batches_to_warn:   # ~~~ warn only once, using a sample size of 100
             estimated_mean_of_all_inputs = torch.stack(self.first_moments_of_input_batches).mean(dim=0)
             estimated_var_of_all_inputs  = torch.stack(self.second_moments_of_input_batches).mean(dim=0) - estimated_mean_of_all_inputs**2  # ~~~ var(X) = E(X^2) - E(X)^2
             if estimated_mean_of_all_inputs.abs().max()>tol or estimated_var_of_all_inputs.max()>1+tol:
-                my_warn("the default implementation of `sample_new_measurement_set` assumes inputs are N(0,1) however this assumption appears to be violated. Please consider programming a data-specific implementation of `sample_new_measurement_set` for better results.")
+                my_warn("the default implementation of `resample_measurement_set` assumes inputs are N(0,1) however this assumption appears to be violated. Please consider programming a data-specific implementation of `resample_measurement_set` for better results.")
         #
         # ~~~ Do the default implementation
         device, dtype = self.infer_device_and_dtype()
