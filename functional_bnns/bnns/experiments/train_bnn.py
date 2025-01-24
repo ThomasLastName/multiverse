@@ -45,7 +45,7 @@ hyperparameter_template = {
     "DTYPE" : "float",
     "SEED" : 2024,
     #
-    # ~~~ Which problem
+    # ~~~ Which problem, broadly spaking
     "DATA" : "univar_missing_middle",
 	"ARCHITECTURE" : "univar_NN.univar_NN_100_100",
 	"MODEL": "MixtureWeightPrior2015BNN",
@@ -62,15 +62,14 @@ hyperparameter_template = {
     "MEASUREMENT_SET_SAMPLER" : "data_only",# ~~~ load this function from the same file where data is loaded from
     "N_MEAS" : 100,                 # ~~~ desired size of measurement set
     "EXACT_WEIGHT_KL" : True,       # ~~~ whether to use the exact KL divergence between the prior and posterior (True) or a Monte-Carlo approximation (False)
-    "PROJECTION_METHOD" : "HARD",   # ~~~ if True, use projected gradient descent; else use the weird thing from the paper
-    "PROJECTION_TOL" : 1e-6,        # ~~~ for numerical reasons, project onto [PROJECTION_TOL,Inf), rather than onto [0,Inft)
+    "PROJECTION_METHOD" : "HARD",   # ~~~ if "HARD", use projected gradient descent; else use the weird thing from the paper
     "PRIOR_J"   : 100,              # ~~~ `J` in the SSGE of the prior score
     "POST_J"    : 10,               # ~~~ `J` in the SSGE of the posterior score
-    "PRIOR_eta" : 0.5,              # ~~~ `eta` in the SSGE of the prior score
-    "POST_eta"  : 0.5,              # ~~~ `eta` in the SSGE of the posterior score
+    "PRIOR_ETA" : 0.5,              # ~~~ `eta` in the SSGE of the prior score
+    "POST_ETA"  : 0.5,              # ~~~ `eta` in the SSGE of the posterior score
     "PRIOR_M"   : 4000,             # ~~~ `M` in the SSGE of the prior score
     "POST_M"    : 40,               # ~~~ `M` in the SSGE of the posterior score
-    "POST_GP_eta" : 0.001,          # ~~~ the level of the "stabilizing noise" added to the Gaussian approximation of the posterior distribution if `gaussian_approximation` is True
+    "POST_GP_ETA" : 0.001,          # ~~~ the level of the "stabilizing noise" added to the Gaussian approximation of the posterior distribution if `gaussian_approximation` is True
     "LIKELIHOOD_STD" : 0.19,
     "OPTIMIZER" : "Adam",
     "LR" : 0.0005,
@@ -83,7 +82,6 @@ hyperparameter_template = {
     "N_MC_SAMPLES" : 1,
     "WEIGHTING" : "standard",           # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
     "DEFAULT_INITIALIZATION" : "new",   # ~~~ whether or not to take the prior as the initialization of the posterior
-    "DEFAULT_PRIOR" : "old",
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
@@ -200,6 +198,8 @@ try:
             auto_projection = (PROJECTION_METHOD=="HARD")
         )
 except:
+    if MEASUREMENT_SET_SAMPLER is not None:
+        my_warn("Unable to load/define the `sample_new_measurement_set` method.")
     BNN = MODEL(
             *architecture,
             likelihood_std = torch.tensor(LIKELIHOOD_STD),
@@ -210,18 +210,19 @@ BNN = BNN.to( device=DEVICE, dtype=DTYPE )
 BNN.set_prior_hyperparameters( **hyperparameters )
 BNN.prior_J = PRIOR_J                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_J = POST_J                                 # ~~~ SSGE accuracyhyperparameter (only relevant for Sun et al. 2019)
-BNN.prior_eta = PRIOR_eta                           # ~~~ stabilizing noise for SSGE (only relevant for Sun et al. 2019)
-BNN.post_eta = POST_eta                             # ~~~ stabilizing noise for SSGE (only relevant for Sun et al. 2019)
+BNN.prior_eta = PRIOR_ETA                           # ~~~ stabilizing noise for SSGE (only relevant for Sun et al. 2019)
+BNN.post_eta = POST_ETA                             # ~~~ stabilizing noise for SSGE (only relevant for Sun et al. 2019)
 BNN.prior_M = PRIOR_M                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
 BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
-BNN.post_GP_eta = POST_GP_eta                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
+BNN.post_GP_ETA = POST_GP_ETA                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
 
 if DEFAULT_INITIALIZATION in ("new","old"):
     BNN.set_default_uncertainty(DEFAULT_INITIALIZATION=="new")
 
 if not PROJECTION_METHOD=="HARD":
     BNN.setup_soft_projection(PROJECTION_METHOD)
-    BNN.apply_soft_projection()
+    if DEFAULT_INITIALIZATION is None:
+        BNN.apply_soft_projection()
 
 
 
@@ -387,6 +388,9 @@ while keep_training:
                     # ~~~ Draw a new monte carlo sample from the approximate posterior
                     BNN.resample_weights()
                     #
+                    # ~~~ Compute the likelihood term (this is the same for all training methods)
+                    log_likelihood_density = BNN.estimate_expected_log_likelihood( X, y, use_input_in_next_measurement_set=True )
+                    #
                     # ~~~ Compute the KL divergence of the (approximate) posterior against the user-specified prior
                     if not FUNCTIONAL:
                         kl_div = BNN.weight_kl(exact_formula=EXACT_WEIGHT_KL)
@@ -394,9 +398,6 @@ while keep_training:
                         kl_div = BNN.functional_kl()
                     else:
                         kl_div = BNN.gaussian_kl(approximate_mean=APPPROXIMATE_GAUSSIAN_MEAN)
-                    #
-                    # ~~~ Compute the likelihood term (this is the same for all training methods)
-                    log_likelihood_density = BNN.estimate_expected_log_likelihood( X, y, use_input_in_next_measurement_set=True )
                     #
                     # ~~~ Compute the loss==negative_ELBO
                     alpha, beta = decide_weights( b=b, n_batches=n_batches, X=X, D_train=D_train )
