@@ -27,7 +27,6 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
                 #
                 # ~~~ Specify the location-scale family of the variational distribution
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ), # ~~~ should be a callable that accepts generic torch.tensors as input but also works on numpy arrays
-                posterior_standard_initializer = nn.init.normal_,                                       # ~~~ should modify its argument's `data` attribute in place and return None
                 posterior_standard_sampler     = torch.randn                                            # ~~~ should return a tensor of random samples from the reference distribution
         ):
         super().__init__(
@@ -35,7 +34,6 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
                 likelihood_std = likelihood_std,
                 auto_projection = auto_projection,
                 posterior_standard_log_density = posterior_standard_log_density,
-                posterior_standard_initializer = posterior_standard_initializer,
                 posterior_standard_sampler     = posterior_standard_sampler
             )
         self.default_bw = None      # ~~~ the median distance between training data is used if `None`
@@ -101,7 +99,6 @@ class GPPrior2023BNN(GPPriorBNN):
                 likelihood_std = likelihood_std,
                 auto_projection = auto_projection,
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                posterior_standard_initializer = nn.init.normal_,
                 posterior_standard_sampler     = torch.randn,
             )
         self.post_approximation_eta = 0.01

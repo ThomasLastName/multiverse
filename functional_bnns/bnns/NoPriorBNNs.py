@@ -162,7 +162,6 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
                 likelihood_std = torch.tensor(0.01),
                 auto_projection = True,
                 posterior_standard_log_density, # ~~~ should be a callable that accepts generic torch.tensors as input but also works on numpy arrays, e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
-                posterior_standard_initializer, # ~~~ should modify its argument's `data` attribute in place and return None
                 posterior_standard_sampler      # ~~~ should return a tensor of random samples from the reference distribution
             ):
         #
@@ -187,7 +186,6 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
         #
         # ~~~ Define information about the location scale family
         self.posterior_log_density               =  LocationScaleLogDensity(posterior_standard_log_density)   # ~~~ the log density
-        self.posterior_standard_initializer      =  posterior_standard_initializer    # ~~~ modifies its argument's data argument in place, which is "ducky" (https://en.wikipedia.org/wiki/Duck_typing)
         self.posterior_standard_sampler          =  posterior_standard_sampler        # ~~~ returns random samples from the
         self.sample_from_standard_posterior(counter_on=False)
         #
@@ -223,7 +221,7 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
             #
             # ~~~ Implement the actual funcitonality of this method
             for p in self.realized_standard_posterior_sample.parameters():
-                self.posterior_standard_initializer(p)
+                p.data = self.posterior_standard_sampler( *p.shape, device=p.device, dtype=p.dtype )
             if counter_on:
                 self.n_mc_samples += 1
     #

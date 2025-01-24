@@ -26,7 +26,6 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
                 #
                 # ~~~ For the variational family, use "fully factored Gaussian weights" by default (to use another location-scale family, change these 3 argumetns)
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                posterior_standard_initializer = nn.init.normal_,
                 posterior_standard_sampler     = torch.randn,
             ):
         super().__init__(
@@ -34,7 +33,6 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
                 likelihood_std  = likelihood_std,
                 auto_projection = auto_projection,
                 posterior_standard_log_density = posterior_standard_log_density,
-                posterior_standard_initializer = posterior_standard_initializer,
                 posterior_standard_sampler     = posterior_standard_sampler
             )
         #
@@ -145,12 +143,10 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
                 #
                 # ~~~ Specify the location-scale family of the variational distribution
                 posterior_standard_log_density, # ~~~ should be a callable that accepts generic torch.tensors as input but also works on numpy arrays, e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
-                posterior_standard_initializer, # ~~~ should modify its argument's `data` attribute in place and return None
                 posterior_standard_sampler,     # ~~~ should return a tensor of random samples from the reference distribution
                 #
                 # ~~~ Specify the location-scale family of the prior distribution
                 prior_standard_log_density, # ~~~ too should be a callable that accepts generic torch.tensors as input but also works on numpy arrays, e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
-                prior_standard_initializer, # ~~~ too should modify its argument's `data` attribute in place and return None
                 prior_standard_sampler,     # ~~~ too should return a tensor of random samples from the reference distribution
             ):
         super().__init__(
@@ -158,7 +154,6 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
                 likelihood_std = likelihood_std,
                 auto_projection = auto_projection,
                 posterior_standard_log_density = posterior_standard_log_density,
-                posterior_standard_initializer = posterior_standard_initializer,
                 posterior_standard_sampler     = posterior_standard_sampler
             )
         #
@@ -179,7 +174,6 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
             #
             # ~~~ Set the formulas used for evaluating the log prior pdf and/or sampling from the prior distribution
             self.prior_log_density          = LocationScaleLogDensity(prior_standard_log_density)
-            self.prior_standard_initializer = prior_standard_initializer
             self.prior_standard_sampler     = prior_standard_sampler
             #
             # ~~~ Set the prior standard deviations
@@ -241,7 +235,7 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
     def sample_from_standard_prior(self):
         with torch.no_grad():   # ~~~ theoretically the `no_grad()` context is redundant and unnecessary, but idk why not use it
             for p in self.realized_standard_prior_sample.parameters():
-                self.prior_standard_initializer(p)
+                p.data = self.prior_standard_sampler( *p.shape, device=p.device, dtype=p.dtype )
     #
     # ~~~ Allow a different standard distribution for the prior and posterior
     def resample_weights(self):
@@ -300,12 +294,10 @@ class ConventionalBNN(ConventionalWeightPriorBNN):
                 #
                 # ~~~ For the variational family, use "fully factored Gaussian weights"
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                posterior_standard_initializer = nn.init.normal_,
                 posterior_standard_sampler     = torch.randn,
                 #
                 # ~~~ Use a "fully factored Gaussian prior" on weights
                 prior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                prior_standard_initializer = nn.init.normal_,
                 prior_standard_sampler     = torch.randn,
             )
         #
