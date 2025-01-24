@@ -25,12 +25,12 @@ class BayesianModule(nn.Module):
         super().__init__()
         #
         # ~~~ Attributes for SSGE, used for computing gradients of the loss from Sun et al. 2019 (https://arxiv.org/abs/1903.05779)
-        self.prior_J   = "please specify"
-        self.post_J    = "please specify"
-        self.prior_eta = "please specify"
-        self.post_eta  = "please specify"
-        self.prior_M   = "please specify"
-        self.post_M    = "please specify"
+        self.prior_J   =  20
+        self.post_J    =  100
+        self.prior_eta =  0.01
+        self.post_eta  =  0.05
+        self.prior_M   =  2000
+        self.post_M    =  100
         self.prior_SSGE = None
     #
     # ~~~ Resample from whatever is source is used to seed the samples drawn from the variational distribution
