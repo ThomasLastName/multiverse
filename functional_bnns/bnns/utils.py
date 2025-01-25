@@ -59,15 +59,16 @@ def std_per_layer(linear_layer):
 class LocationScaleLogDensity:
     #
     # ~~~ Store the standard log density and test that it is, indeed, standard
-    def __init__( self, standard_log_density ):
+    def __init__( self, standard_log_density, check_moments=True ):
         self.standard_log_density = standard_log_density
-        try:
-            self.test_mean_zero_unit_variance()
-        except:
-            my_warn("Unable to verify mean zero and unit variance in the standard log density")
+        if check_moments:
+            try:
+                self.check_mean_zero_unit_variance()
+            except:
+                my_warn("Unable to verify mean zero and unit variance in the standard log density. To surpress this warning, pass `check_moments=False` in the `__init__` method.")
     #
     # ~~~ Test that the supposedly "standard" log density has mean zero and unit variance
-    def test_mean_zero_unit_variance( self, tol=1e-5 ):
+    def check_mean_zero_unit_variance( self, tol=1e-5 ):
         mean, err_mean = quad( lambda z: z*np.exp(self.standard_log_density(z)), -np.inf, np.inf )
         var, err_var = quad( lambda z: z**2*np.exp(self.standard_log_density(z)), -np.inf, np.inf )
         if abs(mean)>tol or abs(var-1)>tol or err_mean>tol or err_var>tol:
