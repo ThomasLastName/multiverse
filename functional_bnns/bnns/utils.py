@@ -202,6 +202,16 @@ def diagonal_gaussian_kl( mu_0, sigma_0, mu_1, sigma_1 ):
             + (((mu_1-mu_0)/sigma_1)**2).sum()          # ~~~ the diagonal case of "(mu_0-mu_1)^TSigma_1^{-1}(mu_0-mu_1)" potentially numerically unstble if mu_0\approx\mu_1 and \sigma_1 is small
         ) + sigma_1.log().sum() - sigma_0.log().sum()   # ~~~ the diagonal case of "log(|Sigma_1|/|Sigma_0|)"
 
+#
+# ~~~ From a torch.distributions Distribution class, define a method that samples from that standard distribution
+class StandardSampler:
+    def __init__( self, TorchDistribution, generator=None ):
+        self.standard_distribution = TorchDistribution(0,1)
+        self.generator = generator
+    def sample( self, *shape, device="cpu", dtype=torch.float ):
+        U = torch.rand( *shape, generator=self.generator, device=device, dtype=dtype )
+        return self.standard_distribution.icdf(U)
+
 
 
 ### ~~~
