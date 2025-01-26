@@ -204,13 +204,13 @@ def diagonal_gaussian_kl( mu_0, sigma_0, mu_1, sigma_1 ):
 
 #
 # ~~~ From a torch.distributions Distribution class, define a method that samples from that standard distribution
-class StandardSampler:
-    def __init__( self, TorchDistribution, generator=None ):
-        self.standard_distribution = TorchDistribution(0,1)
+class InverseTransformSampler:
+    def __init__( self, icdf, generator=None ):
+        self.icdf = icdf
         self.generator = generator
-    def sample( self, *shape, device="cpu", dtype=torch.float ):
+    def __call__( self, *shape, device="cpu", dtype=torch.float ):
         U = torch.rand( *shape, generator=self.generator, device=device, dtype=dtype )
-        return self.standard_distribution.icdf(U)
+        return self.icdf(U)
 
 
 
