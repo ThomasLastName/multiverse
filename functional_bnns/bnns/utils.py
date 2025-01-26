@@ -81,16 +81,16 @@ class LocationScaleLogDensity:
         try:
             assert mu.shape==where.shape
         except:
-            assert isinstance(sigma,(float,int))
+            assert isinstance(mu,(float,int))
         #
         # ~~~ Verify that `(where-mu)/sigma` will work
         try:
-            assert len(sigma.shape)==0 or sigma.shape==mu.shape # ~~~ either scalar, or a matrix of the same shape is `mu` and `where`
-            assert (sigma>0).all()
-        except:
             assert isinstance(sigma,(float,int))
             assert sigma>0
             sigma = torch.tensor( sigma, device=where.device, dtype=where.dtype )
+        except:
+            assert len(sigma.shape)==0 or sigma.shape==mu.shape # ~~~ either scalar, or a matrix of the same shape is `mu` and `where`
+            assert (sigma>0).all(), f"Minimum standard deviation {sigma.min()} is not positive."
         #
         # ~~~ Compute the formula
         marginal_log_probs = self.standard_log_density( (where-mu)/sigma ) - torch.log(sigma)
