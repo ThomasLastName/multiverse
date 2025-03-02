@@ -5,7 +5,7 @@ import math
 import torch
 from torch import nn
 
-from bnns.NoPriorBNNs import ConventionalVariationalFamilyBNN
+from bnns.NoPriorBNNs import ConventionalVariationalBNN
 from bnns.GPR import simple_mean_zero_RPF_kernel_GP
 
 from quality_of_life.my_base_utils import my_warn
@@ -16,28 +16,22 @@ from quality_of_life.my_base_utils import my_warn
 ## ~~~ Implement `prior_forward` and `set_prior_hyperparameters` for a GP prior
 ### ~~~
 
-class GPPriorBNN(ConventionalVariationalFamilyBNN):
+class GPPriorBNN(ConventionalVariationalBNN):
     def __init__(
-                #
-                # ~~~ Architecture and stuff
                 self,
                 *args,
-                likelihood_std = torch.tensor(0.001),
+                likelihood_std = torch.tensor(0.01),
                 auto_projection = True,
-                prior_sample_generator = None,
-                #
-                # ~~~ Specify the location-scale family of the variational distribution
-                posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ), # ~~~ should be a callable that accepts generic torch.tensors as input but also works on numpy arrays
-                posterior_standard_sampler     = torch.randn                                            # ~~~ should return a tensor of random samples from the reference distribution
+                posterior_distribution = torch.distributions.Normal,
+                prior_generator = None
         ):
         super().__init__(
                 *args,
-                likelihood_std = likelihood_std,
+                likelihood_std  = likelihood_std,
                 auto_projection = auto_projection,
-                posterior_standard_log_density = posterior_standard_log_density,
-                posterior_standard_sampler     = posterior_standard_sampler
+                posterior_distribution = posterior_distribution
             )
-        self.prior_sample_generator = prior_sample_generator
+        self.prior_generator = prior_generator
         self.default_bw = None      # ~~~ the median distance between training data is used if `None`
         self.default_scale = None   # ~~~ a list of all 1.'s is used if `None`
         self.default_eta = 0.001    # ~~~ add eta*I to the covariance matrices in the GP for numerical stability
@@ -78,7 +72,7 @@ class GPPriorBNN(ConventionalVariationalFamilyBNN):
         mu, root_Sigma = self.GP.prior_mu_and_Sigma( x, cholesky=True )
         assert root_Sigma.shape == ( self.out_features, x.shape[0], x.shape[0] )
         assert mu.shape == ( x.shape[0], self.out_features )
-        IID_standard_normal_samples = torch.randn( self.out_features,x.shape[0],n, generator=self.prior_sample_generator, device=x.device, dtype=x.dtype )
+        IID_standard_normal_samples = torch.randn( self.out_features,x.shape[0],n, generator=self.prior_generator, device=x.device, dtype=x.dtype )
         #
         # ~~~ Sample from the N(mu,Sigma) distribution by taking m u +Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
         return mu + torch.bmm( root_Sigma, IID_standard_normal_samples ).permute(2,1,0) # ~~~ returns a shape consistent with the output of `forward` and the assumption bnns.metrics: ( n_samples, n_test, n_out_features ), i.e., ( n, x.shape[0], self.out_features )
@@ -93,18 +87,16 @@ class GPPrior2023BNN(GPPriorBNN):
     def __init__(
                 self,
                 *args,
-                likelihood_std = torch.tensor(0.001),
+                likelihood_std = torch.tensor(0.01),
                 auto_projection = True,
-                posterior_sample_generator = None,
-                prior_sample_generator = None
+                prior_generator = None
             ):
         super().__init__(
                 *args,
                 likelihood_std = likelihood_std,
                 auto_projection = auto_projection,
-                posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                posterior_standard_sampler     = lambda *args, **kwargs: torch.randn( *args, generator=posterior_sample_generator, **kwargs ),
-                prior_sample_generator = prior_sample_generator
+                posterior_distribution = torch.distributions.Normal,
+                prior_generator = prior_generator
             )
         self.post_approximation_eta = 0.01
     # ~~~
