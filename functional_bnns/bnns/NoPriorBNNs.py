@@ -189,7 +189,11 @@ class IndepLocScaleSequentialBNN(BayesianModule):
                 self.out_features = layer.out_features
                 break
         #
-        # ~~~ Define information about the location scale family
+        # ~~~ At the time of writing, the relevant torch.distributions.Distribution methods do not accept kwargs like `device`. Rather, they infer the device and dtype from the mean and standard deviation, thus we need to make those Parameters so that they'll have the correct device and dtype
+        self.zero = nn.Parameter( torch.tensor(0.), requires_grad=False )   # ~~~ make it a Parameter, so that it follows the same device and dtype as all the other model parameters
+        self.one  = nn.Parameter( torch.tensor(1.), requires_grad=False )   # ~~~ make it a Parameter, so that it follows the same device and dtype as all the other model parameters
+        #
+        # ~~~ Set the posterior distribution
         if (posterior_standard_log_density is None) ^ (posterior_standard_sampler is None):     # ~~~ one is specified, but not both are
             raise ValueError("The arguments `posterior_standard_log_density` and `posterior_standard_sampler` should either both be specified, or both be `None`.")
         if (posterior_standard_log_density is None) and (posterior_standard_sampler is None):   # ~~~ if neither are specified, then use `posterior_distribution` to specify them
@@ -197,11 +201,9 @@ class IndepLocScaleSequentialBNN(BayesianModule):
                 raise ValueError("The posterior distribution must be a subclass of torch.distributions.Distribution")
             #
             # ~~~ At the time of writing, the relevant torch.distributions.Distribution methods do not accept kwargs like `device`. Rather, they infer the device and dtype from the mean and standard deviation, thus we need to make those Parameters
-            self.reference_mean = nn.Parameter( torch.tensor(0.), requires_grad=False ) # ~~~ make it a Parameter, so that it follows the same device and dtype as all the other model parameters
-            self.reference_std  = nn.Parameter( torch.tensor(1.), requires_grad=False ) # ~~~ make it a Parameter, so that it follows the same device and dtype as all the other model parameters
-            self.reference_distribution = posterior_distribution( self.reference_mean, self.reference_std )
-            posterior_standard_sampler     = lambda *args, **kwargs: self.reference_distribution.sample(args)   # ~~~ at the time of writing, this does not accep
-            posterior_standard_log_density = self.reference_distribution.log_prob
+            self.posterior_standard_distribution = posterior_distribution( self.zero, self.one )
+            posterior_standard_sampler     = lambda *args, **kwargs: self.posterior_standard_distribution.sample(args)  # ~~~ at the time of writing, this does not accep
+            posterior_standard_log_density = self.posterior_standard_distribution.log_prob
             check_moments = False
         self.posterior_log_density      = LocationScaleLogDensity( posterior_standard_log_density, check_moments=check_moments )
         self.posterior_standard_sampler = posterior_standard_sampler
