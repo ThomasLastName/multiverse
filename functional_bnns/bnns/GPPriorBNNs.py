@@ -1,10 +1,7 @@
 
-from abc import abstractmethod
-
 import torch
-from torch import nn
 
-from bnns.NoPriorBNNs import ConventionalVariationalBNN, IndepLocScaleSequentialBNN
+from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN
 from bnns.GPR import simple_mean_zero_RPF_kernel_GP
 
 from quality_of_life.my_base_utils import my_warn
@@ -98,21 +95,9 @@ class GPPriorBNN(IndepLocScaleSequentialBNN):
 ### ~~~
 
 class GPPrior2023BNN(GPPriorBNN):
-    def __init__(
-                self,
-                *args,
-                likelihood_std = torch.tensor(0.01),
-                auto_projection = True,
-                prior_generator = None
-            ):
-        super().__init__(
-                *args,
-                likelihood_std = likelihood_std,
-                auto_projection = auto_projection,
-                posterior_distribution = torch.distributions.Normal,
-                prior_generator = prior_generator
-            )
-        self.post_approximation_eta = 0.01
+    def __init__( self, *args, post_approximation_eta=0.01, **kwargs ):
+        super().__init__( *args, **kwargs )
+        self.post_approximation_eta = post_approximation_eta
     # ~~~
     #
     ### ~~~
