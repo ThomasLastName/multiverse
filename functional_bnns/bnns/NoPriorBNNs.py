@@ -469,38 +469,3 @@ class IndepLocScaleSequentialBNN(BayesianModule):
                     self.already_warned_that_n_meas_too_small = True
         else:
             self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
-
-
-
-### ~~~
-## ~~~ Ready-to-use class assuming the variational distribution is one of the torch.distributions classes, assuming that any positive variacne is acceptable, and assuming that any mean at all is acceptable
-### ~~~
-
-class ConventionalVariationalBNN(IndepLocScaleSequentialBNN):
-    def __init__( self, *args, **kwargs ):
-        super().__init__( *args, **kwargs )
-    #
-    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
-    def setup_soft_projection( self, method="Blundell" ):
-        if method == "Blundell":
-            self.soft_projection = lambda x: torch.log( 1 + torch.exp(x) )
-            self.soft_projection_inv = lambda x: torch.log( torch.exp(x) - 1 )
-            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
-        elif method == "torchbnn":
-            self.soft_projection = lambda x: torch.exp(x)
-            self.soft_projection_inv = lambda x: torch.log(x)
-            self.soft_projection_prime = lambda x: torch.exp(x)
-        else:
-            raise ValueError(f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_hard_projection( self, tol=1e-6 ):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data.clamp_(min=tol)
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_soft_projection(self):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data = self.soft_projection(p.data)
