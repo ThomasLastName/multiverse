@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from bnns.utils import flatten_parameters, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity, InverseTransformSampler
-from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN, ConventionalVariationalBNN
+from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN, IndepLocScaleSequentialBNN
 
 from quality_of_life.my_base_utils  import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
@@ -15,23 +15,14 @@ from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 ## ~~~ Implement `estimate_expected_prior_log_density`, `prior_forward`, and `set_prior_hyperparameters` for the "homoskedastic" mixture prior on the network weights employed in Blundell et al. 2015 (https://arxiv.org/abs/1505.05424)
 ### ~~~
 
-class MixtureWeightPrior2015BNN(ConventionalVariationalBNN):
+class MixtureWeightPrior2015BNN(IndepLocScaleSequentialBNN):
     def __init__(
-                #
-                # ~~~ Architecture and stuff
                 self,
                 *args,
-                likelihood_std  = torch.tensor(0.01),
-                auto_projection = True,
-                posterior_distribution = torch.distributions.Normal,
-                prior_generator = None
+                prior_generator = None, # ~~~ the only new kwarg that this sub-class introduces
+                **kwargs
             ):
-        super().__init__(
-                *args,
-                likelihood_std  = likelihood_std,
-                auto_projection = auto_projection,
-                posterior_distribution = posterior_distribution
-            )
+        super().__init__( *args, **kwargs )
         #
         # ~~~ Set default values for hyper-parameters of the prior found here: https://github.com/danielkelshaw/WeightUncertainty/blob/master/torchwu/bayes_linear.py
         self.prior_generator = prior_generator
@@ -125,6 +116,36 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalBNN):
                     z_bias = torch.randn( n, 1, *layer.bias.shape, generator=self.prior_generator, dtype=x.dtype, device=x.device )
                     x += torch.where( u_bias<self.pi, self.sigma1*z_bias, self.sigma2*z_bias )  # ~~~ apply the appropriately distributed biases
         return x
+    # ~~~
+    #
+    ### ~~~
+    ## ~~~ Since the prior distribution has full support, all we need to do is enforce that the variances are positive (rather, >=tol)
+    ### ~~~
+    #
+    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
+    def apply_hard_projection( self, tol=1e-6 ):
+        with torch.no_grad():
+            for p in self.posterior_std.parameters():
+                p.data.clamp_(min=tol)
+    #
+    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
+    def setup_soft_projection( self, method="Blundell" ):
+        if method == "Blundell":
+            self.soft_projection = lambda x: torch.log( 1 + torch.exp(x) )
+            self.soft_projection_inv = lambda x: torch.log( torch.exp(x) - 1 )
+            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
+        elif method == "torchbnn":
+            self.soft_projection = lambda x: torch.exp(x)
+            self.soft_projection_inv = lambda x: torch.log(x)
+            self.soft_projection_prime = lambda x: torch.exp(x)
+        else:
+            raise ValueError(f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
+    #
+    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
+    def apply_soft_projection(self):
+        with torch.no_grad():
+            for p in self.posterior_std.parameters():
+                p.data = self.soft_projection(p.data)
 
 
 
