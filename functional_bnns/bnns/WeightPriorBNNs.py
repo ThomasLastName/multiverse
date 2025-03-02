@@ -25,13 +25,13 @@ class MixtureWeightPrior2015BNN(IndepLocScaleSequentialBNN):
         super().__init__( *args, **kwargs )
         #
         # ~~~ Set default values for hyper-parameters of the prior found here: https://github.com/danielkelshaw/WeightUncertainty/blob/master/torchwu/bayes_linear.py
-        self.prior_generator = prior_generator
         self.default_pi      = torch.tensor(0.5) # ~~~ WARNING: this is not the mathematical constant pi\approx3.14. I don't appreciate Blundell et al.'s use of "\pi" to refer to a value between 0 and 1...
         self.default_sigma1  = torch.tensor(1.)
         self.default_sigma2  = torch.tensor(0.002)
         self.set_prior_hyperparameters( pi=self.default_pi, sigma1=self.default_sigma1, sigma2=self.default_sigma2 )
+        self.prior_generator = prior_generator
     #
-    # ~~~ Set the hyper-parameters from the above mentioned paper
+    # ~~~ Allow the hyper-parameters of the prior distribution to be set at runtime
     def set_prior_hyperparameters( self, **kwargs ):
         #
         # ~~~ If any of the 3 hyper-parameters pi, sigma1, or sigma2 are unspecified, then use the class level defaults
