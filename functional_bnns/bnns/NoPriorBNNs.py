@@ -268,13 +268,19 @@ class IndepLocScaleSequentialBNN(BayesianModule):
         with torch.no_grad():
             raise NotImplementedError("The class IndepLocScaleSequentialBNN leaves the method `apply_hard_projection` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
     #
+    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
+    def apply_soft_projection(self):
+        with torch.no_grad():
+            for p in self.posterior_std.parameters():
+                p.data = self.soft_projection(p.data)   # ~~~ `self.soft_projection` is not implemented in this class
+    #
     # ~~~ Multiply parameter gradients by the transpose of the Jacobian of `soft_projection` (as in Blundell et al. 2015 https://arxiv.org/abs/1505.05424, where the Jacobian is diagonal and you just simply divide by 1+exp(-rho) )
     def apply_chain_rule_for_soft_projection(self):
         with torch.no_grad():
             for p in self.posterior_std.parameters():
-                p.data = self.soft_projection_inv(p.data)               # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
+                p.data = self.soft_projection_inv(p.data)               # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma (`self.soft_projection_inv` needs to be implemented in subclasses)
                 try:
-                    p.grad.data *= self.soft_projection_prime(p.data)    # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
+                    p.grad.data *= self.soft_projection_prime(p.data)   # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma' (`self.soft_projection_inv` needs to be implemented in subclasses)
                 except:
                     if p.grad is None:
                         my_warn("`apply_chain_rule_for_soft_projection` operates directly on the `grad` attributes of the parameters. It should be applied *after* `backwards` is called.")

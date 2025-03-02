@@ -140,12 +140,6 @@ class MixtureWeightPrior2015BNN(IndepLocScaleSequentialBNN):
             self.soft_projection_prime = lambda x: torch.exp(x)
         else:
             raise ValueError(f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_soft_projection(self):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data = self.soft_projection(p.data)
 
 
 
@@ -327,12 +321,6 @@ class GaussianBNN(IndepLocScalePriorBNN):
             self.soft_projection_prime = lambda x: torch.exp(x)
         else:
             raise ValueError(f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_soft_projection(self):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data = self.soft_projection(p.data)
     #
     # ~~~ Specify an exact formula for the KL divergence
     def compute_exact_weight_kl(self):
