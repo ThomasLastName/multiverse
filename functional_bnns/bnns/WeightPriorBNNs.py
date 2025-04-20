@@ -3,8 +3,8 @@ import math
 import torch
 from torch import nn
 
-from bnns.utils import flatten_parameters, log_gaussian_pdf, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity
-from bnns.NoPriorBNNs import ConventionalVariationalFamilyBNN
+from bnns.utils import flatten_parameters, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity, InverseTransformSampler
+from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN, IndepLocScaleSequentialBNN
 
 from quality_of_life.my_base_utils  import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
@@ -15,36 +15,23 @@ from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 ## ~~~ Implement `estimate_expected_prior_log_density`, `prior_forward`, and `set_prior_hyperparameters` for the "homoskedastic" mixture prior on the network weights employed in Blundell et al. 2015 (https://arxiv.org/abs/1505.05424)
 ### ~~~
 
-class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
+class MixtureWeightPrior2015BNN(IndepLocScaleSequentialBNN):
     def __init__(
-                #
-                # ~~~ Architecture and stuff
                 self,
                 *args,
-                likelihood_std  = torch.tensor(0.001),
-                auto_projection = True,
-                prior_sample_generator = None,
-                #
-                # ~~~ For the variational family, use "fully factored Gaussian weights" by default (to use another location-scale family, change these 3 argumetns)
-                posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                posterior_standard_sampler     = torch.randn,
+                prior_generator = None, # ~~~ the only new kwarg that this sub-class introduces
+                **kwargs
             ):
-        super().__init__(
-                *args,
-                likelihood_std  = likelihood_std,
-                auto_projection = auto_projection,
-                posterior_standard_log_density = posterior_standard_log_density,
-                posterior_standard_sampler     = posterior_standard_sampler
-            )
+        super().__init__( *args, **kwargs )
         #
         # ~~~ Set default values for hyper-parameters of the prior found here: https://github.com/danielkelshaw/WeightUncertainty/blob/master/torchwu/bayes_linear.py
-        self.prior_sample_generator = prior_sample_generator
-        self.default_pi = torch.tensor(0.5) # ~~~ WARNING: this is not the mathematical constant pi\approx3.14. I don't appreciate Blundell et al.'s use of "\pi" to refer to a value between 0 and 1...
-        self.default_sigma1 = torch.tensor(1.)
-        self.default_sigma2 = torch.tensor(0.002)
+        self.default_pi      = torch.tensor(0.5) # ~~~ WARNING: this is not the mathematical constant pi\approx3.14. I don't appreciate Blundell et al.'s use of "\pi" to refer to a value between 0 and 1...
+        self.default_sigma1  = torch.tensor(1.)
+        self.default_sigma2  = torch.tensor(0.002)
         self.set_prior_hyperparameters( pi=self.default_pi, sigma1=self.default_sigma1, sigma2=self.default_sigma2 )
+        self.prior_generator = prior_generator
     #
-    # ~~~ Set the hyper-parameters from the above mentioned paper
+    # ~~~ Allow the hyper-parameters of the prior distribution to be set at runtime
     def set_prior_hyperparameters( self, **kwargs ):
         #
         # ~~~ If any of the 3 hyper-parameters pi, sigma1, or sigma2 are unspecified, then use the class level defaults
@@ -83,6 +70,8 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
         # ~~~ Compute the log_density of a Gaussian mixture (equation (7) in https://arxiv.org/abs/1505.05424)
         marginal_log_probs1  = -(w_sampled/self.sigma1)**2/2 - torch.log( math.sqrt(2*torch.pi)*self.sigma1 )
         marginal_log_probs2  = -(w_sampled/self.sigma2)**2/2 - torch.log( math.sqrt(2*torch.pi)*self.sigma2 )
+        #
+        # ~~~ Why doesn't the following commented out code work?
         # marginal_log_density =  ( self.pi * marginal_log_probs1.exp() + (1-self.pi) * marginal_log_probs2.exp() ).log()
         # marginal_log_density = torch.where(
         #         torch.bitwise_or(
@@ -118,15 +107,39 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
             else:
                 #
                 # ~~~ Define a matrix full of samples from the Gaussian mixture prior (see https://stats.stackexchange.com/questions/70855/generating-random-variables-from-a-mixture-of-normal-distributions)
-                u_weight =  torch.rand( n,*layer.weight.shape, generator=self.prior_sample_generator, dtype=x.dtype, device=x.device )
-                z_weight = torch.randn( n,*layer.weight.shape, generator=self.prior_sample_generator, dtype=x.dtype, device=x.device )
+                u_weight =  torch.rand( n,*layer.weight.shape, generator=self.prior_generator, dtype=x.dtype, device=x.device )
+                z_weight = torch.randn( n,*layer.weight.shape, generator=self.prior_generator, dtype=x.dtype, device=x.device )
                 A = torch.where( u_weight<self.pi, self.sigma1*z_weight, self.sigma2*z_weight ) # ~~~ indices where u<pi are a sample from N(0,sigma1^2), and indices where u>pi are a sample from N(0,sigma2^2)
                 x = torch.bmm( x, A.transpose(1,2) )                                             # ~~~ apply the appropriately distributed weights to this layer's input using batched matrix multiplication
                 if layer.bias is not None:
-                    u_bias =  torch.rand( n, 1, *layer.bias.shape, generator=self.prior_sample_generator, dtype=x.dtype, device=x.device )
-                    z_bias = torch.randn( n, 1, *layer.bias.shape, generator=self.prior_sample_generator, dtype=x.dtype, device=x.device )
+                    u_bias =  torch.rand( n, 1, *layer.bias.shape, generator=self.prior_generator, dtype=x.dtype, device=x.device )
+                    z_bias = torch.randn( n, 1, *layer.bias.shape, generator=self.prior_generator, dtype=x.dtype, device=x.device )
                     x += torch.where( u_bias<self.pi, self.sigma1*z_bias, self.sigma2*z_bias )  # ~~~ apply the appropriately distributed biases
         return x
+    # ~~~
+    #
+    ### ~~~
+    ## ~~~ Since the prior distribution has full support, all we need to do is enforce that the variances are positive (rather, >=tol)
+    ### ~~~
+    #
+    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
+    def apply_hard_projection( self, tol=1e-6 ):
+        with torch.no_grad():
+            for p in self.posterior_std.parameters():
+                p.data.clamp_(min=tol)
+    #
+    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
+    def setup_soft_projection( self, method="Blundell" ):
+        if method == "Blundell":
+            self.soft_projection = lambda x: torch.log( 1 + torch.exp(x) )
+            self.soft_projection_inv = lambda x: torch.log( torch.exp(x) - 1 )
+            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
+        elif method == "torchbnn":
+            self.soft_projection = lambda x: torch.exp(x)
+            self.soft_projection_inv = lambda x: torch.log(x)
+            self.soft_projection_prime = lambda x: torch.exp(x)
+        else:
+            raise ValueError(f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
 
 
 
@@ -134,52 +147,54 @@ class MixtureWeightPrior2015BNN(ConventionalVariationalFamilyBNN):
 ## ~~~ Implement `estimate_expected_prior_log_density`, `prior_forward`, and `set_prior_hyperparameters` for the case in which the prior distribution is an independent location-scale family on weights (most commonly, Gaussian is used)
 ### ~~~
 
-class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
+class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
     def __init__(
                 #
                 # ~~~ Architecture and stuff
                 self,
                 *args,
-                likelihood_std = torch.tensor(0.001),
-                auto_projection = True,
-                #
-                # ~~~ Specify the location-scale family of the variational distribution
-                posterior_standard_log_density, # ~~~ should be a callable that accepts generic torch.tensors as input but also works on numpy arrays, e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
-                posterior_standard_sampler,     # ~~~ should return a tensor of random samples from the reference distribution
                 #
                 # ~~~ Specify the location-scale family of the prior distribution
-                prior_standard_log_density, # ~~~ too should be a callable that accepts generic torch.tensors as input but also works on numpy arrays, e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
-                prior_standard_sampler,     # ~~~ too should return a tensor of random samples from the reference distribution
+                prior_distribution = torch.distributions.Normal,    # ~~~ either, specify this, of specify the following two methods
+                prior_standard_log_density = None,  # ~~~ should be a callable that accepts generic torch.tensors as input, but ideally also works on numpy arrays (otherwise `check_moments` will fail), e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
+                prior_standard_sampler = None,      # ~~~ should be a callable that returns a tensor of random samples from the distribution with mean 0 and variance 1, e.g., `torch.randn` for Gaussian
+                #
+                # ~~~ The other kwargs used by parent classes
+                **kwargs
             ):
-        super().__init__(
-                *args,
-                likelihood_std = likelihood_std,
-                auto_projection = auto_projection,
-                posterior_standard_log_density = posterior_standard_log_density,
-                posterior_standard_sampler     = posterior_standard_sampler
-            )
+        super().__init__( *args, **kwargs )
         #
-        # ~~~ Define a prior on the weights
-        with torch.no_grad():
-            #
-            # ~~~ First copy the architecture
-            self.prior_mean = nonredundant_copy_of_module_list(self.posterior_mean)
-            self.prior_std  = nonredundant_copy_of_module_list(self.posterior_mean)
-            #
-            # ~~~ Don't train the prior
-            for (mu,sigma) in zip( self.prior_mean.parameters(), self.prior_std.parameters() ):
-                mu.requires_grad = False
-                sigma.requires_grad = False
-                mu.data = torch.zeros_like(mu.data) # ~~~ assign a prior mean of zero to the parameters
-            #
-            # ~~~ Set the formulas used for evaluating the log prior pdf and/or sampling from the prior distribution
-            self.prior_log_density          = LocationScaleLogDensity(prior_standard_log_density)
-            self.prior_standard_sampler     = prior_standard_sampler
-            #
-            # ~~~ Set the prior standard deviations
-            self.default_prior_type = "torch.nn.init"   # ~~~ also supported are "Tom" and "IID"
-            self.default_scale = torch.tensor(1.)
-            self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale )
+        # ~~~ First, copy the architecture (this is kind of like metadata used to define the prior)
+        self.prior_mean = nonredundant_copy_of_module_list(self.posterior_mean)
+        self.prior_std  = nonredundant_copy_of_module_list(self.posterior_mean)
+        #
+        # ~~~ Don't train the prior; also, use mean zero weights
+        for (mu,sigma) in zip( self.prior_mean.parameters(), self.prior_std.parameters() ):
+            mu.requires_grad = False
+            sigma.requires_grad = False
+            with torch.no_grad(): mu.data = torch.zeros_like(mu.data)   # ~~~ assign a prior mean of zero to the parameters
+        #
+        # ~~~ Define information about the location scale family of the prior distribution
+        try:
+            check_moments = kwargs["check_moments"]
+        except KeyError:
+            check_moments = True
+        if (prior_standard_log_density is None) ^ (prior_standard_sampler is None):     # ~~~ one is specified, but not both are
+            raise ValueError("The arguments `posterior_standard_log_density` and `posterior_standard_sampler` should either both be specified, or both be `None`.")
+        if (prior_standard_log_density is None) and (prior_standard_sampler is None):   # ~~~ if neither are specified, then use `posterior_distribution` to specify them
+            if not issubclass( prior_distribution, torch.distributions.Distribution ):
+                raise ValueError("The posterior distribution must be a subclass of torch.distributions.Distribution")
+            self.prior_standard_distribution = prior_distribution( self.zero, self.one )
+            prior_standard_sampler     = lambda *args, **kwargs: self.prior_standard_distribution.sample(args)   # ~~~ at the time of writing, this does not accep
+            prior_standard_log_density = self.prior_standard_distribution.log_prob
+            check_moments = False
+        self.prior_log_density      = LocationScaleLogDensity( prior_standard_log_density, check_moments=check_moments )
+        self.prior_standard_sampler = prior_standard_sampler
+        #
+        # ~~~ Set the prior standard deviations
+        self.default_prior_type = "torch.nn.init"   # ~~~ also supported are "Tom" and "IID"
+        self.default_scale = 1.
+        self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale )
     #
     # ~~~ Allow these to be set at runtime
     def set_prior_hyperparameters( self, **kwargs ):
@@ -266,36 +281,51 @@ class ConventionalWeightPriorBNN(ConventionalVariationalFamilyBNN):
 
 
 ### ~~~
-## ~~~ Define what most people are talking about when they say talk about BNN's
+## ~~~ Define what most people are talking about when they say "Bayesian neural networks"
 ### ~~~
 
-class ConventionalBNN(ConventionalWeightPriorBNN):
+class GaussianBNN(IndepLocScalePriorBNN):
     def __init__(
                 self,
                 *args,
-                likelihood_std = torch.tensor(0.001),
+                likelihood_std  = torch.tensor(0.01),
                 auto_projection = True,
-                posterior_sample_generator = None,
-                prior_sample_generator = None
+                posterior_generator = None,
+                prior_generator = None
             ):
         super().__init__(
                 *args,
-                likelihood_std  = likelihood_std,
+                likelihood_std = likelihood_std,
                 auto_projection = auto_projection,
-                #
-                # ~~~ For the variational family, use "fully factored Gaussian weights"
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                posterior_standard_sampler     = lambda *args, **kwargs: torch.randn( *args, generator=posterior_sample_generator, **kwargs ),
-                #
-                # ~~~ Use a "fully factored Gaussian prior" on weights
+                posterior_standard_sampler     = lambda *shape, **kwargs: torch.randn(*shape, generator=posterior_generator, **kwargs),
                 prior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                prior_standard_sampler     = lambda *args, **kwargs: torch.randn( *args, generator=prior_sample_generator, **kwargs ),
+                prior_standard_sampler     = lambda *shape, **kwargs: torch.randn(*shape, generator=prior_generator, **kwargs)
             )
+    #
+    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
+    def apply_hard_projection( self, tol=1e-6 ):
+        with torch.no_grad():
+            for p in self.posterior_std.parameters():
+                p.data.clamp_(min=tol)
+    #
+    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
+    def setup_soft_projection( self, method="Blundell" ):
+        if method == "Blundell":
+            self.soft_projection = lambda x: torch.log( 1 + torch.exp(x) )
+            self.soft_projection_inv = lambda x: torch.log( torch.exp(x) - 1 )
+            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
+        elif method == "torchbnn":
+            self.soft_projection = lambda x: torch.exp(x)
+            self.soft_projection_inv = lambda x: torch.log(x)
+            self.soft_projection_prime = lambda x: torch.exp(x)
+        else:
+            raise ValueError(f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
     #
     # ~~~ Specify an exact formula for the KL divergence
     def compute_exact_weight_kl(self):
-        mu_post = flatten_parameters(self.posterior_mean)
-        sigma_post = flatten_parameters(self.posterior_std)
-        mu_prior = flatten_parameters(self.prior_mean)
+        mu_post     = flatten_parameters(self.posterior_mean)
+        sigma_post  = flatten_parameters(self.posterior_std)
+        mu_prior    = flatten_parameters(self.prior_mean)
         sigma_prior = flatten_parameters(self.prior_std)
         return diagonal_gaussian_kl( mu_0=mu_post, sigma_0=sigma_post, mu_1=mu_prior, sigma_1=sigma_prior )

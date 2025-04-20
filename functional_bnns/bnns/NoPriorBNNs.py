@@ -79,7 +79,8 @@ class BayesianModule(nn.Module):
                     self.already_warned_that_exact_weight_formula_not_implemented = "yup"
             except:
                 raise
-        return self.estimate_expected_posterior_log_density() - self.estimate_expected_prior_log_density()
+        else:
+            return self.estimate_expected_posterior_log_density() - self.estimate_expected_prior_log_density()
     # ~~~
     #
     ### ~~~
@@ -155,20 +156,24 @@ class BayesianModule(nn.Module):
 
 #
 # ~~~ Main class: variational family models weights as independent, all from the same location scale family (STILL NO PRIOR DISTRIBUTION AT THIS LEVEL OF ABSTRACTION)
-class IndependentLocationScaleSequentialBNN(BayesianModule):
+class IndepLocScaleSequentialBNN(BayesianModule):
     def __init__(
                 self,
                 *args,
                 likelihood_std = torch.tensor(0.01),
                 auto_projection = True,
-                posterior_standard_log_density, # ~~~ should be a callable that accepts generic torch.tensors as input but also works on numpy arrays, e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
-                posterior_standard_sampler      # ~~~ should return a tensor of random samples from the reference distribution
+                #
+                # ~~~ Specify the family of the variational distribution over weights
+                posterior_distribution = torch.distributions.Normal,    # ~~~ either, specify this, of specify the following two methods
+                posterior_standard_log_density = None,  # ~~~ should be a callable that accepts generic torch.tensors as input, but ideally also works on numpy arrays (otherwise `check_moments` will fail), e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
+                posterior_standard_sampler = None,      # ~~~ should be a callable that returns a tensor of random samples from the distribution with mean 0 and variance 1, e.g., `torch.randn` for Gaussian
+                check_moments = True                    # ~~~ if true, test that `\int z*posterior_standard_log_density(z) \dee z = 0` and `\int z**2*posterior_standard_log_density(z) \dee z = 1`
             ):
         #
         # ~~~ Means and standard deviations for each network parameter
         super().__init__()
         self.posterior_mean = nn.Sequential(*args)
-        self.posterior_std  = nonredundant_copy_of_module_list( self.posterior_mean, sequential=True )
+        self.posterior_std  = nonredundant_copy_of_module_list(self.posterior_mean)
         self.realized_standard_posterior_sample  =  nonredundant_copy_of_module_list(self.posterior_mean)  # ~~~ a "standard normal [or whatever] distribution in the shape of our neural network"
         for p in self.realized_standard_posterior_sample.parameters(): p.requires_grad = False
         if auto_projection: self.ensure_positive( forceful=True, verbose=False )
@@ -184,9 +189,24 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
                 self.out_features = layer.out_features
                 break
         #
-        # ~~~ Define information about the location scale family
-        self.posterior_log_density               =  LocationScaleLogDensity(posterior_standard_log_density)   # ~~~ the log density
-        self.posterior_standard_sampler          =  posterior_standard_sampler        # ~~~ returns random samples from the
+        # ~~~ At the time of writing, the relevant torch.distributions.Distribution methods do not accept kwargs like `device`. Rather, they infer the device and dtype from the mean and standard deviation, thus we need to make those Parameters so that they'll have the correct device and dtype
+        self.zero = nn.Parameter( torch.tensor(0.), requires_grad=False )   # ~~~ make it a Parameter, so that it follows the same device and dtype as all the other model parameters
+        self.one  = nn.Parameter( torch.tensor(1.), requires_grad=False )   # ~~~ make it a Parameter, so that it follows the same device and dtype as all the other model parameters
+        #
+        # ~~~ Set the posterior distribution
+        if (posterior_standard_log_density is None) ^ (posterior_standard_sampler is None):     # ~~~ one is specified, but not both are
+            raise ValueError("The arguments `posterior_standard_log_density` and `posterior_standard_sampler` should either both be specified, or both be `None`.")
+        if (posterior_standard_log_density is None) and (posterior_standard_sampler is None):   # ~~~ if neither are specified, then use `posterior_distribution` to specify them
+            if not issubclass( posterior_distribution, torch.distributions.Distribution ):
+                raise ValueError("The posterior distribution must be a subclass of torch.distributions.Distribution")
+            #
+            # ~~~ At the time of writing, the relevant torch.distributions.Distribution methods do not accept kwargs like `device`. Rather, they infer the device and dtype from the mean and standard deviation, thus we need to make those Parameters
+            self.posterior_standard_distribution = posterior_distribution( self.zero, self.one )
+            posterior_standard_sampler     = lambda *args, **kwargs: self.posterior_standard_distribution.sample(args)  # ~~~ at the time of writing, this does not accep
+            posterior_standard_log_density = self.posterior_standard_distribution.log_prob
+            check_moments = False
+        self.posterior_log_density      = LocationScaleLogDensity( posterior_standard_log_density, check_moments=check_moments )
+        self.posterior_standard_sampler = posterior_standard_sampler
         self.sample_from_standard_posterior(counter_on=False)
         #
         # ~~~ Attributes determining the log likelihood density
@@ -246,15 +266,21 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
     @abstractmethod
     def apply_hard_projection( self, tol=1e-6 ):
         with torch.no_grad():
-            raise NotImplementedError("The class IndependentLocationScaleSequentialBNN leaves the method `apply_hard_projection` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
+            raise NotImplementedError("The class IndepLocScaleSequentialBNN leaves the method `apply_hard_projection` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
+    #
+    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
+    def apply_soft_projection(self):
+        with torch.no_grad():
+            for p in self.posterior_std.parameters():
+                p.data = self.soft_projection(p.data)   # ~~~ `self.soft_projection` is not implemented in this class
     #
     # ~~~ Multiply parameter gradients by the transpose of the Jacobian of `soft_projection` (as in Blundell et al. 2015 https://arxiv.org/abs/1505.05424, where the Jacobian is diagonal and you just simply divide by 1+exp(-rho) )
     def apply_chain_rule_for_soft_projection(self):
         with torch.no_grad():
             for p in self.posterior_std.parameters():
-                p.data = self.soft_projection_inv(p.data)               # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma
+                p.data = self.soft_projection_inv(p.data)               # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma (`self.soft_projection_inv` needs to be implemented in subclasses)
                 try:
-                    p.grad.data *= self.soft_projection_prime(p.data)    # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma'
+                    p.grad.data *= self.soft_projection_prime(p.data)   # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma' (`self.soft_projection_inv` needs to be implemented in subclasses)
                 except:
                     if p.grad is None:
                         my_warn("`apply_chain_rule_for_soft_projection` operates directly on the `grad` attributes of the parameters. It should be applied *after* `backwards` is called.")
@@ -451,37 +477,3 @@ class IndependentLocationScaleSequentialBNN(BayesianModule):
                     self.already_warned_that_n_meas_too_small = True
         else:
             self.measurement_set = torch.randn( size=(n,self.in_features), device=device, dtype=dtype )
-
-
-
-### ~~~
-## ~~~ Implement the projection methods assuming that any positive variacne, and any mean at all are acceptable
-### ~~~
-
-class ConventionalVariationalFamilyBNN(IndependentLocationScaleSequentialBNN):
-    def __init__(self,*args,**kwargs): super().__init__(*args,**kwargs)
-    #
-    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
-    def setup_soft_projection( self, method="Blundell" ):
-        if method == "Blundell":
-            self.soft_projection = lambda x: torch.log( 1 + torch.exp(x) )
-            self.soft_projection_inv = lambda x: torch.log( torch.exp(x) - 1 )
-            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
-        elif method == "torchbnn":
-            self.soft_projection = lambda x: torch.exp(x)
-            self.soft_projection_inv = lambda x: torch.log(x)
-            self.soft_projection_prime = lambda x: torch.exp(x)
-        else:
-            raise ValueError(f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_hard_projection( self, tol=1e-6 ):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data.clamp_(min=tol)
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_soft_projection(self):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data = self.soft_projection(p.data)

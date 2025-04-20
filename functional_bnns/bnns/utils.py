@@ -59,15 +59,16 @@ def std_per_layer(linear_layer):
 class LocationScaleLogDensity:
     #
     # ~~~ Store the standard log density and test that it is, indeed, standard
-    def __init__( self, standard_log_density ):
+    def __init__( self, standard_log_density, check_moments=True ):
         self.standard_log_density = standard_log_density
-        try:
-            self.test_mean_zero_unit_variance()
-        except:
-            my_warn("Unable to verify mean zero and unit variance in the standard log density")
+        if check_moments:
+            try:
+                self.check_mean_zero_unit_variance()
+            except:
+                my_warn("Unable to verify mean zero and unit variance in the standard log density. To surpress this warning, pass `check_moments=False` in the `__init__` method.")
     #
     # ~~~ Test that the supposedly "standard" log density has mean zero and unit variance
-    def test_mean_zero_unit_variance( self, tol=1e-5 ):
+    def check_mean_zero_unit_variance( self, tol=1e-5 ):
         mean, err_mean = quad( lambda z: z*np.exp(self.standard_log_density(z)), -np.inf, np.inf )
         var, err_var = quad( lambda z: z**2*np.exp(self.standard_log_density(z)), -np.inf, np.inf )
         if abs(mean)>tol or abs(var-1)>tol or err_mean>tol or err_var>tol:
@@ -80,16 +81,16 @@ class LocationScaleLogDensity:
         try:
             assert mu.shape==where.shape
         except:
-            assert isinstance(sigma,(float,int))
+            assert isinstance(mu,(float,int))
         #
         # ~~~ Verify that `(where-mu)/sigma` will work
         try:
-            assert len(sigma.shape)==0 or sigma.shape==mu.shape # ~~~ either scalar, or a matrix of the same shape is `mu` and `where`
-            assert (sigma>0).all()
-        except:
             assert isinstance(sigma,(float,int))
             assert sigma>0
             sigma = torch.tensor( sigma, device=where.device, dtype=where.dtype )
+        except:
+            assert len(sigma.shape)==0 or sigma.shape==mu.shape # ~~~ either scalar, or a matrix of the same shape is `mu` and `where`
+            assert (sigma>0).all(), f"Minimum standard deviation {sigma.min()} is not positive."
         #
         # ~~~ Compute the formula
         marginal_log_probs = self.standard_log_density( (where-mu)/sigma ) - torch.log(sigma)
@@ -97,26 +98,7 @@ class LocationScaleLogDensity:
 
 #
 # ~~~ Compute the log pdf of a multivariate normal distribution with independent coordinates
-def log_gaussian_pdf( where, mu, sigma, multivar=True ):
-    #
-    # ~~~ Verify that `where-mu` will work
-    try:
-        assert mu.shape==where.shape
-    except:
-        assert isinstance(sigma,(float,int))
-    #
-    # ~~~ Verify that `(where-mu)/sigma` will work
-    try:
-        assert len(sigma.shape)==0 or sigma.shape==mu.shape # ~~~ either scalar, or a matrix of the same shape is `mu` and `where`
-        assert (sigma>0).all()
-    except:
-        assert isinstance(sigma,(float,int))
-        assert sigma>0
-        sigma = torch.tensor( sigma, device=where.device, dtype=where.dtype )
-    #
-    # ~~~ Compute the formula
-    marginal_log_probs = -((where-mu)/sigma)**2/2 - torch.log( math.sqrt(2*torch.pi)*sigma )   # ~~~ note: isn't (x-mu)/sigma numerically unstable, like numerical differentiation?
-    return marginal_log_probs.sum() if multivar else marginal_log_probs
+log_gaussian_pdf = LocationScaleLogDensity( lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ) )
 
 #
 # ~~~ Compute the (appropriately shaped) Jacobian of the final layer of a nerural net (I came up with the formula for the Jacobian, and chat-gpt came up with the generalized vectorized pytorch implementation)
@@ -200,6 +182,16 @@ def diagonal_gaussian_kl( mu_0, sigma_0, mu_1, sigma_1 ):
             - mu_0.numel()                              # ~~~ what wikipedia calls "k"
             + (((mu_1-mu_0)/sigma_1)**2).sum()          # ~~~ the diagonal case of "(mu_0-mu_1)^TSigma_1^{-1}(mu_0-mu_1)" potentially numerically unstble if mu_0\approx\mu_1 and \sigma_1 is small
         ) + sigma_1.log().sum() - sigma_0.log().sum()   # ~~~ the diagonal case of "log(|Sigma_1|/|Sigma_0|)"
+
+#
+# ~~~ From a torch.distributions Distribution class, define a method that samples from that standard distribution
+class InverseTransformSampler:
+    def __init__( self, icdf, generator=None ):
+        self.icdf = icdf
+        self.generator = generator
+    def __call__( self, *shape, device="cpu", dtype=torch.float ):
+        U = torch.rand( *shape, generator=self.generator, device=device, dtype=dtype )
+        return self.icdf(U)
 
 
 
