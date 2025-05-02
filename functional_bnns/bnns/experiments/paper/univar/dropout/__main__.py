@@ -39,12 +39,12 @@ hyperparameter_template = {
     #
     # ~~~ For visualization
     "MAKE_GIF" : False,
-    "HOW_OFTEN" : 50,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
-    "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ for how many frames should the state of initialization be rendered
-    "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ for how many frames should the state after training be rendered
-    "HOW_MANY_INDIVIDUAL_PREDICTIONS" : 6,  # ~~~ how many posterior predictive samples to plot
-    "VISUALIZE_DISTRIBUTION_USING_QUANTILES" : True, # ~~~ for dropout, if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
-    "N_POSTERIOR_SAMPLES" : 100,            # ~~~ for dropout, how many samples to use to make the empirical distributions for plotting
+    "HOW_OFTEN" : 50,                       # ~~~ how many iterations we let pass before checking the validation data again
+    "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ N/A, because we aren't making a .gif
+    "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ N/A, because we aren't making a .gif
+    "HOW_MANY_INDIVIDUAL_PREDICTIONS" : 6,  # ~~~ N/A, because we aren't graphing the model
+    "VISUALIZE_DISTRIBUTION_USING_QUANTILES" : True, # ~~~ N/A, because we aren't graphing the model
+    "N_POSTERIOR_SAMPLES" : 100,            # ~~~ how many samples to use to make the empirical distributions for computing metrics
     #
     # ~~~ For metrics and visualization
     "N_POSTERIOR_SAMPLES_EVALUATION" : 1000,

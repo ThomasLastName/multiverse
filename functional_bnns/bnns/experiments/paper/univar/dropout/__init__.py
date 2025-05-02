@@ -11,7 +11,7 @@ DATA = [
 
 #
 # ~~~ Primarily focus on narrowing down good architectures
-ARCHITECTURE = [    # ~~~ == the list `BEST_12_ARCHITECTURES` defined in univar_det_nn/process_results.py
+ARCHITECTURE = [    # ~~~ == the list `BEST_12_ARCHITECTURES` defined in univar/det_nn/process_results.py
         #
         "univar_NN.univar_NN_30_30",              # ~~~ 2 hidden layers, 30 neurons each
         "univar_NN.univar_NN_30_30_30_30",          # ~~~ 4 hidden layers, 30 neurons each
