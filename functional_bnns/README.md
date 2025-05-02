@@ -46,7 +46,7 @@ The folder `multiverse/functional_bnns/bnns/experiments/` containts four scripts
 
 To train a model with the hyperparamters specified in a file `my_hyperpars.json`, navigate to the `experiments` folder and run `python train_<algorithm>.py --json my_hyperpars`.
 The required fields vary slightly between these four scripts.
-For more see [__Usage__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#usage) below.
+For more see [__Training, Tuning, and Testing Infrastructure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#training-tuning-and-testing-infrastructure) below.
 
 For hyperparameter tuning and model benchmarking, this package's approach is to populate a folder with `.json` files (one per. hyper-parameter configuration you wish to test), and run the training script for each `.json` file.
 A script called `tuning_loop.py` automates this process.
