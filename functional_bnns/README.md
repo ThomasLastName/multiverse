@@ -119,7 +119,7 @@ Within the important one of these two folders, the package is organized as follo
 
  - `data/` folder containing some synthetic data and code  which downloads non-synthetic data used in our experiments
  - `experiments/` folder containing infrastructure for training, tuning, and testing models ([__Training, Tuning, and Testing Infrastructure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#training-tuning-and-testing-infrastructure))
-   * `paper/` contains files for running/replicating our expiments ([__Paper__]([url](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#paper))
+   * `paper/` contains files for running/replicating our expiments ([__Paper__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#paper))
    * `train_nn.py` trains a neural net
    * `train_bnn.py` trains a Bayesian neural net
    * `train_ensemble.py` trains a neural network ensemble
@@ -131,14 +131,14 @@ Within the important one of these two folders, the package is organized as follo
  - `models/` folder containing code that defines (untrained versions of) the models used in our experiments
  - `__init.__py` boiler plate
  - `Ensemble.py` defines classes for efficient (parallelized) neural network ensembles, including support for SVGD and fSVGD
- - `GPPriorBNNs.py` sub-classes the base classes of `NoPriorBNNs.py` with the logic for GP priors
+ - `GPPriorBNNs.py` sub-classes the base classes of `NoPriorBNNs.py` with the logic for GP priors ([__Class Structure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#class-structure))
  - `GPR.py` defines classes for Gaussian processes
  - `metrics.py` defines functions for model benchmarking
- - `NoPriorBNNs.py` defines base classes for BNNs, which expect sub-classes to add extra logic needed for prior distributions
+ - `NoPriorBNNs.py` defines base classes for BNNs, which expect sub-classes to add extra logic needed for prior distributions ([__Class Structure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#class-structure))
  - `SequentialGaussianBNN.py`
  - `SSGE.py` defines class for the spectral stein gradient estimator used in conventional functional BNN training
  - `utils.py` defines various mundane helper functions
- - `WeightPriorBNNs.py` sub-classes the base classes of `NoPriorBNNs.py with the logic for various differnet weight priors
+ - `WeightPriorBNNs.py` sub-classes the base classes of `NoPriorBNNs.py with the logic for various differnet weight priors ([__Class Structure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#class-structure))
 
 ## Class Structure
 
