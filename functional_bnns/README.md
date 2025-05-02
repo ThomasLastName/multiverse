@@ -182,7 +182,33 @@ Additionally, within that file `my_brand_new_architecture.py`, you must define a
 
 ## Replicating Our Experiments
 
-The sub-directory `multiverse/functional_bnns/bnns/experiments/paper` of the `experiments` folder contains 
+Our experiments were run using the Training, Tuning, and Testing API described above.
+The sub-directory `multiverse/functional_bnns/bnns/experiments/paper` of the `experiments` folder contains what little code is needed to run experiments using that API.
+Specifically, there is a sub-directory for each dataset that we have tested:
+
+ - `univar/` folder for all the tests we run on a simple, synthteic univariate regression dataset
+ - `SLOSH/` (pending) folder for all the tests we run on the SLOSH dataset
+
+For each dataset, we run the following tests in the order listed:
+
+ 1. (`det_nn/`) We begin with 16 different neural network architectures, and fit these to the dataset by vanilla, deterministic training. By tuning only learning rate, we narrow down which architectures to test further by taking the best 8.
+ 2. (`dropout/`) We test the remaining 8 architectures with various dropout levels. By tuning the learning rate and level of dropout, we narrow down which architectures to test further by taking the best 4.
+ 3. (`weight_training_vs_functional_training/`) We test BNN training methods on the remaining 4 architectures in order to verify the hypothesis that "only the prior matters, and the exact training hyper-parameters hardly matter." Testing this hypothesis greatly simplifies the matter of tuning for the effects of differnt prior distributions, as we no longer need to worry about "controlling for" mis-specified training settings and can focus on just tuning the prior going forward. We use the results of this experiment to select training hyper-parameters for futher tests.
+ 4. .......
+
+Each of these containins the following folders:
+
+ - `det_ensemble/` (pending) test the best 1/4 of architectures with a neural network ensemble
+ - `det_nn/` test a handful of different architectures on the dataset, and slecting the best half
+ - `dropout/` test the best half of architectures with dropout, and further selecting the best half
+ - `stein_ensemble` (pending) test the best 1/4 of architectures with SVGD
+ - `weight_training_vs_functional_training` tests the hypothesis that functional and non-functional training give identical resutls
+
+Finally, each of those contains the following:
+
+ - `__init__.py` defines the main settings to be tested in the experiment at hand (imported in `__main__.py`) 
+ - `__main__.py` creates and populates a folder `hyper_parameter_search/` full of `.json` files for all cases to be tested
+ - `process_results.py` processes the raw data with which the folder `hyper_parameter_search/` will be filled
 
 ## The SLOSH Dataset
 
