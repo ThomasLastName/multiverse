@@ -46,12 +46,12 @@ The folder `multiverse/functional_bnns/bnns/experiments/` containts four scripts
 
 To train a model with the hyperparamters specified in a file `my_hyperpars.json`, navigate to the `experiments` folder and run `python train_<algorithm>.py --json my_hyperpars`.
 The required fields vary slightly between these four scripts.
-For more see [__Training, Tuning, and Testing Infrastructure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#training-tuning-and-testing-infrastructure) below.
+For more, see [__Training, Tuning, and Testing Infrastructure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#training-tuning-and-testing-infrastructure) below.
 
 For hyperparameter tuning and model benchmarking, this package's approach is to populate a folder with `.json` files (one per. hyper-parameter configuration you wish to test), and run the training script for each `.json` file.
 A script called `tuning_loop.py` automates this process.
 This framework allows one to easily replicate our own experiemnts.
-For more see [__Paper__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#paper) below.
+For more, see [__Paper__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#paper) below.
 
 ## Purpose
 
@@ -108,6 +108,44 @@ Finally, since the original purpose of this package was to test rigorously which
 
 6. (_verify installation_) Try running one of the python files, e.g., `python scripts\SSGE_univar_demo.py`, which should create an plot with several curves.
 
+---
+
+# Organization of the Package
+
+## Folder Structure
+
+The `functional_bnns` folder contains only two folders: `scripts` which consists of some rudiementary tests implemented during development and can be ignored by users, and `bnns` which contains the actual guts of the package.
+Within the important one of these two folders, the package is organized as follows. More details can be found elsewhere in this README
+
+ - `data/` folder containing some synthetic data and code  which downloads non-synthetic data used in our experiments
+ - `experiments/` folder containing infrastructure for training, tuning, and testing models ([__Training, Tuning, and Testing Infrastructure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#training-tuning-and-testing-infrastructure))
+   * `paper/` contains files for running/replicating our expiments ([__Paper__]([url](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#paper))
+   * `train_nn.py` trains a neural net
+   * `train_bnn.py` trains a Bayesian neural net
+   * `train_ensemble.py` trains a neural network ensemble
+   * `train_gpr.py` fits a Gaussian process
+   * `demo_nn.json` ready-made example of an appropriately structured `.json` file
+   * `demo_bnn.json` ready-made example of an appropriately structured `.json` file
+   * `demo_ensemble.json` ready-made example of an appropriately structured `.json` file
+   * `demo_gpr.json` ready-made example of an appropriately structured `.json` file
+ - `models/` folder containing code that defines (untrained versions of) the models used in our experiments
+ - `__init.__py` boiler plate
+ - `Ensemble.py` defines classes for efficient (parallelized) neural network ensembles, including support for SVGD and fSVGD
+ - `GPPriorBNNs.py` sub-classes the base classes of `NoPriorBNNs.py` with the logic for GP priors
+ - `GPR.py` defines classes for Gaussian processes
+ - `metrics.py` defines functions for model benchmarking
+ - `NoPriorBNNs.py` defines base classes for BNNs, which expect sub-classes to add extra logic needed for prior distributions
+ - `SequentialGaussianBNN.py`
+ - `SSGE.py` defines class for the spectral stein gradient estimator used in conventional functional BNN training
+ - `utils.py` defines various mundane helper functions
+ - `WeightPriorBNNs.py` sub-classes the base classes of `NoPriorBNNs.py with the logic for various differnet weight priors
+
+## Class Structure
+
+TODO
+
+
+---
 
 # Training, Tuning, and Testing Infrastructure
 
@@ -143,6 +181,8 @@ Additionally, within that file `my_brand_new_architecture.py`, you must define a
 # Paper
 
 ## Replicating Our Experiments
+
+The sub-directory `multiverse/functional_bnns/bnns/experiments/paper` of the `experiments` folder contains 
 
 ## The SLOSH Dataset
 
