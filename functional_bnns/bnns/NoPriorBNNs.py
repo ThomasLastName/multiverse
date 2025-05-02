@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.func import jacrev, functional_call
 
-from bnns.utils import manual_Jacobian, flatten_parameters, std_per_param, std_per_layer, LocationScaleLogDensity
+from bnns.utils import manual_Jacobian, flatten_parameters, std_per_param, std_per_layer, LocationScaleLogDensity, get_batch_sizes
 from bnns.SSGE import SpectralSteinEstimator as SSGE
 from bnns.utils import log_gaussian_pdf
 
@@ -32,6 +32,7 @@ class BayesianModule(nn.Module):
         self.prior_M   =  2000
         self.post_M    =  100
         self.prior_SSGE = None
+        self.prior_samples_batch_size = None    # ~~~ see `setup_prior_SSGE`
     #
     # ~~~ Resample from whatever is source is used to seed the samples drawn from the variational distribution
     @abstractmethod
@@ -102,8 +103,21 @@ class BayesianModule(nn.Module):
     def setup_prior_SSGE(self):
         with torch.no_grad():
             #
-            # ~~~ Sample from the prior distribution self.prior_M times (and flatten the samples)
-            prior_samples = self.prior_forward( self.measurement_set, n=self.prior_M ).reshape( self.prior_M, -1 )
+            # ~~~ Sample from the prior distribution self.prior_M times (and flatten the samples); `prior_samples = self.prior_forward( self.measurement_set, n=self.prior_M ).reshape( self.prior_M, -1 )` is equivalent but this extra complexity avoids running out of memory
+            if self.prior_samples_batch_size is None: self.prior_samples_batch_size = self.prior_M
+            while True:
+                try:
+                    prior_samples = torch.cat([
+                        self.prior_forward( self.measurement_set, n=b ).reshape(b,-1)
+                        for b in get_batch_sizes( self.prior_M, self.prior_samples_batch_size ) # ~~~ `for b in [b,..,b,remainder]` where sum([b,..,b,remainder])==self.prior_M
+                    ])
+                    break
+                except:
+                    self.prior_samples_batch_size  = int(self.prior_samples_batch_size/2)
+                    #
+                    # ~~~ If the batch size is really small and something still isn't working, then just return the error that would result from a full batch size, for the user's reference
+                    if self.prior_samples_batch_size < 32:
+                        self.prior_forward( self.measurement_set, n=self.prior_M ).reshape( self.prior_M, -1 )
             #
             # ~~~ Build an SSGE estimator using those samples
             try:
