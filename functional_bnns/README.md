@@ -37,7 +37,21 @@ Just as PyTorch provides the ready-to-use sub-class `nn.Sequential` of `nn.Modul
 
 ### 3. A Minimalist Infrastructure for Hyper-Parameter Tuning and Model Benchmarking (TODO: LINK TO TUTORIAL)
 
-TODO explain here how to use `tuning_loop.py`.
+For our own experiments, we have devloped a basic API for training models.
+The folder `multiverse/functional_bnns/bnns/experiments/` containts four scripts for training various models:
+ - `train_nn.py` fits a neural network, with or without dropout
+ - `train_bnn.py` fits a Bayesian neural network, supporting a variety of different training methods and priors
+ - `train_ensemble.py` fits a neural network ensemble, either by conventional means, SVGD, or fSVGD
+ - `train_gpr.py` fits a Gaussian process
+
+To train a model with the hyperparamters specified in a file `my_hyperpars.json`, navigate to the `experiments` folder and run `python train_<algorithm>.py --json my_hyperpars`.
+The required fields vary slightly between these four scripts.
+For more see [__Usage__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#usage) below.
+
+For hyperparameter tuning and model benchmarking, this package's approach is to populate a folder with `.json` files (one per. hyper-parameter configuration you wish to test), and run the training script for each `.json` file.
+A script called `tuning_loop.py` automates this process.
+This framework allows one to easily replicate our own experiemnts.
+For more see [__Paper__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#paper) below.
 
 ## Purpose
 
@@ -95,12 +109,40 @@ Finally, since the original purpose of this package was to test rigorously which
 6. (_verify installation_) Try running one of the python files, e.g., `python scripts\SSGE_univar_demo.py`, which should create an plot with several curves.
 
 
-# Usage
+# Training, Tuning, and Testing Infrastructure
 
 In order to run a test, the procedure is as follows. In order to specify hyperparameters, put a `.json` file containing hyperparameter values for the experiment that you want to run in the `experiments` folder.
 Different algorithms require different hyperparmeters, and these differences are reflected in the scripts that load the `.json` files.
 At the time of writing, there are 4 python scripts in the `experiments` folder: `train_bnn.py`, `train_nn.py`, `train_gpr.py`, and `train_ensemble.py`. To train a model with the hyperparamters specified by the `.json` file, say, `my_hyperpars.json`, navigate to the `experiment` folder and run `python train_<algorithm>.py --json my_hyperparameters`.
 To see which hyperparameters are expected by the algorithm (which are the fields that you need to include in your .json file), check either the demo .json file included with the repo, or check the body of the python script, where a dictionary called `hyperparameter_template` should be defined.
+
+
+Required fields include, `"MODEL"` (the directory of a `.py` file from which to load the pytorch `Module`), `"EPOCHS"` (how many epochs to train for), etc.
+To see which fields are required, check either the body of the training script, where a dictionary called `hyperparameter_template` is defined, or the demo `.json` files that are also found in the `expierments` folder:
+ - `demo_nn.json` (run with `python train_nn.py --json demo_nn`)
+ - `demo_bnn.json` (run with `python train_bnn.py --json demo_bnn`)
+ - `demo_ensemble.json` (run with `python train_ensemble.py --json demo_ensemble`)
+ - `demo_gpr.json` (run with `python train_gpr.py --json demo_gpr`)
+
+
+## Creating your own Dataset
+
+All the .json files are supposed to have a field called "data" whose value is a text string. Suppose the "data" field has a value of "my_brand_new_dataset".
+In that case, the python scripts which run experiments all attempt to `import my_brand_new_dataset from bnns.data` meaning that you need to create a file called `my_brand_new_dataset.py` located in the folder `data` if you want this to work.
+Within the file `my_brand_new_dataset.py`, you must define 3 pytorch datasets: `D_train`, `D_val`, and `D_test`, as well as two pytorch tensors `interpolary_grid` and `extrapolary_grid`. The python scripts that run experiments will attempt to access these variables from that file in that location.
+Additionally, for examples with a one-dimensional input, if you want the scripts to plot your models, then you must define a pytorch vector `grid` with `grid.ndim==1` which is used to create the plots.
+
+## Creating your own Models
+
+All the .json files are supposed to have a field called "model" whose value is a text string. Suppose the "model" field has a value of "my_brand_new_architecture".
+In that case, the python scripts which run experiments all attempt to `import my_brand_new_architecture from bnns.data` meaning that you need to create a file called `my_brand_new_architecture.py` located in the folder `models` if you want this to work.
+Additionally, within that file `my_brand_new_architecture.py`, you must define a pytorch model: either called `BNN` or called `NN` depending on the experiment that is being run
+
+
+
+# Paper
+
+## Replicating Our Experiments
 
 ## The SLOSH Dataset
 
@@ -133,24 +175,6 @@ After training, a batch prediction `P` with as many columns as `U` (but fewer ro
 If this procedure is applied directly to the matrix `Y = y_train`, then the "kind of data" in question would be a heatmap, like what one sees visualized in aforementioned paper.
 However, note that the matrix `Y` could, itslef, have already been a processed version of the data (e.g., subtracint the mean), in which case the final predicted heatmap would also require further processing to reflect/undo however `Y` was obtrained from "the real data."
 That is to say, one must be cognizant of whether or not PCA is *the only* pre-processing that's done to the data.
-
-## Creating your own Dataset
-
-All the .json files are supposed to have a field called "data" whose value is a text string. Suppose the "data" field has a value of "my_brand_new_dataset".
-In that case, the python scripts which run experiments all attempt to `import my_brand_new_dataset from bnns.data` meaning that you need to create a file called `my_brand_new_dataset.py` located in the folder `data` if you want this to work.
-Within the file `my_brand_new_dataset.py`, you must define 3 pytorch datasets: `D_train`, `D_val`, and `D_test`, as well as two pytorch tensors `interpolary_grid` and `extrapolary_grid`. The python scripts that run experiments will attempt to access these variables from that file in that location.
-Additionally, for examples with a one-dimensional input, if you want the scripts to plot your models, then you must define a pytorch vector `grid` with `grid.ndim==1` which is used to create the plots.
-
-## Creating your own Models
-
-All the .json files are supposed to have a field called "model" whose value is a text string. Suppose the "model" field has a value of "my_brand_new_architecture".
-In that case, the python scripts which run experiments all attempt to `import my_brand_new_architecture from bnns.data` meaning that you need to create a file called `my_brand_new_architecture.py` located in the folder `models` if you want this to work.
-Additionally, within that file `my_brand_new_architecture.py`, you must define a pytorch model: either called `BNN` or called `NN` depending on the experiment that is being run
-
-
-# Paper
-
-TODO
 
 
 # Contributors
