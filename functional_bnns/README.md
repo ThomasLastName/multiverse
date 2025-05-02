@@ -138,7 +138,7 @@ Within the important one of these two folders, the package is organized as follo
  - `SequentialGaussianBNN.py`
  - `SSGE.py` defines class for the spectral stein gradient estimator used in conventional functional BNN training
  - `utils.py` defines various mundane helper functions
- - `WeightPriorBNNs.py` sub-classes the base classes of `NoPriorBNNs.py with the logic for various differnet weight priors ([__Class Structure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#class-structure))
+ - `WeightPriorBNNs.py` sub-classes the base classes of `NoPriorBNNs.py` with the logic for various differnet weight priors ([__Class Structure__](https://github.com/ThomasLastName/multiverse/tree/main/functional_bnns#class-structure))
 
 ## Class Structure
 
