@@ -71,6 +71,7 @@ class BayesianModule(nn.Module):
     #
     # ~~~ Return an estimate (or the exact value) of the kl divergence between variational and prior distributions over newtork weights
     def weight_kl( self, exact_formula=True ):
+        if hasattr(self,"already_warned_that_exact_weight_formula_not_implemented"): exact_formula = False
         if exact_formula:
             try:
                 return self.compute_exact_weight_kl()
