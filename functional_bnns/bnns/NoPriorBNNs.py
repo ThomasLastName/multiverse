@@ -216,9 +216,9 @@ class IndepLocScaleSequentialBNN(BayesianModule):
                 raise ValueError("The posterior distribution must be a subclass of torch.distributions.Distribution")
             #
             # ~~~ At the time of writing, the relevant torch.distributions.Distribution methods do not accept kwargs like `device`. Rather, they infer the device and dtype from the mean and standard deviation, thus we need to make those Parameters
-            self.posterior_standard_distribution = posterior_distribution( self.zero, self.one )
-            posterior_standard_sampler     = lambda *args, **kwargs: self.posterior_standard_distribution.sample(args)  # ~~~ at the time of writing, this does not accep
-            posterior_standard_log_density = self.posterior_standard_distribution.log_prob
+            posterior_standard_distribution = posterior_distribution( self.zero, self.one )
+            posterior_standard_sampler     = lambda *args, **kwargs: posterior_standard_distribution.sample(args)  # ~~~ at the time of writing, this does not accep
+            posterior_standard_log_density = posterior_standard_distribution.log_prob
             check_moments = False
         self.posterior_log_density      = LocationScaleLogDensity( posterior_standard_log_density, check_moments=check_moments )
         self.posterior_standard_sampler = posterior_standard_sampler
