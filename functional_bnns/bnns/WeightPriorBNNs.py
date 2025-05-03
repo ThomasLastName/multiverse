@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from bnns.utils import flatten_parameters, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity, InverseTransformSampler
-from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN, IndepLocScaleSequentialBNN
+from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN
 
 from quality_of_life.my_base_utils  import my_warn
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
@@ -281,27 +281,12 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
 
 
 ### ~~~
-## ~~~ Define what most people are talking about when they say "Bayesian neural networks"
+## ~~~ Defint the projection method for the case in which the posterior and prior distributions over weights both have full support
 ### ~~~
 
-class GaussianBNN(IndepLocScalePriorBNN):
-    def __init__(
-                self,
-                *args,
-                likelihood_std  = torch.tensor(0.01),
-                auto_projection = True,
-                posterior_generator = None,
-                prior_generator = None
-            ):
-        super().__init__(
-                *args,
-                likelihood_std = likelihood_std,
-                auto_projection = auto_projection,
-                posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                posterior_standard_sampler     = lambda *shape, **kwargs: torch.randn(*shape, generator=posterior_generator, **kwargs),
-                prior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                prior_standard_sampler     = lambda *shape, **kwargs: torch.randn(*shape, generator=prior_generator, **kwargs)
-            )
+class FullSupportLocScaleBNN(IndepLocScalePriorBNN):
+    def __init__( self, *args, **kwargs ):
+        super().__init__( *args, **kwargs )
     #
     # ~~~ If using projected gradient descent, then project onto the non-negative orthant
     def apply_hard_projection( self, tol=1e-6 ):
@@ -321,6 +306,31 @@ class GaussianBNN(IndepLocScalePriorBNN):
             self.soft_projection_prime = lambda x: torch.exp(x)
         else:
             raise ValueError(f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
+
+
+
+### ~~~
+## ~~~ Define what most people are talking about when they say "Bayesian neural networks"
+### ~~~
+
+class GaussianBNN(FullSupportLocScaleBNN):
+    def __init__(
+                self,
+                *args,
+                likelihood_std  = torch.tensor(0.01),
+                auto_projection = True,
+                posterior_generator = None,
+                prior_generator = None
+            ):
+        super().__init__(
+                *args,
+                likelihood_std = likelihood_std,
+                auto_projection = auto_projection,
+                posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
+                posterior_standard_sampler     = lambda *shape, **kwargs: torch.randn(*shape, generator=posterior_generator, **kwargs),
+                prior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
+                prior_standard_sampler     = lambda *shape, **kwargs: torch.randn(*shape, generator=prior_generator, **kwargs)
+            )
     #
     # ~~~ Specify an exact formula for the KL divergence
     def compute_exact_weight_kl(self):
