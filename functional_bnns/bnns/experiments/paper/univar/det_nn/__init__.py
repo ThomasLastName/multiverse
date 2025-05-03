@@ -33,15 +33,15 @@ ARCHITECTURE = [
         "univar_NN.univar_NN_500_500_500",         # ~~~ 3 hidden layers, 500 neurons each
         "univar_NN.univar_NN_500_500_500_500",      # ~~~ 4 hidden layers, 500 neurons each
         #
-        "univar_NN.univar_NN_750",              # ~~~ 1 hidden layer, 750 neurons
-        "univar_NN.univar_NN_750_750",            # ~~~ 2 hidden layers, 750 neurons each
-        "univar_NN.univar_NN_750_750_750",         # ~~~ 3 hidden layers, 750 neurons each
-        "univar_NN.univar_NN_750_750_750_750",      # ~~~ 4 hidden layers, 750 neurons each
-        #
-        "univar_NN.univar_NN_1000",             # ~~~ 1 hidden layer, 1000 neurons
-        "univar_NN.univar_NN_1000_1000",          # ~~~ 2 hidden layers, 1000 neurons each
-        "univar_NN.univar_NN_1000_1000_1000",      # ~~~ 3 hidden layers, 1000 neurons each
-        "univar_NN.univar_NN_1000_1000_1000_1000",  # ~~~ 4 hidden layers, 1000 neurons each
+        # "univar_NN.univar_NN_750",              # ~~~ 1 hidden layer, 750 neurons
+        # "univar_NN.univar_NN_750_750",            # ~~~ 2 hidden layers, 750 neurons each
+        # "univar_NN.univar_NN_750_750_750",         # ~~~ 3 hidden layers, 750 neurons each
+        # "univar_NN.univar_NN_750_750_750_750",      # ~~~ 4 hidden layers, 750 neurons each
+        # #
+        # "univar_NN.univar_NN_1000",             # ~~~ 1 hidden layer, 1000 neurons
+        # "univar_NN.univar_NN_1000_1000",          # ~~~ 2 hidden layers, 1000 neurons each
+        # "univar_NN.univar_NN_1000_1000_1000",      # ~~~ 3 hidden layers, 1000 neurons each
+        # "univar_NN.univar_NN_1000_1000_1000_1000",  # ~~~ 4 hidden layers, 1000 neurons each
     ]
 
 #

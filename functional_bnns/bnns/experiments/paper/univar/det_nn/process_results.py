@@ -2,12 +2,12 @@
 import os
 import torch
 import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
-from importlib import import_module
 from bnns.utils import infer_width_and_depth
-from quality_of_life.my_base_utils import json_to_dict, my_warn, print_dict
+from quality_of_life.my_base_utils import my_warn
 
-from bnns.experiments.paper.univar_det_nn import folder_name, DATA, ARCHITECTURE, LR
+from bnns.experiments.paper.univar.det_nn import folder_name, DATA, ARCHITECTURE, LR
 
 
 
@@ -40,7 +40,7 @@ results = infer_width_and_depth(results)
 # ~~~ Verify that DATA==results.DATA.unique(), ARCHITECTURE==results.MODEL.unique(), and LR==results.LR.unique()
 if (
         len(DATA) == 2 == len(results.DATA.unique())
-        and len(ARCHITECTURE) == 24 == len(results.MODEL.unique())
+        and len(ARCHITECTURE) == 16 == len(results.MODEL.unique())
         and len(LR) == 5 == len(results.LR.unique())
     ):
     if not (
@@ -80,8 +80,8 @@ for w in widths:
         assert W==w                
         WL.append((W,L))
 
-assert len(set(WL))==len(WL)==12, f"Failed to identify 12 different models"
-BEST_12_ARCHITECTURES = [ f"univar_NN.univar_NN_{'_'.join(l*[str(w)])}" for (w,l) in WL ]
+assert len(set(WL))==len(WL)==8, f"Failed to identify 8 different models"
+BEST_8_ARCHITECTURES = [ f"univar_NN.univar_NN_{'_'.join(l*[str(w)])}" for (w,l) in WL ]
 
 if __name__=="__main__":
     #
@@ -102,25 +102,19 @@ if __name__=="__main__":
     print(trim(min_results))
     #
     # ~~~ Plot a model or two, as a sanity check
-    try:
-        import seaborn as sns
-        def plot(criterion):
-            plt.figure(figsize=(12,6))
-            sns.lineplot(
-                    data = results,
-                    x = "width",
-                    y = "METRIC_rmse",
-                    hue = "depth",
-                    marker = "o",
-                    estimator = criterion,
-                    errorbar = ("pi",95) if criterion=="median" else ("sd",2)
-                )
-            plt.title("Validation rMSE in Various Experiments by Model Width and Depth")
-            plt.xlabel("Width")
-            plt.ylabel(f"{criterion} rMSE")
-            plt.legend(title="Depth")
-            plt.show()
-    except ModuleNotFoundError:
-        pass
-    except:
-        raise
+    def plot(criterion):
+        plt.figure(figsize=(12,6))
+        sns.lineplot(
+                data = results,
+                x = "width",
+                y = "METRIC_rmse",
+                hue = "depth",
+                marker = "o",
+                estimator = criterion,
+                errorbar = ("pi",95) if criterion=="median" else ("sd",2)
+            )
+        plt.title("Validation rMSE in Various Experiments by Model Width and Depth")
+        plt.xlabel("Width")
+        plt.ylabel(f"{criterion} rMSE")
+        plt.legend(title="Depth")
+        plt.show()

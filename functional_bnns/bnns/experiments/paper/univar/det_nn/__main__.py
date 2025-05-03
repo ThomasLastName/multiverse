@@ -2,7 +2,6 @@
 
 import os
 import torch
-import numpy as np
 from quality_of_life.my_base_utils import dict_to_json
 from bnns.experiments.paper.univar.det_nn import folder_name, DATA, ARCHITECTURE, LR
 
@@ -56,7 +55,7 @@ hyperparameter_template = {
 #
 # ~~~ Create and populate a folder for the hyperparameter search
 os.mkdir(folder_name)
-os.mkdir( os.path.join( folder_name, "experimental_models" ))
+os.mkdir(os.path.join( folder_name, "experimental_models" ))
 
 #
 # ~~~ Loop over the hyperparameter grid, saving each one to a .json file called `RUN_THIS_<count>.json`
