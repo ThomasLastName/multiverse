@@ -3,11 +3,12 @@ import os
 import torch
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 from importlib import import_module
 from bnns.utils import infer_width_and_depth
 from quality_of_life.my_base_utils import json_to_dict, my_warn, print_dict
 
-from bnns.experiments.paper.univar_dropout import folder_name, DATA, ARCHITECTURE, LR
+from bnns.experiments.paper.univar.dropout import folder_name, DATA, ARCHITECTURE, LR
 
 
 
@@ -40,8 +41,8 @@ results = infer_width_and_depth(results)
 # ~~~ Verify that DATA==results.DATA.unique(), ARCHITECTURE==results.MODEL.unique(), and LR==results.LR.unique()
 if (
         len(DATA) == 2 == len(results.DATA.unique())
-        and len(ARCHITECTURE) == 12 == len(results.MODEL.unique())
-        and len(LR) == 4 == len(results.LR.unique())
+        and len(ARCHITECTURE) == 8 == len(results.MODEL.unique())
+        and len(LR) == 3 == len(results.LR.unique())
     ):
     if not (
                 all(DATA==results.DATA.unique())
@@ -55,7 +56,7 @@ else:
 
 
 ### ~~~
-## ~~~ For each width, from the 2 diffent depths tested with that width, choose the depth that has the smallest median validation error, as well as the one that has the smallest validation error overall
+## ~~~ For each width, from the 2 diffent depths tested with that width, choose the depth that has the smallest median validation error
 ### ~~~
 
 mean_results = results.groupby(["width","depth"]).mean(numeric_only=True)
@@ -69,8 +70,8 @@ for w in widths:
     assert W==w
     WL.append((W,L))
 
-assert len(set(WL))==len(WL)==6, f"Failed to identify 12 different models"
-BEST_6_ARCHITECTURES = [ f"univar_NN.univar_NN_{'_'.join(l*[str(w)])}" for (w,l) in WL ]
+assert len(set(WL))==len(WL)==4, f"Failed to identify 12 different models"
+BEST_4_ARCHITECTURES = [ f"univar_NN.univar_NN_{'_'.join(l*[str(w)])}" for (w,l) in WL ]
 
 
 if __name__=="__main__":
@@ -92,28 +93,23 @@ if __name__=="__main__":
     print(trim(min_results))
     #
     # ~~~ Plot a model or two, as a sanity check
-    try:
-        import seaborn as sns
-        def plot(criterion):
-            plt.figure(figsize=(12,6))
-            sns.lineplot(
-                    data = results,
-                    x = "width",
-                    y = "METRIC_rmse",
-                    hue = "depth",
-                    marker = "o",
-                    estimator = criterion,
-                    errorbar = ("pi",95) if criterion=="median" else ("sd",2)
-                )
-            plt.title("Validation rMSE in Various Experiments by Model Width and Depth")
-            plt.xlabel("Width")
-            plt.ylabel(f"{criterion} rMSE")
-            plt.legend(title="Depth")
-            plt.show()
-    except ModuleNotFoundError:
-        pass
-    except:
-        raise
+    def plot(criterion):
+        plt.figure(figsize=(12,6))
+        sns.lineplot(
+                data = results,
+                x = "width",
+                y = "METRIC_rmse",
+                hue = "depth",
+                marker = "o",
+                estimator = criterion,
+                errorbar = ("pi",95) if criterion=="median" else ("sd",2)
+            )
+        plt.title("Validation rMSE in Various Experiments by Model Width and Depth")
+        plt.xlabel("Width")
+        plt.ylabel(f"{criterion} rMSE")
+        plt.legend(title="Depth")
+        plt.show()
+
 
 # ### ~~~
 # ## ~~~ Load the json files from `folder_name` as dictionaries, process them to a format that pandas likes, and combine them into a pandas DataFrame
