@@ -320,8 +320,10 @@ class GaussianBNN(FullSupportLocScaleBNN):
                 likelihood_std  = torch.tensor(0.01),
                 auto_projection = True,
                 posterior_generator = None,
-                prior_generator = None
+                prior_generator = None,
+                posterior_distribution = None,  # ~~~ un-used argument for API compatibility
             ):
+        assert posterior_distribution is None, f"GaussianBNN simply implements a Gaussian distribution. Please specify the `posterior_distribution` keyword argument to `None`."
         super().__init__(
                 *args,
                 likelihood_std = likelihood_std,
