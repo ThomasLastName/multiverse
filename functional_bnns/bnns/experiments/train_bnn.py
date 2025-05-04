@@ -207,7 +207,8 @@ except:
     BNN = MODEL(
             *architecture,
             likelihood_std = torch.tensor(LIKELIHOOD_STD),
-            auto_projection = (PROJECTION_METHOD=="HARD")
+            auto_projection = (PROJECTION_METHOD=="HARD"),
+            posterior_distribution = VARIATIONAL_FAMILY
         )
 
 BNN = BNN.to( device=DEVICE, dtype=DTYPE )

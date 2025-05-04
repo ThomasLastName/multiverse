@@ -324,7 +324,7 @@ class GaussianBNN(FullSupportLocScaleBNN):
                 prior_generator = None,
                 posterior_distribution = None,  # ~~~ un-used argument for API compatibility
             ):
-        assert posterior_distribution is None, f"GaussianBNN simply implements a Gaussian distribution. Please specify the `posterior_distribution` keyword argument to `None`."
+        assert posterior_distribution is None, f"GaussianBNN simply implements a Gaussian distribution, which conflicts with the supplied value of the `posterior_distribution` keyword argument: {posterior_distribution}. Please specify the `posterior_distribution` keyword argument to `None`."
         super().__init__(
                 *args,
                 likelihood_std = likelihood_std,
