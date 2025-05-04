@@ -1,6 +1,7 @@
 
 from abc import abstractmethod
 
+import math
 import torch
 from torch import nn
 from torch.func import jacrev, functional_call
@@ -217,8 +218,9 @@ class IndepLocScaleSequentialBNN(BayesianModule):
             #
             # ~~~ At the time of writing, the relevant torch.distributions.Distribution methods do not accept kwargs like `device`. Rather, they infer the device and dtype from the mean and standard deviation, thus we need to make those Parameters
             posterior_standard_distribution = posterior_distribution( self.zero, self.one )
-            posterior_standard_sampler     = lambda *args, **kwargs: posterior_standard_distribution.sample(args)  # ~~~ at the time of writing, this does not accep
-            posterior_standard_log_density = posterior_standard_distribution.log_prob
+            mean, std = posterior_standard_distribution.mean.item(), posterior_standard_distribution.stddev.item()
+            posterior_standard_sampler     = lambda *args, **kwargs: (posterior_standard_distribution.sample(args)-mean)/std  # ~~~ at the time of writing, this does not accep
+            posterior_standard_log_density = lambda z: posterior_standard_distribution.log_prob(mean + std*z) + math.log(std)
             check_moments = False
         self.posterior_log_density      = LocationScaleLogDensity( posterior_standard_log_density, check_moments=check_moments )
         self.posterior_standard_sampler = posterior_standard_sampler
