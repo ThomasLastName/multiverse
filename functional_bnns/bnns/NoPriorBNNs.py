@@ -221,9 +221,8 @@ class IndepLocScaleSequentialBNN(BayesianModule):
             mean, std = posterior_standard_distribution.mean.item(), posterior_standard_distribution.stddev.item()
             posterior_standard_sampler     = lambda *args, **kwargs: (posterior_standard_distribution.sample(args)-mean)/std  # ~~~ at the time of writing, this does not accep
             posterior_standard_log_density = lambda z: posterior_standard_distribution.log_prob(mean + std*z) + math.log(std)
-            check_moments = False
-        self.posterior_log_density      = LocationScaleLogDensity( posterior_standard_log_density, check_moments=check_moments )
-        self.posterior_standard_sampler = posterior_standard_sampler
+        self.posterior_standard_log_density = posterior_standard_log_density
+        self.posterior_standard_sampler     = posterior_standard_sampler
         self.sample_from_standard_posterior(counter_on=False)
         #
         # ~~~ Attributes determining the log likelihood density
@@ -390,11 +389,9 @@ class IndepLocScaleSequentialBNN(BayesianModule):
     # ~~~ Compute \ln( q_\theta(F_\theta(z)) ) at a point z sampled from the standard MVN distribution, where q_\theta is the posterior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
     def estimate_expected_posterior_log_density(self):
         self.ensure_positive(forceful=True)
-        mu_post = flatten_parameters(self.posterior_mean)
         sigma_post = flatten_parameters(self.posterior_std)
         z_sampled = flatten_parameters(self.realized_standard_posterior_sample)
-        w_sampled = mu_post + sigma_post*z_sampled
-        return self.posterior_log_density( where=w_sampled, mu=mu_post, sigma=sigma_post )
+        return (self.posterior_standard_log_density(z_sampled) - torch.log(sigma_post)).sum()
     # ~~~
     #
     ### ~~~
