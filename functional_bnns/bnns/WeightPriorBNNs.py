@@ -185,8 +185,9 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
             if not issubclass( prior_distribution, torch.distributions.Distribution ):
                 raise ValueError("The posterior distribution must be a subclass of torch.distributions.Distribution")
             prior_standard_distribution = prior_distribution( self.zero, self.one )
-            prior_standard_sampler     = lambda *args, **kwargs: prior_standard_distribution.sample(args)   # ~~~ at the time of writing, this does not accep
-            prior_standard_log_density = prior_standard_distribution.log_prob
+            mean, std = prior_standard_distribution.mean.item(), prior_standard_distribution.stddev.item()
+            prior_standard_sampler     = lambda *args, **kwargs: (prior_standard_distribution.sample(args)-mean)/std  # ~~~ at the time of writing, this does not accep
+            prior_standard_log_density = lambda z: prior_standard_distribution.log_prob(mean + std*z) + math.log(std)
             check_moments = False
         self.prior_log_density      = LocationScaleLogDensity( prior_standard_log_density, check_moments=check_moments )
         self.prior_standard_sampler = prior_standard_sampler
