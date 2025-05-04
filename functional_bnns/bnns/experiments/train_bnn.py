@@ -7,7 +7,7 @@
 # ~~~ Standard packages
 import numpy as np
 import torch
-from torch import optim
+from torch import optim, distributions
 from tqdm import tqdm
 from statistics import mean as avg
 from matplotlib import pyplot as plt
@@ -49,6 +49,7 @@ hyperparameter_template = {
     "DATA" : "univar_missing_middle",
 	"ARCHITECTURE" : "univar_NN.univar_NN_100_100",
 	"MODEL": "MixtureWeightPrior2015BNN",
+    "VARIATIONAL_FAMILY" : torch.distributions.Normal,
     #
     # ~~~ Any prior-specific hyper-parameters
     "pi" : 0.5,
@@ -82,6 +83,7 @@ hyperparameter_template = {
     "N_MC_SAMPLES" : 1,
     "WEIGHTING" : "standard",           # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
     "DEFAULT_INITIALIZATION" : "new",   # ~~~ whether or not to take the prior as the initialization of the posterior
+    "DEFAULT_PRIOR" : "old",
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
@@ -147,6 +149,7 @@ torch.manual_seed(SEED)
 DTYPE = getattr(torch,DTYPE)            # ~~~ e.g., "float" (str) -> torch.float (torch.dtype) 
 torch.set_default_dtype(DTYPE)
 Optimizer = getattr(optim,OPTIMIZER)    # ~~~ e.g., OPTIMIZER=="Adam" (str) -> Optimizer==optim.Adam
+VARIATIONAL_FAMILY = getattr(distributions,VARIATIONAL_FAMILY) if (VARIATIONAL_FAMILY is not None) else None
 
 #
 # ~~~ Load the data
@@ -195,7 +198,8 @@ try:
     BNN = MODEL_WITH_MEAS_SET_SAMPLER(
             *architecture,
             likelihood_std = torch.tensor(LIKELIHOOD_STD),
-            auto_projection = (PROJECTION_METHOD=="HARD")
+            auto_projection = (PROJECTION_METHOD=="HARD"),
+            posterior_distribution = VARIATIONAL_FAMILY
         )
 except:
     if MEASUREMENT_SET_SAMPLER is not None:
