@@ -1,8 +1,10 @@
 
+import os
+import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from importlib import import_module
-from bnns.experiments.paper.univar_BBB import folder_name
+from bnns.experiments.paper.univar.weight_training_vs_functional_training import folder_name
 from bnns.utils import load_filtered_json_files, load_trained_model_from_dataframe, get_attributes_from_row_i, filter_by_attributes, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles
 from quality_of_life.my_base_utils import json_to_dict
 
@@ -12,11 +14,22 @@ from quality_of_life.my_base_utils import json_to_dict
 ## ~~~ Load the json files from `folder_name` as dictionaries, process them to a format that pandas likes, and combine them into a pandas DataFrame
 ### ~~~
 
-#
-# ~~~ First, remove any lists from the dictionaries, as pandas doesn't like those, before converting to pd.DataFrame 
-data = load_filtered_json_files(folder_name)
+
+folder_dir = os.path.split(folder_name)[0]
+try:
+    results = pd.read_csv(os.path.join( folder_dir, "results.csv" ))
+except FileNotFoundError:
+    print("")
+    print("    Processing the raw results and storing them in .csv form (this should only need to be done once).")
+    print("")
+    from bnns.utils import load_filtered_json_files
+    results = load_filtered_json_files(folder_name)
+    results.to_csv(os.path.join( folder_dir, "results.csv" ))
+except:
+    raise
+
 # data = results[ results.epochs_completed==results.epochs_completed.max() ]
-unique_data = data.loc[:,data.nunique()>1]
+unique_data = results.loc[:,results.nunique()>1]
 
 
 
@@ -26,7 +39,6 @@ unique_data = data.loc[:,data.nunique()>1]
 
 def plot_trained_model( dataframe, i, title="Trained Model", n_samples=500 ):
     data = import_module(f"bnns.data.{dataframe.iloc[i].DATA}")
-    # x_train, y_train, x_test, y_test = data.x_rain, data.y_rain, data.x_test, data.y_test
     grid        =  data.x_test.cpu()
     green_curve =  data.y_test.cpu().squeeze()
     x_train_cpu = data.x_train.cpu()
