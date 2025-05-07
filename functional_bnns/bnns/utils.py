@@ -326,27 +326,28 @@ def filter_by_attributes(dataframe,**kwargs):
 
 #
 # ~~~ Load a trained model, based on the string `architecture` that points to the file where the model is defined
-def load_trained_model( architecture:str, state_dict_path ):
+def load_trained_model( architecture:str, model:str, state_dict_path ):
     #
     # ~~~ Load the untrained model
-    file_where_model_is_defined = import_module(f"bnns.models.{architecture}")  # ~~~ e.g., architecture=="my_model" points to a file `my_model.py` in the `models` folder
+    import bnns
+    architecture = import_module(f"bnns.models.{architecture}").NN  # ~~~ e.g., architecture=="my_model" points to a file `my_model.py` in the `models` folder
     try:
-        model = file_where_model_is_defined.BNN
+        model = getattr(bnns,model)(*architecture)
+        model.load_state_dict(torch.load(state_dict_path))
+        return model
     except:
-        model = file_where_model_is_defined.NN
-    #
-    # ~~~ Update the parameters to their trained values
-    model.load_state_dict(torch.load(state_dict_path))
-    return model
+        architecture.load_state_dict(torch.load(state_dict_path))
+        return architecture
 
 #
 # ~~~ Load a trained model, based on the dataframe of results you get from hyperparameter search
 def load_trained_model_from_dataframe( results_dataframe, i ):
     #
     # ~~~ Load the untrained model
-    architecture = results_dataframe.iloc[i].MODEL
+    model = results_dataframe.iloc[i].MODEL
+    architecture = results_dataframe.iloc[i].ARCHITECTURE
     state_dict_path = results_dataframe.iloc[i].STATE_DICT_PATH
-    return load_trained_model( architecture, state_dict_path )
+    return load_trained_model( architecture, model, state_dict_path )
 
 #
 # ~~~ Generate a .json filename based on the current datetime
@@ -598,10 +599,7 @@ def two_standard_deviations( predictions, grid, ax, extra_std, alpha=0.2, how_ma
         n_posterior_samples = predictions.shape[0]
         which_NNs = (np.linspace( 1, n_posterior_samples, min(n_posterior_samples,how_many_individual_predictions), dtype=np.int32 ) - 1).tolist()
         for j in which_NNs:
-            if j==max(which_NNs):
-                _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), label="A Sampled Network", linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
-            else:
-                _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
+            _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), label=("A Sampled Network" if j==max(which_NNs) else ""), linestyle="-", linewidth=0.5, color="blue", alpha=(alpha+1)/2 )
     #
     # ~~~ Fill in a 95% confidence region
     tittle = "+/- Two Standard Deviations"
@@ -644,17 +642,14 @@ def empirical_quantile( predictions, grid, ax, extra_std, alpha=0.2, how_many_in
     lo,med,hi = ( predictions + extra_std*torch.randn_like(predictions) ).quantile( q=torch.Tensor([0.025,0.5,0.975]).to(predictions.device), dim=0 )
     #
     # ~~~ Graph the median as a blue curve
-    _, = ax.plot( grid.cpu(), med.cpu(), label="Posterior Predictive Median", linestyle="-", linewidth=( 1.5 if how_many_individual_predictions>0 else 0.5 ), color="blue" )
+    _, = ax.plot( grid.cpu(), med.cpu(), label="Posterior Predictive Median", linestyle="-", linewidth=( 1.5 if how_many_individual_predictions>0 else 1 ), color="blue" )
     #
     # ~~~ Optionally, also graph several of the actual sample NN's as more blue curves (label only the last one)
     if how_many_individual_predictions>0:
         n_posterior_samples = predictions.shape[0]
         which_NNs = (np.linspace( 1, n_posterior_samples, min(n_posterior_samples,how_many_individual_predictions), dtype=np.int32 ) - 1).tolist()
         for j in which_NNs:
-            if j==max(which_NNs):
-                _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), label="A Sampled Network", linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
-            else:
-                _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), linestyle="-", linewidth=(1 if how_many_individual_predictions>0 else 0.5), color="blue", alpha=(alpha+1)/2 )
+            _, = ax.plot( grid.cpu(), predictions[j,:].cpu(), label=("A Sampled Network" if j==max(which_NNs) else ""), linestyle="-", linewidth=0.5, color="blue", alpha=(alpha+1)/2 )
     #
     # ~~~ Fill in a 95% confidence region
     tittle = "95% Empirical Quantile Interval"
