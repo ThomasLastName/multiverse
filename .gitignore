@@ -334,9 +334,9 @@ cython_debug/
 .DS_Store
 *.rda  # the SLOSH dataset
 *.json
-*ne_10m_coastline*   # data for adding the black coastline to visual renderings of the SLOSH "heightmaps"
-**/data/*.pt  # the file extension created by `np.save(array)`
-**/data/*.pt   # the file extension created by `torch.save(tensor)`
+**/ne_10m_coastline # data for adding the black coastline to visual renderings of the SLOSH "heightmaps"
+**/data/*.pt        # the file extension created by `np.save(array)`
+**/data/*.pt        # the file extension created by `torch.save(tensor)`
 data/*
 tyxe/*
 torchbnn/*
