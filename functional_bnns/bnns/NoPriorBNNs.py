@@ -227,7 +227,7 @@ class IndepLocScaleSequentialBNN(BayesianModule):
         #
         # ~~~ Attributes determining the log likelihood density
         self.likelihood_model = "Gaussian"
-        self.likelihood_std = likelihood_std
+        self.likelihood_std = nn.Parameter( likelihood_std.clone() if isinstance(likelihood_std,torch.Tensor) else torch.tensor(likelihood_std), requires_grad=False )
         #
         # ~~~ Attributes used for testing validity of the default measurement set
         self.first_moments_of_input_batches = []
@@ -358,7 +358,7 @@ class IndepLocScaleSequentialBNN(BayesianModule):
         return x
     #
     # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
-    def estimate_expected_log_likelihood( self, X, y, use_input_in_next_measurement_set=False ):
+    def estimate_expected_log_likelihood( self, X, y, use_input_in_next_measurement_set=False, prior=False ):
         #
         # ~~~ Store the input itself, and/or descriptive statistics, for reference when generating the measurement set
         self.first_moments_of_input_batches.append(X.mean(dim=0))
@@ -376,7 +376,7 @@ class IndepLocScaleSequentialBNN(BayesianModule):
         # ~~~ The likelihood depends on task criterion: classification or regression
         self.ensure_positive(forceful=True)
         if self.likelihood_model == "Gaussian":
-            log_lik = log_gaussian_pdf( where=y, mu=self(X), sigma=self.likelihood_std )    # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.likelihood_std (the latter being a tunable hyper-parameter)
+            log_lik = log_gaussian_pdf( where=y, mu=( self.prior_forward(X).reshape(y.shape) if prior else self(X) ), sigma=self.likelihood_std )    # ~~~ Y|X,W is assumed to be normal with mean self(X) and variance self.likelihood_std (the latter being a tunable hyper-parameter)
         else:
             raise NotImplementedError("In the current version of the code, only the Gaussian likelihood (i.e., mean squared error) is implemented See issue ?????.")
         return log_lik

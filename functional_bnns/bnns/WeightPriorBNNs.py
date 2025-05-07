@@ -1,12 +1,13 @@
 
 import math
+from tqdm import tqdm
 import torch
 from torch import nn
 
 from bnns.utils import flatten_parameters, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity, InverseTransformSampler
 from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN
 
-from quality_of_life.my_base_utils  import my_warn
+from quality_of_life.my_base_utils  import my_warn, support_for_progress_bars
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
 
@@ -54,9 +55,9 @@ class MixtureWeightPrior2015BNN(IndepLocScaleSequentialBNN):
         # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
         if not 0<pi<1 and sigma1>0 and sigma2>0:
             raise ValueError("The hyper-parameters of the mixture prior must be positive, and pi must be <1, as well, for specifying the a non-degenerate Gaussian mixture (equation (7) in https://arxiv.org/abs/1505.05424).")
-        self.pi     = pi     if isinstance(pi,    torch.Tensor) else torch.tensor(pi)
-        self.sigma1 = sigma1 if isinstance(sigma1,torch.Tensor) else torch.tensor(sigma1)
-        self.sigma2 = sigma2 if isinstance(sigma2,torch.Tensor) else torch.tensor(sigma2)
+        self.pi     = nn.Parameter( pi     if isinstance(pi,    torch.Tensor) else torch.tensor(pi)    , requires_grad=False )
+        self.sigma1 = nn.Parameter( sigma1 if isinstance(sigma1,torch.Tensor) else torch.tensor(sigma1), requires_grad=False )
+        self.sigma2 = nn.Parameter( sigma2 if isinstance(sigma2,torch.Tensor) else torch.tensor(sigma2), requires_grad=False )
     #
     # ~~~ Evaluate the log of the prior density (equation (7) in https://arxiv.org/abs/1505.05424) at a point sampled from the variational distribution
     def estimate_expected_prior_log_density(self):
@@ -140,6 +141,53 @@ class MixtureWeightPrior2015BNN(IndepLocScaleSequentialBNN):
             self.soft_projection_prime = lambda x: torch.exp(x)
         else:
             raise ValueError(f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.')
+    #
+    # ~~~ Infer good prior hyperparameters by maximizing the log posterior
+    def MLE_for_prior_hyperparameters( self, dataloader, likelihood_too=True, n_iter=500, projection_tol=1e-6, n_pi=21 ):
+        #
+        # ~~~ Ready the variables to be optimized
+        self.sigma1.requires_grad = True
+        self.sigma2.requires_grad = True
+        if likelihood_too: self.likelihood_std.requires_grad = True
+        PI = torch.linspace(0,1,n_pi) # ~~~ prior_forward is not a differentiable function of the hyper-parameter pi, so we will use a grid search for pi only
+        #
+        # ~~~ Optimize the log posterior
+        with support_for_progress_bars():
+            optimizer = torch.optim.Adam( self.parameters(), lr=1e-2 )
+            pbar = tqdm( desc="Tuning Prior Hyper-Parameters", total=n_iter, initial=0, ascii=' >=' )
+            self.watch_the_count = False
+            while pbar.n<n_iter:
+                for (X,y) in dataloader:
+                    losses = []
+                    for pi in PI:
+                        self.pi.data = pi
+                        losses.append(-self.estimate_expected_log_likelihood(X,y,prior=True))
+                    losses = torch.stack(losses)
+                    loss = losses.max()
+                    loss.backward()
+                    optimizer.step()
+                    self.pi.data = PI[losses.argmax().item()]
+                    self.resample_weights()
+                    #
+                    # ~~~ Project onto the constraint set
+                    with torch.no_grad():
+                        self.likelihood_std.data.clamp_(min=projection_tol)
+                        self.sigma1.data.clamp_(min=projection_tol)
+                        self.sigma2.data.clamp_(min=projection_tol)
+                        info = {
+                            "log-lik" : f"{loss.item():<4.4f}",
+                            "pi" :  f"{self.pi.item():<4.4f}",
+                            "s1" :  f"{self.sigma1.item():<4.4f}",
+                            "s2" :  f"{self.sigma2.item():<4.4f}",
+                        }
+                        if likelihood_too: info["noise_std"] = f"{self.likelihood_std.item():<4.4f}",
+                        pbar.set_postfix(info)
+                        pbar.update()
+                        if pbar.n >= n_iter: break
+        self.sigma1.requires_grad = False
+        self.sigma2.requires_grad = False
+        if likelihood_too: self.likelihood_std.requires_grad = False
+        self.watch_the_count = True
 
 
 
