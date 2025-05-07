@@ -198,7 +198,7 @@ try:
     BNN = MODEL_WITH_MEAS_SET_SAMPLER(
             *architecture,
             likelihood_std = torch.tensor(LIKELIHOOD_STD),
-            auto_projection = (PROJECTION_METHOD=="HARD"),
+            auto_projection = (PROJECTION_METHOD.upper()=="HARD"),
             posterior_distribution = VARIATIONAL_FAMILY
         )
 except:
@@ -207,7 +207,7 @@ except:
     BNN = MODEL(
             *architecture,
             likelihood_std = torch.tensor(LIKELIHOOD_STD),
-            auto_projection = (PROJECTION_METHOD=="HARD"),
+            auto_projection = (PROJECTION_METHOD.upper()=="HARD"),
             posterior_distribution = VARIATIONAL_FAMILY
         )
 
@@ -224,7 +224,7 @@ BNN.post_GP_ETA = POST_GP_ETA                       # ~~~ stabilizing noise for 
 if DEFAULT_INITIALIZATION in ("new","old"):
     BNN.set_default_uncertainty(DEFAULT_INITIALIZATION=="new")
 
-if not PROJECTION_METHOD=="HARD":
+if not PROJECTION_METHOD.upper()=="HARD":
     BNN.setup_soft_projection(PROJECTION_METHOD)
     if DEFAULT_INITIALIZATION is None:
         BNN.apply_soft_projection()
@@ -372,7 +372,7 @@ if EXACT_WEIGHT_KL and FUNCTIONAL:
 
 #
 # ~~~ Do the actual training loop
-while keep_training:
+while keep_training and (target_epochs>0):
     with support_for_progress_bars():   # ~~~ this just supports green progress bars
         stopped_early = False
         pbar = tqdm( desc=description_of_the_experiment, total=target_epochs*len(dataloader), initial=epochs_completed_so_far*len(dataloader), ascii=' >=' )
@@ -410,10 +410,10 @@ while keep_training:
                     negative_ELBO.backward()
                 #
                 # ~~~ Perform the gradient-based update
-                if not PROJECTION_METHOD=="HARD": BNN.apply_chain_rule_for_soft_projection()
+                if not PROJECTION_METHOD.upper()=="HARD": BNN.apply_chain_rule_for_soft_projection()
                 optimizer.step()
                 optimizer.zero_grad()
-                if not PROJECTION_METHOD=="HARD": BNN.apply_soft_projection()
+                if not PROJECTION_METHOD.upper()=="HARD": BNN.apply_soft_projection()
                 #
                 # ~~~ Report a moving average of train_loss as well as val_loss in the progress bar
                 if len(train_loss_curve)>0:
