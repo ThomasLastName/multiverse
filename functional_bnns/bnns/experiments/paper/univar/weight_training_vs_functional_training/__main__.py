@@ -4,7 +4,7 @@ import os
 import random
 import torch
 from quality_of_life.my_base_utils import dict_to_json, my_warn
-from bnns.experiments.paper.univar.weight_training_vs_functional_training import folder_name, ARCHITECTURE, LR, MODEL, PI, SIGMA1, SIGMA2, PRIOR_TYPE, SCALE, LR, LIKELIHOOD_STD, FUNCTIONAL, PROJECTION_METHOD, DEFAULT_INITIALIZATION, MEASUREMENT_SET_SAMPLER, N_MEAS, PRIOR_J, POST_J, PRIOR_ETA, POST_ETA, PRIOR_M, POST_M
+from bnns.experiments.paper.univar.weight_training_vs_functional_training import folder_name, ARCHITECTURE, VARIATIONAL_FAMILY, LR, MODEL, PI, SIGMA1, SIGMA2, PRIOR_TYPE, SCALE, LR, LIKELIHOOD_STD, FUNCTIONAL, PROJECTION_METHOD, DEFAULT_INITIALIZATION, MEASUREMENT_SET_SAMPLER, N_MEAS, PRIOR_J, POST_J, PRIOR_ETA, POST_ETA, PRIOR_M, POST_M
 
 
 
@@ -35,6 +35,7 @@ hyperparameter_template = {
     "DATA" : "univar_missing_middle_normalized_12",
 	"ARCHITECTURE" : EXPLORE_DURING_TUNING,
 	"MODEL": EXPLORE_DURING_TUNING,
+	"VARIATIONAL_FAMILY" : EXPLORE_DURING_TUNING,
     #
     # ~~~ Any prior-specific hyper-parameters
     # EXPLORE_DURING_TUNING
@@ -45,7 +46,7 @@ hyperparameter_template = {
     "FUNCTIONAL" : EXPLORE_DURING_TUNING,   # ~~~ whether or to do functional training or (if False) BBB
     "MEASUREMENT_SET_SAMPLER" : EXPLORE_DURING_TUNING,  # ~~~ used for functional training; load this function from the same file where data is loaded from
     "N_MEAS" : EXPLORE_DURING_TUNING,           # ~~~ used for functional training; desired size of measurement set
-    "EXACT_WEIGHT_KL" : IT_DEPENDS,             # ~~~ use when possible
+    "EXACT_WEIGHT_KL" : False,              # ~~~ not found to result in meaningfully different results
     "PROJECTION_METHOD" : EXPLORE_DURING_TUNING,# ~~~ if "HARD", use projected gradient descent; else use the weird thing from the paper
     "PRIOR_J"   : EXPLORE_DURING_TUNING,    # ~~~ `J` in the SSGE of the prior score
     "POST_J"    : EXPLORE_DURING_TUNING,    # ~~~ `J` in the SSGE of the posterior score
@@ -59,7 +60,7 @@ hyperparameter_template = {
     "LR" : EXPLORE_DURING_TUNING,
     "BATCH_SIZE" : 600,
     "N_EPOCHS" : [10000,20000,30000],
-    "EARLY_STOPPING" : True,
+    "EARLY_STOPPING" : False,
     "DELTA": [ -0.1, 0.1 ],
     "PATIENCE" : [ 25, 50 ],
     "STRIDE" : 15,
@@ -96,15 +97,16 @@ def randomly_sample_less_important_hyperparameters(hyperparameter_template):
     projection_method = random.choice(PROJECTION_METHOD)
     hyperparameter_template["PROJECTION_METHOD"] = projection_method
     hyperparameter_template["DEFAULT_INITIALIZATION"] = random.choice( DEFAULT_INITIALIZATION if projection_method=="HARD" else DEFAULT_INITIALIZATION[1:] )
+    hyperparameter_template["VARIATIONAL_FAMILY"] = random.choice(VARIATIONAL_FAMILY)
     #
     # ~~~ Randomly set the prior hyperparameters
-    if model=="GaussianBNN":
-        hyperparameter_template["prior_type"] = random.choice(PRIOR_TYPE)
-        hyperparameter_template["scale"] = random.choice(SCALE)
-    else:
+    if model == "MixtureWeightPrior2015BNN":
         hyperparameter_template["pi"] = random.choice(PI)
         hyperparameter_template["sigma1"] = random.choice(SIGMA1)
         hyperparameter_template["sigma2"] = random.choice(SIGMA2)
+    else:
+        hyperparameter_template["prior_type"] = random.choice(PRIOR_TYPE)
+        hyperparameter_template["scale"] = random.choice(SCALE)
     #
     # ~~~ Randomly set the hyperparameters of functional training
     n_meas = random.choice(N_MEAS)
@@ -117,7 +119,7 @@ def randomly_sample_less_important_hyperparameters(hyperparameter_template):
     hyperparameter_template["PRIOR_M"] = random.choice(PRIOR_M)
     hyperparameter_template["POST_M"] = random.choice(POST_M)
     return hyperparameter_template
-	
+
 #
 # ~~~ Loop over the hyperparameter grid, saving each one to a .json file called `RUN_THIS_<count>.json`
 count = 1
@@ -133,14 +135,8 @@ for lr in LR:
 					hyperparameter_template["MODEL"] = model
 					hyperparameter_template["LIKELIHOOD_STD"] = likelihood_std
 					hyperparameter_template["FUNCTIONAL"] = functional
-					hyperparameter_template["EXACT_WEIGHT_KL"] = (MODEL=="GaussianBNN") and (not functional)
-                    #
-					# ~~~ Some post-hoc tweaks to avoid running out of RAM
-					if ARCHITECTURE == "univar_NN.univar_NN_500_500_500_500":
-						if hyperparameter_template["PRIOR_M"] == 2500:
-							hyperparameter_template["PRIOR_M"] = 2000
-                    #
-                    # ~~~ Save the hyperparameters to a .json file
+					#
+					# ~~~ Save the hyperparameters to a .json file
 					tag = f"RUN_THIS_{count}.json"
 					json_filename = os.path.join(folder_name,tag)
 					count += 1

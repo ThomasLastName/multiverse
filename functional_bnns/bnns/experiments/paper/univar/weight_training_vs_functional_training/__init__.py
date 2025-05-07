@@ -5,24 +5,27 @@ folder_name = os.path.join( os.path.dirname(os.path.abspath(__file__)), "hyperpa
 
 #
 # ~~~ Architecture
-ARCHITECTURE = [    # ~~~ == the list `BEST_6_ARCHITECTURES` defined in univar/dropout/process_results.py
-        "univar_NN.univar_NN_30_30",            # ~~~ 2 hidden layers, 30 neurons each
-        "univar_NN.univar_NN_100_100",          # ~~~ 2 hidden layers, 100 neurons each
-        "univar_NN.univar_NN_250_250",          # ~~~ 2 hidden layers, 250 neurons each
-        "univar_NN.univar_NN_500_500_500_500",  # ~~~ 4 hidden layers, 500 neurons each
-        "univar_NN.univar_NN_750_750",          # ~~~ 2 hidden layers, 750 neurons eac
-        "univar_NN.univar_NN_1000_1000"         # ~~~ 2 hidden layers, 1000 neurons each
+ARCHITECTURE = [    # ~~~ == the list `BEST_4_ARCHITECTURES` defined in univar/dropout/process_results.py
+        "univar_NN.univar_NN_30_30",
+        "univar_NN.univar_NN_100_100",
+        "univar_NN.univar_NN_250_250",
+        "univar_NN.univar_NN_500_500_500_500"
     ]
+VARIATIONAL_FAMILY = [
+        "Normal",
+        "Uniform"
+    ]
+
 
 #
 # ~~~ Likelihood
-LIKELIHOOD_STD = [ 0.01, 0.005, 0.001 ]
+LIKELIHOOD_STD = [ 0.1, 0.01, 0.001 ]
 
 #
 # ~~~ Prior
 MODEL = [
         "MixtureWeightPrior2015BNN",    # ~~~ mixture prior proposed in Blundell et al. 2015 (https://arxiv.org/abs/1505.05424)
-        "GaussianBNN"                   # ~~~ fully factorized Gaussian prior which as in torchbnn
+        "FullSupportLocScaleBNN"                   # ~~~ fully factorized Gaussian prior which as in torchbnn
     ]
 PI = [ 1/4, 2/4, 3/4 ]                  # ~~~ hyper-parameter of the mixture prior
 SIGMA1 = [ exp(-0), exp(-1), exp(-2) ]  # ~~~ hyper-parameter of the mixture prior
@@ -42,6 +45,6 @@ PRIOR_J   = [ 100, 500 ]
 POST_J    = [ 25,  50  ]
 PRIOR_ETA = [ 0.001, 0.1 ]
 POST_ETA  = [ 0.001, 0.1 ]
-PRIOR_M   = [ 1000, 2000 ]
+PRIOR_M   = [ 500, 1500 ]
 POST_M    = [ 50,   200  ]
 
