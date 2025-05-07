@@ -342,3 +342,4 @@ tyxe/*
 torchbnn/*
 lightning_logs/*
 results/*
+**/hyperparameter_search/
