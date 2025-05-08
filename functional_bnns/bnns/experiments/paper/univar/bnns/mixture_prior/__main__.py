@@ -14,15 +14,15 @@ os.mkdir(os.path.join( folder_name, "experimental_models" ))
 
 #
 # ~~~
-hyperparameter_templates = glob(os.path.join(master_folder,'*.json'))
-if len(hyperparameter_templates)==0:
+list_of_json_files = glob(os.path.join(master_folder,'*.json'))
+if len(list_of_json_files)==0:
     raise OSError(f"Unable to Locate any .json files in directory {master_folder}. This is likely because `__main__.py` was not run in that folder.")
 
 #
 # ~~~ Loop over the hyperparameter grid, saving each one to a .json file called `RUN_THIS_<count>.json`
 count = 1
 random.seed(2025)
-for hyperparameter_template in hyperparameter_templates:
+for hyperparameter_template in list_of_json_files:
     hyperparameter_template = json_to_dict(hyperparameter_template)
     for pi in PI:
         for sigma1 in SIGMA1:
