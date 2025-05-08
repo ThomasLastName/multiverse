@@ -419,6 +419,14 @@ def get_batch_sizes( N, b ):
     assert sum(batch_sizes)==N
     return batch_sizes
 
+def k_smallest_indices( dataframe, column, k ):
+    data = dataframe if isinstance(dataframe,pd.Series) else dataframe[column].array
+    return np.argpartition(data, k)[:k]
+
+def k_largest_indices( dataframe, column, k ):
+    data = dataframe if isinstance(dataframe,pd.Series) else dataframe[column].array
+    return np.argpartition(-data, k)[:k]
+
 
 
 ### ~~~
