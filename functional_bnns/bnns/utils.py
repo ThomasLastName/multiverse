@@ -289,22 +289,21 @@ def load_filtered_json_files( directory, verbose=True ):
 
 #
 # ~~~ Infer the width of each model
-def infer_width_and_depth(dataframe):
+def infer_width_and_depth( dataframe, field="MODEL" ):
     #
     # ~~~ Infer the width of each model
     width_mapping = {}
-    for model in dataframe["MODEL"].unique():
+    for model in dataframe[field].unique():
         text_after_last_underscore = model[model.rfind("_")+1:] # ~~~ e.g., if model=="univar_NN.univar_NN_30_30_30", then text_after_last_underscore=="30"
         width_mapping[model] = int(text_after_last_underscore)
-    dataframe["width"] = dataframe["MODEL"].map(width_mapping)
-    # print_dict(width_mapping)
+    dataframe["width"] = dataframe[field].map(width_mapping)
     #
     # ~~~ Infer the depth of each model
     depth_mapping = {}
-    for model in dataframe["MODEL"].unique():
+    for model in dataframe[field].unique():
         how_many_underscores = len(model.split("_"))-1 # ~~~ e.g., if model=="univar_NN.univar_NN_30_30_30", then text_after_last_underscore=="30"
         depth_mapping[model] = how_many_underscores-2 if how_many_underscores>1 else 2
-    dataframe["depth"] = dataframe["MODEL"].map(depth_mapping)
+    dataframe["depth"] = dataframe[field].map(depth_mapping)
     # print_dict(depth_mapping)
     return dataframe
 
