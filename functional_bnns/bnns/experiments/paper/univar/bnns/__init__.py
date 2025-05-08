@@ -21,7 +21,7 @@ ARCHITECTURE = [    # ~~~ == the list `BEST_4_ARCHITECTURES` defined in univar/d
 
 #
 # ~~~ Likelihood
-LIKELIHOOD_STD = [ 0.1, 0.05, 0.01, 0.005, 0.001 ]
+LIKELIHOOD_STD = [ 0.1, 0.01, 0.001, 0.0001 ]
 
 #
 # ~~~ Choice of variational family
@@ -29,7 +29,7 @@ VARIATIONAL_FAMILY = [ "Normal", "Uniform" ]
 
 #
 # ~~~ Triaining
-LR = [ 0.001, 0.0005, 0.0001, 0.00005, 0.00001 ]
+LR = [ 0.001, 0.0005, 0.0001, 0.00001 ]
 FUNCTIONAL = [ True, False ]
 MEASUREMENT_SET_SAMPLER = [ "random_points_only", "data_only", "current_batch_and_random_data" ]
 N_MEAS    = [ 50,  200 ]
