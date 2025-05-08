@@ -45,6 +45,7 @@ while (minutes_since_start_time < hours*60) and len(sorted_list_of_filenames_sta
     count = int( experiment_filename[len("RUN_THIS_"):].strip(".json") )    # ~~~ e.g., if sorted_list_of_filenames_starting_with_RUN_THIS[-1]=="RUN_THIS_62.json", then count==62
     experiment_filename = os.path.join( folder_name, experiment_filename )
     hyperparameter_dict = json_to_dict(experiment_filename)
+    hyperparameter_dict["tuning_count"] = count
     #
     # ~~~ Create a new .json file (with a different name) to store the results
     print("")
