@@ -243,6 +243,7 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
         # ~~~ Set the prior standard deviations
         self.default_prior_type = "torch.nn.init"   # ~~~ also supported are "Tom" and "IID"
         self.default_scale = 1.
+        self.default_extra_gain = 1.
         self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale )
     #
     # ~~~ Allow these to be set at runtime
@@ -259,6 +260,11 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
         except KeyError:
             scale = self.default_scale
             my_warn(f'Key word argument `scale` not specified (should be positive, float); using default "{scale}".')
+        try:
+            extra_gain = kwargs["extra_gain"]
+        except KeyError:
+            extra_gain = self.default_extra_gain
+            my_warn(f'Key word argument `extra_gain` not specified (should be positive, float); using default "{extra_gain}".')
         #
         # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
         if not scale>0:
@@ -271,29 +277,26 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
         if prior_type=="torch.nn.init": # ~~~ use the stanard deviation of the distribution of pytorch's default initialization
             for layer in self.prior_std:
                 if isinstance(layer,nn.Linear):
-                    std = std_per_layer(layer)
+                    std = extra_gain*std_per_layer(layer)
                     layer.weight.data = std * torch.ones_like(layer.weight.data)
-                    if layer.bias is not None:
-                        layer.bias.data = std * torch.ones_like(layer.bias.data)
+                    if layer.bias is not None: layer.bias.data = std * torch.ones_like(layer.bias.data)
         #
         # ~~~ Implement prior_type=="Tom" (`scale` used later)
         if prior_type=="Tom":
             for p in self.prior_std.parameters():
-                p.data = std_per_param(p)*torch.ones_like(p.data)
+                p.data = extra_gain*std_per_param(p)*torch.ones_like(p.data)
         #
         # ~~~ Implement prior_type=="IID" and use `scale`
         if prior_type=="IID":
             for p in self.prior_std.parameters():
-                p.data = scale*torch.ones_like(p.data)
-        else:
-            #
-            # ~~~ Scale the range of output, by scaling the parameters of the final linear layer, much like the scale paramter in a GP
-            for layer in reversed(self.prior_std):
-                if isinstance(layer,nn.Linear):
-                    layer.weight.data *= scale
-                    if layer.bias is not None:
-                        layer.bias.data *= scale
-                    break
+                p.data = extra_gain * torch.ones_like(p.data)
+        #
+        # ~~~ Scale the range of output, by scaling the parameters of the final linear layer, much like the scale paramter in a GP
+        for layer in reversed(self.prior_std):
+            if isinstance(layer,nn.Linear):
+                layer.weight.data *= scale
+                if layer.bias is not None: layer.bias.data *= scale
+                break
     #
     # ~~~ Compute \ln( f_W(F_\theta(z)) ) at a point w sampled from the standard MVN distribution, where f_W is the prior PDF of the network parameters ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
     def estimate_expected_prior_log_density(self):
