@@ -427,6 +427,16 @@ def k_largest_indices( dataframe, column, k ):
     data = dataframe if isinstance(dataframe,pd.Series) else dataframe[column].array
     return np.argpartition(-data, k)[:k]
 
+#
+# ~~~ Load a the predictions trained model, based on the dataframe of results you get from hyperparameter search
+def get_predictions_and_targets( dataframe, i ):
+    data = import_module(f"bnns.data.{dataframe.iloc[i].DATA}")
+    x_val   = data.x_val.to( device=data.iloc[i].DEVICE, dtype=data.iloc[i].DTYPE )
+    targets = data.y_val.to( device=data.iloc[i].DEVICE, dtype=data.iloc[i].DTYPE )
+    bnn = load_trained_model_from_dataframe(dataframe,i)
+    with torch.no_grad(): predictions = bnn( x_val, n=data.iloc[i].N_POSTERIOR_SAMPLES )
+    return predictions, targets
+
 
 
 ### ~~~
