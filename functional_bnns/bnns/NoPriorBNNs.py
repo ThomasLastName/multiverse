@@ -27,11 +27,11 @@ class BayesianModule(nn.Module):
         #
         # ~~~ Attributes for SSGE, used for computing gradients of the loss from Sun et al. 2019 (https://arxiv.org/abs/1903.05779)
         self.prior_J   =  20
-        self.post_J    =  100
+        self.post_J    =  20
         self.prior_eta =  0.01
         self.post_eta  =  0.05
-        self.prior_M   =  2000
-        self.post_M    =  100
+        self.prior_M   =  200
+        self.post_M    =  200
         self.prior_SSGE = None
         self.prior_samples_batch_size = None    # ~~~ see `setup_prior_SSGE`
     #
