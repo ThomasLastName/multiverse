@@ -4,7 +4,7 @@ import os
 import random
 import torch
 from quality_of_life.my_base_utils import dict_to_json, my_warn
-from bnns.experiments.paper.univar.bnns import folder_name, N_HYPERPAR_SAMPLES, ARCHITECTURE, VARIATIONAL_FAMILY, LR, LIKELIHOOD_STD, FUNCTIONAL, MEASUREMENT_SET_SAMPLER, N_MEAS, PRIOR_J, POST_J, PRIOR_ETA, POST_ETA, PRIOR_M, POST_M
+from bnns.experiments.paper.univar.bnns import folder_name, N_HYPERPAR_SAMPLES, SEED, DATA, ARCHITECTURE, VARIATIONAL_FAMILY, LR, WEIGHTING, LIKELIHOOD_STD, FUNCTIONAL, MEASUREMENT_SET_SAMPLER, N_MEAS, PRIOR_J, POST_J, PRIOR_ETA, POST_ETA, PRIOR_M, POST_M
 
 
 
@@ -29,20 +29,20 @@ hyperparameter_template = {
     # ~~~ Misc.
     "DEVICE" : "cuda" if torch.cuda.is_available() else "cpu",
     "DTYPE" : "float",
-    "SEED" : 2025,
+    "SEED" : EXPLORE_DURING_TUNING,
     #
     # ~~~ Which problem, broadly spaking
-    "DATA" : "univar_missing_middle_normalized_12",
-	"ARCHITECTURE" : EXPLORE_DURING_TUNING,
-	"MODEL": "MixtureWeightPrior2015BNN",
-	"VARIATIONAL_FAMILY" : EXPLORE_DURING_TUNING,
+    "DATA" : EXPLORE_DURING_TUNING,
+    "ARCHITECTURE" : EXPLORE_DURING_TUNING,
+    "MODEL": None,
+    "VARIATIONAL_FAMILY" : EXPLORE_DURING_TUNING,
     #
     # ~~~ Any prior-specific hyper-parameters
     # EXPLORE_DURING_TUNING
     #
     # ~~~ For training
-    "GAUSSIAN_APPROXIMATION" : False,       # ~~~ N/A since we are testing weight priors only in this round of experiments
-    "APPPROXIMATE_GAUSSIAN_MEAN" : None,    # ~~~ N/A since we are testing weight priors only in this round of experiments
+    "GAUSSIAN_APPROXIMATION" : False,       # ~~~ N/A when testing weight priors only
+    "APPPROXIMATE_GAUSSIAN_MEAN" : False,   # ~~~ N/A when testing weight priors only
     "FUNCTIONAL" : EXPLORE_DURING_TUNING,   # ~~~ whether or to do functional training or (if False) BBB
     "MEASUREMENT_SET_SAMPLER" : EXPLORE_DURING_TUNING,  # ~~~ used for functional training; load this function from the same file where data is loaded from
     "N_MEAS" : EXPLORE_DURING_TUNING,           # ~~~ used for functional training; desired size of measurement set
@@ -54,19 +54,19 @@ hyperparameter_template = {
     "POST_ETA"  : EXPLORE_DURING_TUNING,    # ~~~ `eta` in the SSGE of the posterior score
     "PRIOR_M"   : EXPLORE_DURING_TUNING,    # ~~~ `M` in the SSGE of the prior score
     "POST_M"    : EXPLORE_DURING_TUNING,    # ~~~ `M` in the SSGE of the posterior score
-    "POST_GP_ETA" : None,                   # ~~~ N/A for weight priors
+    "POST_GP_ETA" : 0.01,                   # ~~~ N/A for weight priors
     "LIKELIHOOD_STD" : EXPLORE_DURING_TUNING,
     "OPTIMIZER" : "Adam",
     "LR" : EXPLORE_DURING_TUNING,
-    "BATCH_SIZE" : 600,
+    "BATCH_SIZE" : 600000,
     "N_EPOCHS" : [10000,20000,30000],
     "EARLY_STOPPING" : True,
     "DELTA": [ 0.05, 0.15 ],
     "PATIENCE" : [ 25, 75 ],
     "STRIDE" : 15,
     "N_MC_SAMPLES" : 1,
-    "WEIGHTING" : "standard",   # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
-    "DEFAULT_INITIALIZATION" : None,   # ~~~ how to initialize the variational standard deviations
+    "WEIGHTING" : None,                 # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
+    "DEFAULT_INITIALIZATION" : None,    # ~~~ how to initialize the variational standard deviations
     #
     # ~~~ For visualization0
     "MAKE_GIF" : False,
@@ -75,11 +75,11 @@ hyperparameter_template = {
     "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ N/A, because we aren't making a .gif
     "HOW_MANY_INDIVIDUAL_PREDICTIONS" : 6,  # ~~~ N/A, because we aren't graphing the model
     "VISUALIZE_DISTRIBUTION_USING_QUANTILES" : True, # ~~~ N/A, because we aren't graphing the model
-    "N_POSTERIOR_SAMPLES" : 50,             # ~~~ how many samples to use to make the empirical distributions for plotting
+    "N_POSTERIOR_SAMPLES" : 30,             # ~~~ how many samples to use to make the empirical distributions for plotting
     #
     # ~~~ For metrics and visualization
-    "EXTRA_STD" : False,
-    "N_POSTERIOR_SAMPLES_EVALUATION" : 100, # ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
+    "EXTRA_STD" : True,
+    "N_POSTERIOR_SAMPLES_EVALUATION" : 200, # ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
     "SHOW_DIAGNOSTICS" : False,
     "SHOW_PLOT" : False
 }
@@ -93,9 +93,12 @@ os.mkdir(folder_name)
 def randomly_sample_less_important_hyperparameters(hyperparameter_template):
     #
     # ~~~ Randomize the rest, for the sake of compute time
+    hyperparameter_template["SEED"] = random.choice(SEED)
+    hyperparameter_template["DATA"] = random.choice(DATA)
     hyperparameter_template["ARCHITECTURE"] = random.choice(ARCHITECTURE)
     hyperparameter_template["VARIATIONAL_FAMILY"] = random.choice(VARIATIONAL_FAMILY)
     hyperparameter_template["LR"] = random.choice(LR)
+    hyperparameter_template["WEIGHTING"] = random.choice(WEIGHTING)
     #
     # ~~~ Randomly set the hyperparameters of functional training
     n_meas = random.choice(N_MEAS)
