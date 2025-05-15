@@ -437,6 +437,14 @@ def get_predictions_and_targets( dataframe, i ):
     with torch.no_grad(): predictions = bnn( x_val, n=data.iloc[i].N_POSTERIOR_SAMPLES )
     return predictions, targets
 
+#
+# ~~~ Try to get dict[key] but, if that doesn't work, then get source_of_default.default_key instead.
+def get_key_or_default( dictionary, key, default ):
+    try: return dictionary[key]
+    except KeyError:
+        my_warn(f'Hyper-parameter "{key}" not specified. Using default value of {default}.')
+        return default
+
 
 
 ### ~~~

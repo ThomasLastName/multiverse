@@ -4,7 +4,7 @@ from tqdm import tqdm
 import torch
 from torch import nn
 
-from bnns.utils import flatten_parameters, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity, InverseTransformSampler
+from bnns.utils import flatten_parameters, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity, get_key_or_default
 from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN
 
 from quality_of_life.my_base_utils  import my_warn, support_for_progress_bars
@@ -36,21 +36,9 @@ class MixtureWeightPrior2015BNN(IndepLocScaleSequentialBNN):
     def set_prior_hyperparameters( self, **kwargs ):
         #
         # ~~~ If any of the 3 hyper-parameters pi, sigma1, or sigma2 are unspecified, then use the class level defaults
-        try:
-            pi = kwargs["pi"]
-        except KeyError:
-            pi = self.default_pi
-            my_warn(f'Hyper-parameter "pi" not specified. Using default value of {self.default_pi}.')
-        try:
-            sigma1 = kwargs["sigma1"]
-        except KeyError:
-            sigma1 = self.default_sigma1
-            my_warn(f'Hyper-parameter "sigma1" not specified. Using default value of {self.default_sigma1}.')
-        try:
-            sigma2 = kwargs["sigma2"]
-        except KeyError:
-            sigma2 = self.default_sigma2
-            my_warn(f'Hyper-parameter "sigma2" not specified. Using default value of {self.default_sigma2}.')
+        pi     = get_key_or_default( kwargs, "pi",     self.default_pi     )
+        sigma1 = get_key_or_default( kwargs, "sigma1", self.default_sigma1 )
+        sigma2 = get_key_or_default( kwargs, "sigma2", self.default_sigma2 )
         #
         # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
         if not 0<pi<1 and sigma1>0 and sigma2>0:
@@ -250,21 +238,9 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
     def set_prior_hyperparameters( self, **kwargs ):
         #
         # ~~~ If any of the hyper-parameters are unspecified, then use the class level defaults
-        try:
-            prior_type = kwargs["prior_type"]
-        except KeyError:
-            prior_type = self.default_prior_type
-            my_warn(f'Key word argument `prior_type` not specified; using default "{prior_type}". Available options are "torch.nn.init", "Tom", and "IID".')
-        try:
-            scale = kwargs["scale"]
-        except KeyError:
-            scale = self.default_scale
-            my_warn(f'Key word argument `scale` not specified (should be positive, float); using default "{scale}".')
-        try:
-            extra_gain = kwargs["extra_gain"]
-        except KeyError:
-            extra_gain = self.default_extra_gain
-            my_warn(f'Key word argument `extra_gain` not specified (should be positive, float); using default "{extra_gain}".')
+        prior_type = get_key_or_default( kwargs, "prior_type", self.default_prior_type )
+        scale      = get_key_or_default( kwargs, "scale",      self.default_scale      )
+        extra_gain = get_key_or_default( kwargs, "extra_gain", self.default_extra_gain )
         #
         # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
         if not scale>0:

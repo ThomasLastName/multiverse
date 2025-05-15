@@ -3,6 +3,7 @@ import torch
 
 from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN
 from bnns.GPR import simple_mean_zero_RPF_kernel_GP
+from bnns.utils import get_key_or_default
 
 from quality_of_life.my_base_utils import my_warn
 
@@ -32,21 +33,9 @@ class GPPriorBNN(IndepLocScaleSequentialBNN):
     def set_prior_hyperparameters( self, **kwargs ):
         #
         # ~~~ If any of the 3 hyper-parameters bw, scale, or eta are unspecified, then use the class level defaults
-        try:
-            bw = kwargs["bw"]
-        except KeyError:
-            bw = self.default_bw
-            my_warn(f'Hyper-parameter "bw" not specified. Using default value of {self.default_bw}.')
-        try:
-            scale = kwargs["scale"]
-        except KeyError:
-            scale = self.default_scale
-            my_warn(f'Hyper-parameter "scale" not specified. Using default value of {self.default_scale}.')
-        try:
-            eta = kwargs["eta"]
-        except KeyError:
-            eta = self.default_eta
-            my_warn(f'Hyper-parameter "eta" not specified. Using default value of {self.default_eta}.')
+        bw    = get_key_or_default( kwargs, "bw",    self.default_bw    )
+        scale = get_key_or_default( kwargs, "scale", self.default_scale )
+        eta   = get_key_or_default( kwargs, "eta",   self.default_eta   )
         #
         # ~~~ Define a mean zero RBF kernel GP with independent output channels all sharing the same value bw, scale, and eta
         self.GP = simple_mean_zero_RPF_kernel_GP( out_features=self.out_features, bw=bw, scale=scale, eta=eta )
