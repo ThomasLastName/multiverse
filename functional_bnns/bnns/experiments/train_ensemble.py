@@ -56,7 +56,7 @@ hyperparameter_template = {
     # ~~~ For training
     "STEIN" : True,
 	"BAYESIAN" : True,
-    "CONDITIONAL_STD" : 0.19,
+    "LIKELIHOOD_STD" : 0.19,
     "BW" : None,
     "N_MODELS" : 100,
     "OPTIMIZER" : "Adam",
@@ -169,7 +169,7 @@ ensemble = Ensemble(
         architecture = NN,
         n_copies = N_MODELS,
         device = DEVICE,
-        conditional_std = torch.tensor(CONDITIONAL_STD) if BAYESIAN else None,
+        likelihood_std = torch.tensor(LIKELIHOOD_STD) if BAYESIAN else None,
         bw = BW
     )
 
@@ -219,7 +219,7 @@ if data_is_univariate:
     #
     # ~~~ Define the main plotting routine
     plot_predictions = plot_bnn_empirical_quantiles if VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
-    def plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble, extra_std=(CONDITIONAL_STD if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, title=title ):
+    def plot_ensemble( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, ensemble, extra_std=(LIKELIHOOD_STD if EXTRA_STD else 0.), how_many_individual_predictions=HOW_MANY_INDIVIDUAL_PREDICTIONS, title=title ):
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
@@ -250,6 +250,7 @@ train_acc_curve = []
 val_acc_curve = []
 iter_count = []
 epochs_completed_so_far = 0
+best_iter_so_far = 0
 target_epochs = N_EPOCHS.pop(0)
 starting_time = time()
 first_round = True
@@ -341,8 +342,7 @@ while keep_training:
                 losses.sum().backward() # ~~~ If list==torch.Tensor([ f1(w1), f2(w2), f3(w3) ]), then `list.sum().backward()` is equivalent to calling item.backward() for each item in the list (linearity of the derivative)
                 #
                 # ~~~ Perform the gradient-based update
-                if BAYESIAN and STEIN:
-                    ensemble.apply_chain_rule_for_SVGD()
+                if BAYESIAN and STEIN: ensemble.apply_chain_rule_for_SVGD()
                 optimizer.step()
                 optimizer.zero_grad()
                 #
@@ -449,7 +449,7 @@ while keep_training:
                                     for batch in loader
                                 ], dim=1)
                 if EXTRA_STD:
-                    predictions += CONDITIONAL_STD*torch.randn_like(predictions)
+                    predictions += LIKELIHOOD_STD*torch.randn_like(predictions)
                 return predictions
         #
         # ~~~ Compute the posterior predictive distribution on the testing dataset(s)
@@ -516,7 +516,7 @@ while keep_training:
                                 for batch in loader
                             ], dim=1)
                     if EXTRA_STD:
-                        predictions += CONDITIONAL_STD*torch.randn_like(predictions)
+                        predictions += LIKELIHOOD_STD*torch.randn_like(predictions)
                     return predictions.mean(dim=0,keepdim=True) * S @ V.T
             predictions = predict(x_test)
             predictions_on_interpolary_grid = predict(batched_interpolary_grid)

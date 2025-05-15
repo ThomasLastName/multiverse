@@ -6,7 +6,7 @@
 	"MODEL": "univar_NN",
 	"STEIN" : true,
 	"BAYESIAN" : true,
-	"CONDITIONAL_STD": 0.19,
+	"LIKELIHOOD_STD": 0.19,
 	"BW": null,
 	"N_MODELS": 100,
 	"OPTIMIZER": "Adam",
