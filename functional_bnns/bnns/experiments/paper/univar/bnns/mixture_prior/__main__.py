@@ -27,6 +27,7 @@ for hyperparameter_template in list_of_json_files:
     for pi in PI:
         for sigma1 in SIGMA1:
             for sigma2 in SIGMA2:
+                hyperparameter_template["MODEL"] = "MixtureWeightPrior2015BNN"
                 hyperparameter_template["pi"] = pi
                 hyperparameter_template["sigma1"] = sigma1
                 hyperparameter_template["sigma2"] = sigma2
