@@ -232,7 +232,7 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
         self.default_prior_type = "torch.nn.init"   # ~~~ also supported are "Tom" and "IID"
         self.default_scale = 1.
         self.default_extra_gain = 1.
-        self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale )
+        self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale, extra_gain=self.default_extra_gain )
     #
     # ~~~ Allow these to be set at runtime
     def set_prior_hyperparameters( self, **kwargs ):
