@@ -322,6 +322,7 @@ if EARLY_STOPPING:
 
 #
 # ~~~ Set "regularization parameters" for a Bayesian loss function (i.e., relative weights of the likelihood and the KL divergence)
+WEIGHTING = WEIGHTING.lower()
 if not isinstance(WEIGHTING,str):
     my_warn(f"Expected WEIGHTING to be a string, but found instead type(WEIGHTING)=={type(WEIGHTING)}. The loss function will be weighted as if WEIGHTING='standard'.")
 elif WEIGHTING=="Blundell":
@@ -330,8 +331,10 @@ elif WEIGHTING=="Blundell":
     def decide_weights(**kwargs):
         i = kwargs["b"]
         M = kwargs["n_batches"]
-        pi_i = 2**(M-i)/(2**M-1)
-        return  pi_i, 1.
+        pi_i = 2**(M-(i+1))/(2**M-1)    # ~~~ note sum( 2**(M-(i+1))/(2**M-1) for i in range(M) )==1
+        weight_on_the_kl = pi_i
+        weight_on_the_likelihood = 1.
+        return weight_on_the_kl, weight_on_the_likelihood
 elif WEIGHTING=="Sun in principle": # (EQUIVALENT TO THE "standard" WEIGHTING BELOW)
     #
     # ~~~ Follow the suggestion "In principle, \lambda should be set as 1/|\mathcal{D}|" in equation (12) of https://arxiv.org/abs/1903.05779
@@ -405,8 +408,8 @@ while keep_training and (target_epochs>0):
                         kl_div = BNN.gaussian_kl(approximate_mean=APPPROXIMATE_GAUSSIAN_MEAN)
                     #
                     # ~~~ Compute the loss==negative_ELBO
-                    alpha, beta = decide_weights( b=b, n_batches=n_batches, X=X, D_train=D_train )
-                    negative_ELBO = ( alpha*kl_div - beta*log_likelihood_density )/N_MC_SAMPLES
+                    beta, alpha = decide_weights( b=b, n_batches=n_test_batches, X=X, D_train=D_train, n_params=(BNN.out_features*len(BNN.measurement_set) if FUNCTIONAL else n_params) )
+                    negative_ELBO = ( beta*kl_div - alpha*log_likelihood_density )/N_MC_SAMPLES
                     negative_ELBO.backward()
                 #
                 # ~~~ Perform the gradient-based update
@@ -456,8 +459,8 @@ while keep_training and (target_epochs>0):
                             if b==this_one:
                                 val_lik = BNN.estimate_expected_log_likelihood(X,y).item()
                                 val_lik_curve.append(val_lik)
-                                alpha, beta = decide_weights( b=b, n_batches=n_test_batches, X=X, D_train=D_train )
-                                val_loss = alpha*kl_div - beta*val_lik
+                                beta, alpha = decide_weights( b=b, n_batches=n_test_batches, X=X, D_train=D_train, n_params=(BNN.out_features*len(BNN.measurement_set) if FUNCTIONAL else n_params) )
+                                val_loss = beta*kl_div - alpha*val_lik
                                 break
                         val_loss_curve.append(val_loss)
                         predictions_val = BNN( X, n=N_POSTERIOR_SAMPLES )
