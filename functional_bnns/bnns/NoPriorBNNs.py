@@ -131,7 +131,7 @@ class BayesianModule(nn.Module):
                 self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, iterative_avg=True )
     #
     # ~~~ Estimate KL_div( variational output || prior output ) using the SSGE, assuming we don't have a forula for the density of the variational distribution of the outputs
-    def functional_kl( self, resample_measurement_set=True, return_raw_ingrdients=False ):
+    def functional_kl( self, resample_measurement_set=True, return_raw_ingredients=False ):
         #
         # ~~~ If `resample_measurement_set==True` then generate a new meausrement set
         if resample_measurement_set: self.resample_measurement_set()
@@ -154,7 +154,7 @@ class BayesianModule(nn.Module):
             prior_score_at_yhat     = self.prior_SSGE( yhat.reshape(1,-1) )
         #
         # ~~~ For generality, add this option that I never intend to use
-        if return_raw_ingrdients: return yhat, posterior_score_at_yhat, prior_score_at_yhat
+        if return_raw_ingredients: return yhat, posterior_score_at_yhat, prior_score_at_yhat
         #
         # ~~~ Combine all the ingridents as per the chain rule 
         estimate_of_log_posterior_expectation = ( posterior_score_at_yhat @ yhat ).squeeze()  # ~~~ the inner product from the chain rule
