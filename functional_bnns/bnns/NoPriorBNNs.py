@@ -360,8 +360,7 @@ class IndepLocScaleSequentialBNN(BayesianModule):
         # ~~~ Store the input itself, and/or descriptive statistics, for reference when generating the measurement set
         self.first_moments_of_input_batches.append(X.mean(dim=0))
         self.second_moments_of_input_batches.append((X**2).mean(dim=0))
-        if use_input_in_next_measurement_set:
-            self.desired_measurement_points = X
+        if use_input_in_next_measurement_set: self.desired_measurement_points = X
         #
         # ~~~ Count how many times this function has been called
         self.n_calls_to_likelihood += 1
