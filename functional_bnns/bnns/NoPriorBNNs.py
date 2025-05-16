@@ -4,9 +4,8 @@ from abc import abstractmethod
 import math
 import torch
 from torch import nn
-from torch.func import jacrev, functional_call
 
-from bnns.utils import manual_Jacobian, flatten_parameters, std_per_param, std_per_layer, LocationScaleLogDensity, get_batch_sizes
+from bnns.utils import manual_Jacobian, flatten_parameters, std_per_param, std_per_layer, compute_Jacobian_of_flattened_model, get_batch_sizes
 from bnns.SSGE import SpectralSteinEstimator as SSGE
 from bnns.utils import log_gaussian_pdf
 
@@ -135,8 +134,7 @@ class BayesianModule(nn.Module):
     def functional_kl( self, resample_measurement_set=True, return_raw_ingrdients=False ):
         #
         # ~~~ If `resample_measurement_set==True` then generate a new meausrement set
-        if resample_measurement_set:
-            self.resample_measurement_set()
+        if resample_measurement_set: self.resample_measurement_set()
         #
         # ~~~ Prepare for using SSGE to estimate some of the gradient terms
         with torch.no_grad():
@@ -156,8 +154,7 @@ class BayesianModule(nn.Module):
             prior_score_at_yhat     = self.prior_SSGE( yhat.reshape(1,-1) )
         #
         # ~~~ For generality, add this option that I never intend to use
-        if return_raw_ingrdients:
-            return yhat, posterior_score_at_yhat, prior_score_at_yhat
+        if return_raw_ingrdients: return yhat, posterior_score_at_yhat, prior_score_at_yhat
         #
         # ~~~ Combine all the ingridents as per the chain rule 
         estimate_of_log_posterior_expectation = ( posterior_score_at_yhat @ yhat ).squeeze()  # ~~~ the inner product from the chain rule
@@ -402,8 +399,7 @@ class IndepLocScaleSequentialBNN(BayesianModule):
     def mean_and_covariance_of_first_order_approximation( self, resample_measurement_set=True, approximate_mean=False ):
         #
         # ~~~ If `resample_measurement_set==True` then generate a new meausrement set
-        if resample_measurement_set:
-            self.resample_measurement_set()
+        if resample_measurement_set: self.resample_measurement_set()
         #
         # ~~~ Assume that the final layer of the architecture is linear, as per the paper's suggestion to take \beta as the parameters of the final layer (very bottom of pg. 4 https://arxiv.org/pdf/2312.17199)
         if not isinstance( self.posterior_mean[-1], nn.Linear ):
@@ -413,24 +409,13 @@ class IndepLocScaleSequentialBNN(BayesianModule):
         #
         # ~~~ Compute the mean and covariance of a normal distribution approximating that of the (random) output of the network on the measurement set
         self.ensure_positive(forceful=True)
-        n_meas = self.measurement_set.shape[0]
-        out_features = self.posterior_mean[-1].out_features
+        out_features = self.out_features
         if not approximate_mean:
             #
             # ~~~ Compute the mean and covariance from the paper's equation (14): https://arxiv.org/abs/2312.17199, page 4
             S_sqrt = flatten_parameters(self.posterior_std)                                     # ~~~ the covariance of the joint posterior distribution of all network weights is then S_sqrt.diag()**2
             theta_minus_m = S_sqrt*flatten_parameters(self.realized_standard_posterior_sample)  # ~~~ theta-m == S_sqrt*z because theta = m+S_sqrt*z
-            #
-            # ~~~ Compute the Jacobian of model outputs with respect to model parameters
-            J_dict = jacrev( functional_call, argnums=1 )(
-                    self.posterior_mean,
-                    dict(self.posterior_mean.named_parameters()),
-                    (self.measurement_set,)
-                )
-            full_Jacobian = torch.column_stack([
-                    tens.reshape( out_features*n_meas, -1 ) # ~~~ trial and error led me here; not sure how well (or not) this use of `reshape` generalizes to other network architectures
-                    for tens in J_dict.values()
-                ])  # ~~~ has shape ( n_meas*out_features, n_params ) where n_params is the total number of weights/biases in a network of this architecture
+            full_Jacobian = compute_Jacobian_of_flattened_model( self.posterior_mean, self.measurement_set, out_features=out_features )
             #
             # ~~~ Split the Jacbian, covariance and mean into two groups, for one of which the computations are performed exactly, and for one of which they are not
             how_many_params_from_not_last_layer = len(flatten_parameters( self.posterior_mean[:-1] ))

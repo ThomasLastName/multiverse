@@ -6,6 +6,7 @@ from scipy.integrate import quad
 import torch
 from torch import nn
 from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
+from torch.func import jacrev, functional_call
 
 
 import os
@@ -192,6 +193,21 @@ class InverseTransformSampler:
     def __call__( self, *shape, device="cpu", dtype=torch.float ):
         U = torch.rand( *shape, generator=self.generator, device=device, dtype=dtype )
         return self.icdf(U)
+
+#
+# ~~~ Compute Jacobian of a model's flattened outputs (at inputs) with respect to its parameters (*not* with respect to the inputs)
+def compute_Jacobian_of_flattened_model( model, inputs, out_features ):
+    #
+    # ~~~ Compute the Jacobian of model outputs with respect to model parameters
+    J_dict = jacrev( functional_call, argnums=1 )(
+            model,
+            dict(model.named_parameters()),
+            (inputs,)
+        )
+    return torch.column_stack([
+            tens.reshape( out_features*len(inputs), -1 ) # ~~~ trial and error led me here; not sure how well (or not) this use of `reshape` generalizes to other network architectures
+            for tens in J_dict.values()
+        ])  # ~~~ has shape ( n_meas*out_features, n_params ) where n_params is the total number of weights/biases in a network of this architecture
 
 
 
