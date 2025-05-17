@@ -209,6 +209,16 @@ def compute_Jacobian_of_flattened_model( model, inputs, out_features ):
             for tens in J_dict.values()
         ])  # ~~~ has shape ( n_meas*out_features, n_params ) where n_params is the total number of weights/biases in a network of this architecture
 
+#
+# ~~~ Draw n random samples from multivariate normal distributions (mvns), of which k are provided (in the form of their mean and Sigma^{1/2}), each m-dimensional
+def randmvns( mu, root_Sigma, n=1, **kwargs ):
+    m, k = mu.shape
+    assert root_Sigma.shape == ( k, m, m )
+    IID_standard_normal_samples = torch.randn( k, m, n, device=mu.device, dtype=mu.dtype )
+    #
+    # ~~~ Sample from the N(mu,Sigma) distribution by taking mu + Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
+    return mu + torch.bmm( root_Sigma, IID_standard_normal_samples ).permute(2,1,0) # ~~~ returns a shape consistent with the output of `forward` and the assumption bnns.metrics: ( n_samples, n_test, n_out_features ), i.e., ( n, x.shape[0], self.out_features )
+
 
 
 ### ~~~

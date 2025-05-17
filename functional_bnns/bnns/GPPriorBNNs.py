@@ -3,9 +3,7 @@ import torch
 
 from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN
 from bnns.GPR import simple_mean_zero_RPF_kernel_GP
-from bnns.utils import get_key_or_default
-
-from quality_of_life.my_base_utils import my_warn
+from bnns.utils import get_key_or_default, randmvns
 
 
 
@@ -47,10 +45,9 @@ class GPPriorBNN(IndepLocScaleSequentialBNN):
         mu, root_Sigma = self.GP.prior_mu_and_Sigma( x, cholesky=True )
         assert root_Sigma.shape == ( self.out_features, x.shape[0], x.shape[0] )
         assert mu.shape == ( x.shape[0], self.out_features )
-        IID_standard_normal_samples = torch.randn( self.out_features,x.shape[0],n, generator=self.prior_generator, device=x.device, dtype=x.dtype )
         #
-        # ~~~ Sample from the N(mu,Sigma) distribution by taking m u +Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
-        return mu + torch.bmm( root_Sigma, IID_standard_normal_samples ).permute(2,1,0) # ~~~ returns a shape consistent with the output of `forward` and the assumption bnns.metrics: ( n_samples, n_test, n_out_features ), i.e., ( n, x.shape[0], self.out_features )
+        # ~~~ Sample from the N(mu,Sigma) distribution by taking mu + Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
+        return randmvns( mu, root_Sigma, n=n, generator=self.prior_generator )
     #
     # ~~~ If using projected gradient descent, then project onto the non-negative orthant
     def apply_hard_projection( self, tol=1e-6 ):
