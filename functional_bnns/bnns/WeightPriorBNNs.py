@@ -229,7 +229,7 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
         self.prior_standard_sampler = prior_standard_sampler
         #
         # ~~~ Set the prior standard deviations
-        self.default_prior_type = "torch.nn.init"   # ~~~ also supported are "Tom" and "IID"
+        self.default_prior_type = "torch.nn.init"   # ~~~ also supported are "Xavier" and "IID"
         self.default_scale = 1.
         self.default_extra_gain = 1.
         self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale, extra_gain=self.default_extra_gain )
@@ -245,11 +245,11 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
         # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
         if not scale>0:
             raise ValueError(f'Variable `scale` should be a positive float.')
-        if not prior_type in ( "torch.nn.init", "Tom", "IID" ):
-            raise ValueError('Variable `prior_type` should be one of "torch.nn.init", "Tom", or "IID".')
+        if not prior_type in ( "torch.nn.init", "Xavier", "IID" ):
+            raise ValueError('Variable `prior_type` should be one of "torch.nn.init", "Xavier", or "IID".')
         scale = scale if isinstance(scale,torch.Tensor) else torch.tensor(scale)
         #
-        # ~~~ Implement prior_type=="torch.nn.init" (`scale` used later)
+        # ~~~ Implement prior_type=="torch.nn.init"
         if prior_type=="torch.nn.init": # ~~~ use the stanard deviation of the distribution of pytorch's default initialization
             for layer in self.prior_std:
                 if isinstance(layer,nn.Linear):
@@ -257,12 +257,12 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
                     layer.weight.data = std * torch.ones_like(layer.weight.data)
                     if layer.bias is not None: layer.bias.data = std * torch.ones_like(layer.bias.data)
         #
-        # ~~~ Implement prior_type=="Tom" (`scale` used later)
-        if prior_type=="Tom":
+        # ~~~ Implement prior_type=="Xavier"
+        if prior_type=="Xavier":
             for p in self.prior_std.parameters():
                 p.data = extra_gain*std_per_param(p)*torch.ones_like(p.data)
         #
-        # ~~~ Implement prior_type=="IID" and use `scale`
+        # ~~~ Implement prior_type=="IID"
         if prior_type=="IID":
             for p in self.prior_std.parameters():
                 p.data = extra_gain * torch.ones_like(p.data)
