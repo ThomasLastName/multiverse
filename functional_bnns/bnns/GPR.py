@@ -1,7 +1,6 @@
 
 import torch
-from tqdm import tqdm
-from quality_of_life.my_base_utils import my_warn, support_for_progress_bars
+from quality_of_life.my_base_utils import my_warn
 from bnns.utils import randmvns
 
 #
