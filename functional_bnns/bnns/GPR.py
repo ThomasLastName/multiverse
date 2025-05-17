@@ -86,7 +86,7 @@ class RPF_kernel_GP:
         if y is None:
             y = x
         x, y = vertical(x), vertical(y)
-        dists = torch.cdist(x,x)
+        dists = torch.cdist(x,y)
         list_of_kernel_matrices = [
                     self.scales[j] * torch.exp( -(dists/self.bandwidths[j])**2/2 )
                     for j in range(self.out_features)
