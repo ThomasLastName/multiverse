@@ -211,10 +211,8 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
             with torch.no_grad(): mu.data = torch.zeros_like(mu.data)   # ~~~ assign a prior mean of zero to the parameters
         #
         # ~~~ Define information about the location scale family of the prior distribution
-        try:
-            check_moments = kwargs["check_moments"]
-        except KeyError:
-            check_moments = True
+        try: check_moments = kwargs["check_moments"]
+        except KeyError: check_moments = True
         if (prior_standard_log_density is None) ^ (prior_standard_sampler is None):     # ~~~ one is specified, but not both are
             raise ValueError("The arguments `posterior_standard_log_density` and `posterior_standard_sampler` should either both be specified, or both be `None`.")
         if (prior_standard_log_density is None) and (prior_standard_sampler is None):   # ~~~ if neither are specified, then use `posterior_distribution` to specify them

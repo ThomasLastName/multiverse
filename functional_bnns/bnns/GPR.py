@@ -8,8 +8,7 @@ from bnns.utils import randmvns
 def square_root_of_inverse(K):
     #
     # ~~~ Try the thing that we would normally want to do
-    try:
-        root_K_inv = torch.linalg.cholesky(torch.linalg.inv(K))
+    try: root_K_inv = torch.linalg.cholesky(torch.linalg.inv(K))
     except:
         #
         # ~~~ In case of numerical instabiltiy, try this instead... just in case maybe it's more robust?

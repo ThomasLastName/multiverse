@@ -73,14 +73,12 @@ class BayesianModule(nn.Module):
     def weight_kl( self, exact_formula=True ):
         if hasattr(self,"already_warned_that_exact_weight_formula_not_implemented"): exact_formula = False
         if exact_formula:
-            try:
-                return self.compute_exact_weight_kl()
+            try: return self.compute_exact_weight_kl()
             except NotImplementedError:
                 if not hasattr(self,"already_warned_that_exact_weight_formula_not_implemented"):
                     my_warn("`compute_exact_weight_kl()` method raised a NotImplementedError; will fall back to using `weight_kl(exact_formula=False)` instead.")
                     self.already_warned_that_exact_weight_formula_not_implemented = "yup"
-            except:
-                raise
+            except: raise
         else:
             return self.estimate_expected_posterior_log_density() - self.estimate_expected_prior_log_density()
     # ~~~
@@ -114,21 +112,15 @@ class BayesianModule(nn.Module):
                     ])
                     break
                 except:
-                    self.prior_samples_batch_size  = int(self.prior_samples_batch_size/2)
+                    self.prior_samples_batch_size = int(self.prior_samples_batch_size/2)
                     #
                     # ~~~ If the batch size is really small and something still isn't working, then just return the error that would result from a full batch size, for the user's reference
                     if self.prior_samples_batch_size < 32:
                         self.prior_forward( self.measurement_set, n=self.prior_M ).reshape( self.prior_M, -1 )
             #
             # ~~~ Build an SSGE estimator using those samples
-            try:
-                #
-                # ~~~ First, try the implementation of the linalg routine using einsum
-                self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J )
-            except:
-                #
-                # ~~~ In case that crashes due to not enough RAM, then try the more memory-efficient (but slower) impelemntation of the same routine using a for loop
-                self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, iterative_avg=True )
+            try:    self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J ) # ~~~ try the implementation of the linalg routine using einsum
+            except: self.prior_SSGE = SSGE( samples=prior_samples, eta=self.prior_eta, J=self.prior_J, iterative_avg=True ) # ~~~  try the more memory-efficient (but slower) impelemntation of the same routine using a for loop
     #
     # ~~~ Estimate KL_div( variational output || prior output ) using the SSGE, assuming we don't have a forula for the density of the variational distribution of the outputs
     def functional_kl( self, resample_measurement_set=True, return_raw_ingredients=False ):
@@ -292,8 +284,7 @@ class IndepLocScaleSequentialBNN(BayesianModule):
         with torch.no_grad():
             for p in self.posterior_std.parameters():
                 p.data = self.soft_projection_inv(p.data)               # ~~~ now, the parameters are \soft_projection = \ln(\exp(\sigma)-1) instead of \sigma (`self.soft_projection_inv` needs to be implemented in subclasses)
-                try:
-                    p.grad.data *= self.soft_projection_prime(p.data)   # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma' (`self.soft_projection_inv` needs to be implemented in subclasses)
+                try: p.grad.data *= self.soft_projection_prime(p.data)   # ~~~ now, the gradient is \frac{\sigma'}{1+\exp(-\rho)} instead of \sigma' (`self.soft_projection_inv` needs to be implemented in subclasses)
                 except:
                     if p.grad is None:
                         my_warn("`apply_chain_rule_for_soft_projection` operates directly on the `grad` attributes of the parameters. It should be applied *after* `backwards` is called.")
