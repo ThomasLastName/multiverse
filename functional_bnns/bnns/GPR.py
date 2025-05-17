@@ -90,10 +90,11 @@ class RPF_kernel_GP:
         if y is None: y=x
         x, y = vertical(x), vertical(y)
         dists = torch.cdist(x,y)
-        list_of_kernel_matrices = [
-                    self.scales[j] * torch.exp( -(dists/self.bandwidths[j])**2/2 )
+        un_scaled_kernel_matrices = [
+                    torch.exp( -(dists/self.bandwidths[j])**2/2 )
                     for j in range(self.out_features)
-                ]
+                ] if len(set(self.bandwidths))==1 else self.out_features*[ torch.exp(-(dists/self.bandwidths[j])**2/2)]
+        list_of_kernel_matrices = [ self.scales[j]*un_scaled_kernel_matrices[j] for j in range(self.out_features) ]
         #
         # ~~~ Decide whether or not to add "stabilizing noise"
         kernel_matrix_is_symmetric = (y is None) or torch.equal(x,y)
