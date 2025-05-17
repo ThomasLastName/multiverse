@@ -110,13 +110,13 @@ class RPF_kernel_GP:
         list_of_covariance_matrices = self.build_kernel_matrices( x, add_stabilizing_noise=True, check_symmetric=False )
         #
         # ~~~ We don't do much to the means; either flatten them, or don't
-        MU = stacked_means.flatten() if flatten else stacked_means
+        μ = stacked_means.flatten() if flatten else stacked_means
         if flatten:
-            assert MU.ndim  == 1
-            assert MU.shape == ( x.shape[0]*self.out_features, )
+            assert μ.ndim  == 1
+            assert μ.shape == ( x.shape[0]*self.out_features, )
         else:
-            assert MU.ndim  == 2
-            assert MU.shape == ( x.shape[0], self.out_features )
+            assert μ.ndim  == 2
+            assert μ.shape == ( x.shape[0], self.out_features )
         #
         # ~~~ Specify whether to take the inverse and/or (afterwards) to take the cholesky square root of the covariance matrices
         if cholesky:
@@ -127,14 +127,14 @@ class RPF_kernel_GP:
         # ~~~ Either stack the covariance matrices of each output feature into a "third order tensor", or form a block diagonal matrix out of them
         all_matrices_equal = len(set(self.bandwidths))==len(set(self.etas))==len(set(self.scales))==1  # ~~~ this fails to capture the obvious improvement in the case that only len(set(self.scales))>1
         processed_matrices = self.out_features*[linalg_routine(list_of_covariance_matrices[0])] if all_matrices_equal else [ linalg_routine(K) for K in list_of_covariance_matrices ]
-        SIGMA = torch.block_diag(*processed_matrices) if flatten else torch.stack(processed_matrices)
+        Σ = torch.block_diag(*processed_matrices) if flatten else torch.stack(processed_matrices)
         if flatten:
-            assert SIGMA.ndim  == 2
-            assert SIGMA.shape == ( x.shape[0]*self.out_features, x.shape[0]*self.out_features )
+            assert Σ.ndim  == 2
+            assert Σ.shape == ( x.shape[0]*self.out_features, x.shape[0]*self.out_features )
         else:
-            assert SIGMA.ndim  == 3
-            assert SIGMA.shape == ( self.out_features, x.shape[0], x.shape[0] )
-        return MU, SIGMA
+            assert Σ.ndim  == 3
+            assert Σ.shape == ( self.out_features, x.shape[0], x.shape[0] )
+        return μ, Σ
     #
     # ~~~ Compute K_train^{1/2} and K_train^{-1}@y_train
     def fit( self, x_train, y_train ):
@@ -146,25 +146,26 @@ class RPF_kernel_GP:
         if self.already_fitted: raise RuntimeError("This GPR instance has already been fitted.")
         #
         # ~~~ Employ the Cholesky factorization as in https://gaussianprocess.org/gpml/chapters/RW.pdf
-        MU, SIGMA_SQRT = self.prior_mu_and_Sigma( x=x_train, flatten=False, inv=False, cholesky=True )
-        y_minus_mu = (y_train-MU).T.unsqueeze(-1)
-        alpha = solve( SIGMA_SQRT.mT, solve(SIGMA_SQRT,y_minus_mu), upper=True )    # ~~~ L.T \ ( L \ (y-mu) )
+        μ, Σ_SQRT = self.prior_mu_and_Sigma( x=x_train, flatten=False, inv=False, cholesky=True )
+        y_minus_mu = (y_train-μ).T.unsqueeze(-1)
+        alpha = solve( Σ_SQRT.mT, solve(Σ_SQRT,y_minus_mu), upper=True )    # ~~~ L.T \ ( L \ (y-mu) )
         #
         # ~~~ Store the results for later, including the Cholesky factorizations of the prior covariance matrices
         self.x_train = x_train
         self.y_train = y_train
-        self.SIGMA_PRIOR_SQRT = SIGMA_SQRT
+        self.Sigma_PRIOR_SQRT = Σ_SQRT
         self.best_kernel_coefficients = alpha
         self.already_fitted = True
     #
     # ~~~ Get the means and covariance of the prior distribution of the GP at points x
     def post_mu_and_Sigma(self,x):
-        MU_PRIOR_test, SIGMA_PRIOR_test = self.prior_mu_and_Sigma(x)
-        SIGMA_PRIOR_mixed = self.build_kernel_matrices( self.x_train, x, add_stabilizing_noise=False )
-        MU_POST_test = MU_PRIOR_test + torch.bmm( SIGMA_PRIOR_mixed.mT, self.best_kernel_coefficients ).squeeze(-1).T   # ~~~ == torch.stack([ MU_PRIOR_test[j] + SIGMA_PRIOR_mixed[j].T@self.best_kernel_coefficients[j].squeeze() for j in range(self.out_features) ])
-        V = solve( self.SIGMA_PRIOR_SQRT, SIGMA_PRIOR_mixed )
-        SIGMA_POST_test = SIGMA_PRIOR_test - torch.bmm( V.mT, V )
-        return MU_POST_test, SIGMA_POST_test
+        μ_PRIOR_test, Σ_PRIOR_test = self.prior_mu_and_Sigma(x)
+        Σ_PRIOR_mixed = self.build_kernel_matrices( self.x_train, x, add_stabilizing_noise=False )
+        μ_POST_test = μ_PRIOR_test + torch.bmm( Σ_PRIOR_mixed.mT, self.best_kernel_coefficients ).squeeze(-1).T   # ~~~ == torch.stack([ μ_PRIOR_test[j] + Σ_PRIOR_mixed[j].T@self.best_kernel_coefficients[j].squeeze() for j in range(self.out_features) ])
+        Σ_PRIOR_SQRT = self.Sigma_PRIOR_SQRT
+        V = solve( Σ_PRIOR_SQRT, Σ_PRIOR_mixed )
+        Σ_POST_test = Σ_PRIOR_test - torch.bmm( V.mT, V )
+        return μ_POST_test, Σ_POST_test
     #
     # ~~~ Return n samples from the posterior distribution at x
     def __call__(self,x,n=1):
