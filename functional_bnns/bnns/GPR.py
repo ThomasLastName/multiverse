@@ -138,38 +138,33 @@ class RPF_kernel_GP:
     #
     # ~~~ Compute K_train^{1/2} and K_train^{-1}@y_train
     def fit( self, x_train, y_train ):
+        #
+        # ~~~ A handful of very basic safety features
         assert y_train.shape[0]==x_train.shape[0], f"The number of training points {x_train.shape[0]} does not match the number of training labels {y_train.shape[0]}."
         assert y_train.ndim==2, f"The training labels must be a 2D tensor. The provided shape{y_train.shape} is not accepted."
         assert y_train.shape[1]==self.out_features, f"The number of columns in the training labels {y_train.shape[1]} does not match the number of output features {self.out_features}."
         if self.already_fitted: raise RuntimeError("This GPR instance has already been fitted.")
-        MU, SIGMA_SQRT = self.prior_mu_and_Sigma( x=x_train, flatten=False, inv=False, cholesky=True )
-        with support_for_progress_bars():
-            if self.out_features>1: pbar = tqdm( total=self.out_features, ascii=" >=", desc="Computing Posteriors of Each Output Feature" )
-            alpha = []
-            for j in range(self.out_features):
-                #
-                # ~~~ Based on the pseudo-code for algorithm 2.1 in https://gaussianprocess.org/gpml/chapters/RW.pdf
-                L = SIGMA_SQRT[j]
-                y_minus_mu = (y_train[:,j] - MU[:,j]).reshape(-1,1)
-                alpha.append(solve( L.T, solve(L,y_minus_mu), upper=True ))
-                if self.out_features>1: pbar.update()
-            if self.out_features>1: pbar.close()
         #
-        # ~~~ Store the results for later
+        # ~~~ Employ the Cholesky factorization as in https://gaussianprocess.org/gpml/chapters/RW.pdf
+        MU, SIGMA_SQRT = self.prior_mu_and_Sigma( x=x_train, flatten=False, inv=False, cholesky=True )
+        y_minus_mu = (y_train-MU).T.unsqueeze(-1)
+        alpha = solve( SIGMA_SQRT.mT, solve(SIGMA_SQRT,y_minus_mu), upper=True )    # ~~~ L.T \ ( L \ (y-mu) )
+        #
+        # ~~~ Store the results for later, including the Cholesky factorizations of the prior covariance matrices
         self.x_train = x_train
         self.y_train = y_train
         self.SIGMA_PRIOR_SQRT = SIGMA_SQRT
-        self.best_kernel_coefficients = torch.stack(alpha)
+        self.best_kernel_coefficients = alpha
         self.already_fitted = True
     #
     # ~~~ Get the means and covariance of the prior distribution of the GP at points x
     def post_mu_and_Sigma(self,x):
         MU_PRIOR_test, SIGMA_PRIOR_test = self.prior_mu_and_Sigma(x)
         SIGMA_PRIOR_mixed = self.build_kernel_matrices( self.x_train, x, add_stabilizing_noise=False )
-        MU_POST_test = MU_PRIOR_test + torch.bmm( SIGMA_PRIOR_mixed.permute(0,2,1), self.best_kernel_coefficients ).squeeze(dim=-1).T   # ~~~ == torch.stack([ MU_PRIOR_test[j] + SIGMA_PRIOR_mixed[j].T@self.best_kernel_coefficients[j].squeeze() for j in range(self.out_features) ])
-        V = torch.stack([ solve( self.SIGMA_PRIOR_SQRT[j], SIGMA_PRIOR_mixed[j]) for j in range(self.out_features) ])
-        SIGMA_POST_test = SIGMA_PRIOR_test - torch.stack([ v.T@v for v in V ])
-        return  MU_POST_test, SIGMA_POST_test
+        MU_POST_test = MU_PRIOR_test + torch.bmm( SIGMA_PRIOR_mixed.mT, self.best_kernel_coefficients ).squeeze(-1).T   # ~~~ == torch.stack([ MU_PRIOR_test[j] + SIGMA_PRIOR_mixed[j].T@self.best_kernel_coefficients[j].squeeze() for j in range(self.out_features) ])
+        V = solve( self.SIGMA_PRIOR_SQRT, SIGMA_PRIOR_mixed )
+        SIGMA_POST_test = SIGMA_PRIOR_test - torch.bmm( V.mT, V )
+        return MU_POST_test, SIGMA_POST_test
     #
     # ~~~ Return n samples from the posterior distribution at x
     def __call__(self,x,n=1):
