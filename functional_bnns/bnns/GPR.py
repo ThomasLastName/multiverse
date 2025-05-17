@@ -175,6 +175,10 @@ class RPF_kernel_GP:
     def __call__(self,x,n=1):
         if not self.already_fitted: raise RuntimeError("This GPR instance has not been fitted yet Please call self.fit(x_train,y_train) first.")
         return randmvns( *self.post_mu_and_Sigma(x), n=n )
+    #
+    # ~~~ Return n samples from the prior distribution at x
+    def prior_forward(self,x,n=1):
+        return randmvns( *self.prior_mu_and_Sigma(x), n=n )
 
 
 class simple_mean_zero_RPF_kernel_GP(RPF_kernel_GP):
