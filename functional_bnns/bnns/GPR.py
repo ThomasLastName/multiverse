@@ -84,7 +84,7 @@ class RPF_kernel_GP:
         # ~~~ Either stack the covariance matrices of each output feature into a "third order tensor", or form a block diagonal matrix out of them
         linalg_routine     = torch.linalg.cholesky if cholesky else lambda K:K
         all_matrices_equal = len(set(self.bandwidths))==len(set(self.etas))==len(set(self.scales))==1  # ~~~ this fails to capture the obvious improvement in the case that only len(set(self.scales))>1
-        processed_matrices = self.out_features*[linalg_routine(list_of_covariance_matrices[0])] if all_matrices_equal else [ linalg_routine(K) for K in list_of_covariance_matrices ]
+        processed_matrices = self.out_features*[linalg_routine(list_of_covariance_matrices[0])] if all_matrices_equal else linalg_routine(list_of_covariance_matrices)
         Σ = torch.block_diag(*processed_matrices) if flatten else torch.stack(processed_matrices)
         if flatten: assert Σ.ndim==2 and Σ.shape==( x.shape[0]*self.out_features, x.shape[0]*self.out_features )
         else:       assert Σ.ndim==3 and Σ.shape==( self.out_features, x.shape[0], x.shape[0] )
@@ -107,28 +107,32 @@ class RPF_kernel_GP:
         # ~~~ Store the results for later, including the Cholesky factorizations of the prior covariance matrices
         self.x_train = x_train
         self.y_train = y_train
-        self.Sigma_PRIOR_sqrt = Σ_sqrt
+        self.sqrt_Sigma_prior = Σ_sqrt
         self.best_kernel_coefficients = alpha
         self.already_fitted = True
     #
     # ~~~ Get the means and covariance of the prior distribution of the GP at points x
-    def post_mu_and_Sigma(self,x):
+    def post_mu_and_Sigma( self, x, flatten=False, cholesky=False ):
         μ_PRIOR_test, Σ_PRIOR_test = self.prior_mu_and_Sigma(x)
         Σ_PRIOR_mixed = self.build_kernel_matrices( self.x_train, x, add_stabilizing_noise=False )
         μ_POST_test = μ_PRIOR_test + torch.bmm( Σ_PRIOR_mixed.mT, self.best_kernel_coefficients ).squeeze(-1).T   # ~~~ == torch.stack([ μ_PRIOR_test[j] + Σ_PRIOR_mixed[j].T@self.best_kernel_coefficients[j].squeeze() for j in range(self.out_features) ])
-        Σ_PRIOR_sqrt = self.Sigma_PRIOR_sqrt
+        Σ_PRIOR_sqrt = self.sqrt_Sigma_prior
         V = solve( Σ_PRIOR_sqrt, Σ_PRIOR_mixed )
         Σ_POST_test = Σ_PRIOR_test - torch.bmm( V.mT, V )
+        if cholesky: Σ_POST_test = torch.linalg.cholesky(Σ_POST_test)
+        if flatten:
+            μ_POST_test = μ_POST_test.flatten()
+            Σ_POST_test = torch.block_diag(*Σ_POST_test)
         return μ_POST_test, Σ_POST_test
     #
     # ~~~ Return n samples from the posterior distribution at x
     def __call__(self,x,n=1):
         if not self.already_fitted: raise RuntimeError("This GPR instance has not been fitted yet Please call self.fit(x_train,y_train) first.")
-        return randmvns( *self.post_mu_and_Sigma(x), n=n )
+        return randmvns( *self.post_mu_and_Sigma(x,cholesky=True), n=n )
     #
     # ~~~ Return n samples from the prior distribution at x
     def prior_forward(self,x,n=1):
-        return randmvns( *self.prior_mu_and_Sigma(x), n=n )
+        return randmvns( *self.prior_mu_and_Sigma(x,cholesky=True), n=n )
 
 
 class simple_mean_zero_RPF_kernel_GP(RPF_kernel_GP):
