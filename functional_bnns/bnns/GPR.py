@@ -144,14 +144,14 @@ class RPF_kernel_GP:
         if self.already_fitted: raise RuntimeError("This GPR instance has already been fitted.")
         #
         # ~~~ Employ the Cholesky factorization as in https://gaussianprocess.org/gpml/chapters/RW.pdf
-        μ, Σ_SQRT = self.prior_mu_and_Sigma( x=x_train, flatten=False, inv=False, cholesky=True )
+        μ, Σ_sqrt = self.prior_mu_and_Sigma( x=x_train, flatten=False, inv=False, cholesky=True )
         y_minus_mu = (y_train-μ).T.unsqueeze(-1)
-        alpha = solve( Σ_SQRT.mT, solve(Σ_SQRT,y_minus_mu), upper=True )    # ~~~ L.T \ ( L \ (y-mu) )
+        alpha = solve( Σ_sqrt.mT, solve(Σ_sqrt,y_minus_mu), upper=True )    # ~~~ L.T \ ( L \ (y-mu) )
         #
         # ~~~ Store the results for later, including the Cholesky factorizations of the prior covariance matrices
         self.x_train = x_train
         self.y_train = y_train
-        self.Sigma_PRIOR_SQRT = Σ_SQRT
+        self.Sigma_PRIOR_sqrt = Σ_sqrt
         self.best_kernel_coefficients = alpha
         self.already_fitted = True
     #
@@ -160,8 +160,8 @@ class RPF_kernel_GP:
         μ_PRIOR_test, Σ_PRIOR_test = self.prior_mu_and_Sigma(x)
         Σ_PRIOR_mixed = self.build_kernel_matrices( self.x_train, x, add_stabilizing_noise=False )
         μ_POST_test = μ_PRIOR_test + torch.bmm( Σ_PRIOR_mixed.mT, self.best_kernel_coefficients ).squeeze(-1).T   # ~~~ == torch.stack([ μ_PRIOR_test[j] + Σ_PRIOR_mixed[j].T@self.best_kernel_coefficients[j].squeeze() for j in range(self.out_features) ])
-        Σ_PRIOR_SQRT = self.Sigma_PRIOR_SQRT
-        V = solve( Σ_PRIOR_SQRT, Σ_PRIOR_mixed )
+        Σ_PRIOR_sqrt = self.Sigma_PRIOR_sqrt
+        V = solve( Σ_PRIOR_sqrt, Σ_PRIOR_mixed )
         Σ_POST_test = Σ_PRIOR_test - torch.bmm( V.mT, V )
         return μ_POST_test, Σ_POST_test
     #
