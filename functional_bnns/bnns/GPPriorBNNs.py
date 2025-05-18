@@ -100,7 +100,7 @@ class GPPrior2023BNN(GPPriorBNN):
         root_Sigma_theta = torch.linalg.cholesky(Sigma_theta)
         #
         # ~~~ Get the mean and covariance of the prior distribution of yhat (a Gaussian process)
-        mu_0, root_Sigma_0 = self.GP.prior_mu_and_Sigma( self.measurement_set, inv=False, flatten=True, cholesky=True )
+        mu_0, root_Sigma_0 = self.GP.prior_mu_and_Sigma( self.measurement_set, flatten=True, cholesky=True )
         Sigma_0_inv = torch.cholesky_inverse(root_Sigma_0)
         #
         # ~~~ Apply a formula for the KL divergence KL( N(mu_theta,Sigma_theta) || N(mu_0,Sigma_0) ); see `scripts/gaussian_kl_computations.py`

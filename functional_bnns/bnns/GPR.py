@@ -4,37 +4,6 @@ from quality_of_life.my_base_utils import my_warn
 from bnns.utils import randmvns
 
 #
-# ~~~ Compute the Cholesky decopmosition of A^{-1}... with a bunch of `except` clauses to handle numerical instability
-def square_root_of_inverse(K):
-    #
-    # ~~~ Try the thing that we would normally want to do
-    try: root_K_inv = torch.linalg.cholesky(torch.linalg.inv(K))
-    except:
-        #
-        # ~~~ In case of numerical instabiltiy, try this instead... just in case maybe it's more robust?
-        try:
-            root_K_inv = torch.linalg.cholesky(torch.cholesky_inverse(torch.linalg.cholesky(K)))
-            print("Having to use `cholesky_inverse`")
-        #
-        # ~~~ If that, still, doesn't work, conclude that we either gotta add noise or use a higher degree of numerical precision
-        except torch._C._LinAlgError:
-            message = 'pythorch is having trouble taking the cholesky inverse of the covariance matrix of the prior GP. Perhaps, consider adding more "stabilizing noise" (i.e., K + eta*I) by increasing the value of the parameter for this class'
-            if not K.dtype==torch.double:
-                message += ' and/or increasing the numerical precision by using torch.double if using torch.float currently'
-            my_warn(message)
-        #
-        # ~~~ Raise the original exception
-        raise
-    #
-    # ~~~ Return the result, if it worked
-    return root_K_inv
-
-#
-# ~~~ Compute torch.stack([ C[j] - B[j]@A[j]@B[j].T for j in range(d) ]) for lists of matrices; see the script `test_bmm.py`
-def compute_C_minus_BABt(A,B,C):
-    return C - torch.bmm( torch.bmm(B, A), B.transpose(1, 2) )
-
-#
 # ~~~ Convert a 1D tensor to a 2D column tensor, but leave every other tensor as is
 vertical = lambda x: x.unsqueeze(1) if x.dim()==1 else x
 
@@ -101,7 +70,7 @@ class RPF_kernel_GP:
         return torch.stack(list_of_kernel_matrices)
     #
     # ~~~ Compute the means and covariances, reshape, and apply linear algebra routines, as desired
-    def prior_mu_and_Sigma( self, x, flatten=False, inv=False, cholesky=False ):
+    def prior_mu_and_Sigma( self, x, flatten=False, cholesky=False ):
         #
         # ~~~ Compute 'em
         stacked_means = self.means(x)
@@ -109,29 +78,16 @@ class RPF_kernel_GP:
         #
         # ~~~ We don't do much to the means; either flatten them, or don't
         μ = stacked_means.flatten() if flatten else stacked_means
-        if flatten:
-            assert μ.ndim  == 1
-            assert μ.shape == ( x.shape[0]*self.out_features, )
-        else:
-            assert μ.ndim  == 2
-            assert μ.shape == ( x.shape[0], self.out_features )
-        #
-        # ~~~ Specify whether to take the inverse and/or (afterwards) to take the cholesky square root of the covariance matrices
-        if cholesky:
-            linalg_routine = square_root_of_inverse if inv else torch.linalg.cholesky
-        else:
-            linalg_routine = torch.linalg.inv if inv else lambda K:K
+        if flatten: assert μ.ndim==1 and μ.shape==( x.shape[0]*self.out_features, )
+        else:       assert μ.ndim==2 and μ.shape==( x.shape[0], self.out_features )
         #
         # ~~~ Either stack the covariance matrices of each output feature into a "third order tensor", or form a block diagonal matrix out of them
+        linalg_routine     = torch.linalg.cholesky if cholesky else lambda K:K
         all_matrices_equal = len(set(self.bandwidths))==len(set(self.etas))==len(set(self.scales))==1  # ~~~ this fails to capture the obvious improvement in the case that only len(set(self.scales))>1
         processed_matrices = self.out_features*[linalg_routine(list_of_covariance_matrices[0])] if all_matrices_equal else [ linalg_routine(K) for K in list_of_covariance_matrices ]
         Σ = torch.block_diag(*processed_matrices) if flatten else torch.stack(processed_matrices)
-        if flatten:
-            assert Σ.ndim  == 2
-            assert Σ.shape == ( x.shape[0]*self.out_features, x.shape[0]*self.out_features )
-        else:
-            assert Σ.ndim  == 3
-            assert Σ.shape == ( self.out_features, x.shape[0], x.shape[0] )
+        if flatten: assert Σ.ndim==2 and Σ.shape==( x.shape[0]*self.out_features, x.shape[0]*self.out_features )
+        else:       assert Σ.ndim==3 and Σ.shape==( self.out_features, x.shape[0], x.shape[0] )
         return μ, Σ
     #
     # ~~~ Compute K_train^{1/2} and K_train^{-1}@y_train
@@ -144,7 +100,7 @@ class RPF_kernel_GP:
         if self.already_fitted and verbose: my_warn("This GPR instance has already been fitted. That material will be  overwritten. Use `.fit( x_train, y_train, verbose=False )` to surpress this warning.")
         #
         # ~~~ Employ the Cholesky factorization as in https://gaussianprocess.org/gpml/chapters/RW.pdf
-        μ, Σ_sqrt = self.prior_mu_and_Sigma( x=x_train, flatten=False, inv=False, cholesky=True )
+        μ, Σ_sqrt = self.prior_mu_and_Sigma( x=x_train, flatten=False, cholesky=True )
         y_minus_mu = (y_train-μ).T.unsqueeze(-1)
         alpha = solve( Σ_sqrt.mT, solve(Σ_sqrt,y_minus_mu), upper=True )    # ~~~ L.T \ ( L \ (y-mu) )
         #
