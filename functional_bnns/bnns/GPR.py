@@ -135,13 +135,13 @@ class RPF_kernel_GP:
         return μ, Σ
     #
     # ~~~ Compute K_train^{1/2} and K_train^{-1}@y_train
-    def fit( self, x_train, y_train ):
+    def fit( self, x_train, y_train, verbose=True ):
         #
         # ~~~ A handful of very basic safety features
         assert y_train.shape[0]==x_train.shape[0], f"The number of training points {x_train.shape[0]} does not match the number of training labels {y_train.shape[0]}."
         assert y_train.ndim==2, f"The training labels must be a 2D tensor. The provided shape{y_train.shape} is not accepted."
         assert y_train.shape[1]==self.out_features, f"The number of columns in the training labels {y_train.shape[1]} does not match the number of output features {self.out_features}."
-        if self.already_fitted: raise RuntimeError("This GPR instance has already been fitted.")
+        if self.already_fitted and verbose: my_warn("This GPR instance has already been fitted. That material will be  overwritten. Use `.fit( x_train, y_train, verbose=False )` to surpress this warning.")
         #
         # ~~~ Employ the Cholesky factorization as in https://gaussianprocess.org/gpml/chapters/RW.pdf
         μ, Σ_sqrt = self.prior_mu_and_Sigma( x=x_train, flatten=False, inv=False, cholesky=True )
