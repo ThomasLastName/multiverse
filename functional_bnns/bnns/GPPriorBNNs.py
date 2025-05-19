@@ -2,7 +2,7 @@
 import torch
 
 from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN
-from bnns.GPR import simple_mean_zero_RPF_kernel_GP
+from bnns.GPR import GPYBackend
 from bnns.utils import get_key_or_default, randmvns
 
 
@@ -22,7 +22,7 @@ class GPPriorBNN(IndepLocScaleSequentialBNN):
         #
         # ~~~ Set default values for hyper-parameters of the prior
         self.default_bw = None      # ~~~ the median distance between training data is used if `None`
-        self.default_scale = None   # ~~~ a list of all 1.'s is used if `None`
+        self.default_scale = 1      # ~~~ a list of all 1.'s is used if `None`
         self.default_eta = 0.001    # ~~~ add eta*I to the covariance matrices in the GP for numerical stability
         self.set_prior_hyperparameters( bw=self.default_bw, scale=self.default_scale, eta=self.default_eta )
         self.prior_generator = prior_generator
@@ -36,18 +36,19 @@ class GPPriorBNN(IndepLocScaleSequentialBNN):
         eta   = get_key_or_default( kwargs, "eta",   self.default_eta   )
         #
         # ~~~ Define a mean zero RBF kernel GP with independent output channels all sharing the same value bw, scale, and eta
-        self.GP = simple_mean_zero_RPF_kernel_GP( out_features=self.out_features, bw=bw, scale=scale, eta=eta )
+        device, dtype = self.infer_device_and_dtype()
+        fake_data_of_correct_shape = torch.randn( 10, self.in_features ).to( device=device, dtype=dtype )
+        self.GP = GPYBackend(
+                x = fake_data_of_correct_shape,
+                out_features = self.out_features,
+                bws = self.out_features*[bw],
+                scales = self.out_features*[scale],
+                etas = self.out_features*[eta]
+            )
     #
     # ~~~ Define how to sample from the priorly distributed outputs of the network (just sample from the normal distribution with mean and covariance specified by the GP)
     def prior_forward( self, x, n=1 ):
-        #
-        # ~~~ Return the cholesky square roots of the covariance matrices;
-        mu, root_Sigma = self.GP.prior_mu_and_Sigma( x, cholesky=True )
-        assert root_Sigma.shape == ( self.out_features, x.shape[0], x.shape[0] )
-        assert mu.shape == ( x.shape[0], self.out_features )
-        #
-        # ~~~ Sample from the N(mu,Sigma) distribution by taking mu + Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
-        return randmvns( mu, root_Sigma, n=n, generator=self.prior_generator )
+        return self.GP.prior_forward(x,n)
     #
     # ~~~ If using projected gradient descent, then project onto the non-negative orthant
     def apply_hard_projection( self, tol=1e-6 ):
