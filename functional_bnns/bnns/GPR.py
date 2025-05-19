@@ -158,7 +158,7 @@ class RPF_kernel_GP:
     # ~~~ Return n samples from the posterior distribution at x
     def __call__( self, x, n=1, gpytorch=True ):
         if not self.already_fitted: raise RuntimeError("This GPR instance has not been fitted yet Please call self.fit(x_train,y_train) first.")
-        μ, Σ = self.post_mu_and_Sigma( x, add_stabilizing_noise=False, flatten=False, cholesky=True, gpytorch=gpytorch )
+        μ, Σ = self.post_mu_and_Sigma( x, add_stabilizing_noise=True, flatten=False, cholesky=True, gpytorch=gpytorch )
         return randmvns( μ, Σ, n=n )
     #
     # ~~~ Return n samples from the prior distribution at x
@@ -166,7 +166,7 @@ class RPF_kernel_GP:
         if not gpytorch:
             #
             # ~~~ Directly ("eagerly") compute the Cholesky factorization of the prior covariance matrix using torch.linalg.cholesky, then return mu + Sigma^{1/2} @ Z_samples
-            μ, Σ = self.prior_mu_and_Sigma( x, add_stabilizing_noise=False, flatten=False, cholesky=True )
+            μ, Σ = self.prior_mu_and_Sigma( x, add_stabilizing_noise=True, flatten=False, cholesky=True )
             return randmvns( μ, Σ, n=n )
         else:
             #
