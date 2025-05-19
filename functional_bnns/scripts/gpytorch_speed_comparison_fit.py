@@ -1,7 +1,7 @@
 
 import torch
 from bnns.GPR import RPF_kernel_GP as GPR
-from bnns.GPR import GPY, MultiOutputGP
+from bnns.GPR import GPY
 # from bnns.GPR import MultiOutputGP as GPY
 from copy import copy
 from tqdm import trange
