@@ -302,6 +302,7 @@ train_acc_curve = []
 val_acc_curve = []
 iter_count = []
 epochs_completed_so_far = 0
+best_iter_so_far = 0
 target_epochs = N_EPOCHS.pop(0)
 starting_time = time()
 first_round = True

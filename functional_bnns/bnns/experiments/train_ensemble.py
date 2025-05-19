@@ -51,7 +51,7 @@ hyperparameter_template = {
     #
     # ~~~ Which problem
     "DATA" : "univar_missing_middle",
-    "MODEL" : "univar_NN",
+    "ARCHITECTURE" : "univar_NN",
     #
     # ~~~ For training
     "STEIN" : True,
@@ -157,9 +157,9 @@ except:
 #
 # ~~~ Load the network architecture
 try:
-    model = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as model`
+    model = import_module(f"bnns.models.{ARCHITECTURE}")   # ~~~ this is equivalent to `import bnns.models.<ARCHITECTURE> as model`
 except:
-    model = import_module(MODEL)                    # ~~~ this is equivalent to `import <MODEL> as model` (works if MODEL.py is in the cwd or anywhere on the path)
+    model = import_module(ARCHITECTURE)                    # ~~~ this is equivalent to `import <ARCHITECTURE> as model` (works if ARCHITECTURE.py is in the cwd or anywhere on the path)
 
 NN = model.NN.to( device=DEVICE, dtype=DTYPE )
 
@@ -271,6 +271,7 @@ if EARLY_STOPPING:
 
 #
 # ~~~ Set "regularization parameters" for a Bayesian loss function (i.e., relative weights of the likelihood and the KL divergence)
+WEIGHTING = WEIGHTING.lower()
 if not isinstance(WEIGHTING,str):
     my_warn(f"Expected WEIGHTING to be a string, but found instead type(WEIGHTING)=={type(WEIGHTING)}. The loss function will be weighted as if WEIGHTING='standard'.")
 elif WEIGHTING=="Blundell":
@@ -279,8 +280,10 @@ elif WEIGHTING=="Blundell":
     def decide_weights(**kwargs):
         i = kwargs["b"]
         M = kwargs["n_batches"]
-        pi_i = 2**(M-i)/(2**M-1)
-        return  pi_i, 1.
+        pi_i = 2**(M-(i+1))/(2**M-1)    # ~~~ note sum( 2**(M-(i+1))/(2**M-1) for i in range(M) )==1
+        weight_on_the_kl = pi_i
+        weight_on_the_likelihood = 1.
+        return weight_on_the_kl, weight_on_the_likelihood
 elif WEIGHTING=="Sun in principle": # (EQUIVALENT TO THE "standard" WEIGHTING BELOW)
     #
     # ~~~ Follow the suggestion "In principle, \lambda should be set as 1/|\mathcal{D}|" in equation (12) of https://arxiv.org/abs/1903.05779
@@ -307,7 +310,7 @@ elif WEIGHTING=="naive":
         weight_on_the_kl         = 1/n_params
         weight_on_the_likelihood = 1/len(D_s)
         return weight_on_the_kl, weight_on_the_likelihood
-else:
+elif BAYESIAN:
     #
     # ~~~ Downweight the KL divergence in the simplest manner possible to match the expectation of the minibatch estimator of likelihood
     decide_weights = lambda **kwargs: (1/n_batches, 1.)  # ~~~ this normalization achchieves an unbiased estimate of the variational loss
@@ -335,8 +338,8 @@ while keep_training:
                 if BAYESIAN:
                     log_likelihoods = ensemble.log_likelihood_density(X,y)
                     log_priors      = ensemble.log_prior_density()
-                    alpha, beta = decide_weights( b=b, n_batches=n_batches, X=X, D_train=D_train )
-                    losses = -(beta*log_likelihoods + alpha*log_priors) # ~~~ == negative of log posterior density (assuming beta==1==alpha), as if trying to learn the posterior mode
+                    beta, alpha = decide_weights( b=b, n_batches=n_test_batches, X=X, D_train=D_train, n_params=n_params )
+                    losses = -(alpha*log_likelihoods + beta*log_priors) # ~~~ == negative of log posterior density (assuming beta==1==alpha), as if trying to learn the posterior mode
                 else:
                     losses = ensemble.mse(X,y)
                 losses.sum().backward() # ~~~ If list==torch.Tensor([ f1(w1), f2(w2), f3(w3) ]), then `list.sum().backward()` is equivalent to calling item.backward() for each item in the list (linearity of the derivative)
@@ -389,8 +392,8 @@ while keep_training:
                                 if BAYESIAN:
                                     val_lik = ensemble.log_likelihood_density(X,y).sum().item()
                                     val_lik_curve.append(val_lik)
-                                    alpha, beta = decide_weights( b=b, n_batches=n_test_batches, X=X, D_train=D_train )
-                                    val_loss = -(beta*val_lik + alpha*log_prior)
+                                    beta, alpha = decide_weights( b=b, n_batches=n_test_batches, X=X, D_train=D_train, n_params=n_params )
+                                    val_loss = -(alpha*val_lik + beta*log_prior)
                                 else:
                                     val_loss = ensemble.mse(X,y).sum().item()
                                 break
