@@ -150,3 +150,228 @@ class simple_mean_zero_RPF_kernel_GP(RPF_kernel_GP):
                 scales = None if (scale is None) else out_features*[scale],
                 etas = out_features*[eta]
             )
+
+
+
+### ~~~
+## ~~~ Attempt to convert the above to GPyTorch
+### ~~~
+
+import gpytorch
+from gpytorch.distributions import MultivariateNormal
+from gpytorch.means import ZeroMean
+from gpytorch.kernels import RBFKernel, ScaleKernel
+from gpytorch.likelihoods import GaussianLikelihood
+
+
+class SingleOutputRBFKernelGP(gpytorch.models.ExactGP):
+    def __init__( self, x_train, y_train, likelihood=GaussianLikelihood(), bandwidth=None, scale=1, eta=0.001 ):
+        super().__init__( x_train, y_train, likelihood )
+        self.mean_module = ZeroMean()
+        self.covar_module = ScaleKernel(RBFKernel())
+        self.covar_module.outputscale = scale
+        self.covar_module.base_kernel.lengthscale = bandwidth or max( torch.cdist(x_train,x_train).median().item(), 1e-6 )
+        self.likelihood.noise = eta
+    def forward(self,x):
+        return MultivariateNormal( self.mean_module(x), self.covar_module(x) )
+    def print_hyperpars(self):
+        print("")
+        print(f"bandwidth = {self.covar_module.base_kernel.lengthscale.item()}")
+        print(f"scale = {self.covar_module.outputscale.item()}")
+        print(f"eta = {self.likelihood.noise.item()}")
+        print("")
+
+class GPY:
+    def __init__( self, out_features, bandwidths=None, scales=None, etas=None ):
+        assert out_features>0 and isinstance(out_features,int), f"The number of output features must be  apositive integer, not {out_features}."
+        self.out_features = out_features
+        self.bandwidths = bandwidths or [None]*out_features
+        self.scales = scales or [1.0]*out_features
+        self.etas = etas or [0.001]*out_features
+        self.models = []
+    def fit( self, x_train, y_train, verbose=True ):
+        if verbose and len(self.models)>0: my_warn("This GPR instance has already been fitted. That material will be  overwritten. Use `.fit( x_train, y_train, verbose=False )` to surpress this warning.")
+        self.models.clear()         # ~~~ self.models = []
+        for j in range(self.out_features):
+            model = SingleOutputRBFKernelGP(
+                x_train = x_train,
+                y_train = y_train[:, j],
+                bandwidth = self.bandwidths[j],
+                scale = self.scales[j],
+                eta = self.etas[j]
+            )
+            model.eval()
+            model = model.to( device=x_train.device, dtype=x_train.dtype )
+            self.models.append(model)
+            self.bandwidths[j] = model.covar_module.base_kernel.lengthscale
+    #
+    # ~~~ Return n samples from the posterior distribution at x
+    def __call__( self, x, n=1 ):
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
+            return torch.stack([
+                    fitted_gp(x).rsample(torch.Size([n]))
+                    for fitted_gp in self.models
+                ], dim=-1 ) # ~~~ has shape ( n, len(x), features )
+    #
+    # ~~~ Return n samples from the posterior distribution at x
+    def prior_forward( self, x, n=1 ):
+        with torch.no_grad():
+            prior_samples = []
+            for gp in self.models:
+                prior_dist = MultivariateNormal( gp.mean_module(x), gp.covar_module(x) )
+                prior_samples.append( prior_dist.rsample(torch.Size([n])) )
+            return torch.stack( prior_samples, dim=-1 ) # ~~~ has shape ( n, len(x), features )
+    #
+    # ~~~ Compute the means and covariances of the prior GP at x; also, reshape, and apply linear algebra routines, as desired
+    def prior_mu_and_Sigma( self, x, add_stabilizing_noise=False, flatten=False, cholesky=False ):
+        with torch.no_grad():
+            μ = torch.zeros( x.shape[0], self.out_features, device=x.device, dtype=x.dtype )
+            covariance_matrices = []
+            for gp in self.models:
+                Σ_lazy = gp.covar_module(x)
+                if add_stabilizing_noise: Σ_lazy = gp.likelihood(MultivariateNormal( gp.mean_module(x), Σ_lazy )).lazy_covariance_matrix
+                if cholesky: Σ_lazy = Σ_lazy.cholesky()
+                covariance_matrices.append(Σ_lazy.to_dense())
+            Σ = torch.block_diag(*covariance_matrices) if flatten else (torch.stack(covariance_matrices) if isinstance(covariance_matrices,list) else covariance_matrices)
+            return μ, Σ
+    #
+    # ~~~ Compute the means and covariances of the prior GP at x; also, reshape, and apply linear algebra routines, as desired
+    def post_mu_and_Sigma( self, x, add_stabilizing_noise=False, flatten=False, cholesky=False ):
+        with torch.no_grad():
+            means, covariance_matrices = [], []
+            for gp in self.models:
+                post_dist = gp(x)
+                if add_stabilizing_noise: post_dist = gp.likelihood(post_dist)
+                μ_post, Σ_post = post_dist.loc, post_dist.lazy_covariance_matrix
+                if cholesky: Σ_lazy = Σ_lazy.cholesky()
+                means.append(μ_post)
+                covariance_matrices.append(Σ_post.to_dense())
+            return torch.stack(means).T, torch.block_diag(*covariance_matrices) if flatten else torch.stack(covariance_matrices)
+    #
+    # ~~~ Build a list of covariance matrices (one for each output) K_{i,j} = kernel(x_i,y_j)
+    def build_kernel_matrices( self, x, y=None, add_stabilizing_noise=True, check_symmetric=True ):
+        with torch.no_grad():
+            #
+            # ~~~ Compute 'em
+            if y is None: y=x
+            x, y = vertical(x), vertical(y)
+            list_of_kernel_matrices = [ gp.covar_module(x,y).evaluate() for gp in self.models ]
+            #
+            # ~~~ Decide whether or not to add "stabilizing noise"
+            if add_stabilizing_noise and check_symmetric:
+                m, n = list_of_kernel_matrices[0].shape
+                symmetric = torch.allclose( list_of_kernel_matrices[0], list_of_kernel_matrices[0].T ) if m==n else False
+                if not symmetric:
+                    my_warn("Stabilizing noise should not be added to the kernel matrix if the kernel matrix is not symmetric. The supplied argument `add_stabilizing_noise=True` will be ignored.")
+                    add_stabilizing_noise = False
+            if add_stabilizing_noise:
+                for j,K in enumerate(list_of_kernel_matrices):
+                    K += self.etas[j] * torch.eye( x.shape[0], device=x.device, dtype=x.dtype )
+            #
+            # ~~~ Return whatever we decided
+            return torch.stack(list_of_kernel_matrices)
+
+#
+# ~~~ Prior GP Only
+class GPYBackend(GPY):
+    def __init__( self, x, out_features, bandwidths=None, scales=None, etas=None ):
+        super().__init__( out_features, bandwidths, scales, etas )
+        dummy_x_train = x[0:2,:]
+        dummy_y_train = torch.zeros( 2, out_features, device=x.device, dtype=x.dtype )
+        self.fit( dummy_x_train, dummy_y_train )    # ~~~ supply dummy training data to get a useless but cheaply fit posterior distibution (we only want the prior)
+        for model in self.models: model = model.to( device=x.device, dtype=x.dtype )
+
+#
+# ~~~ Another attempt (FOR SOME REASON, SEEMINGLY LESS NUMERICAL STABILITY)
+import torch
+import gpytorch
+from gpytorch.likelihoods import GaussianLikelihood, LikelihoodList
+from gpytorch.mlls import SumMarginalLogLikelihood
+
+
+def median_pairwise_distance(x):
+    """Compute the median of pairwise Euclidean distances for a 2D tensor x."""
+    with torch.no_grad():
+        x_flat = x.view(x.shape[0], -1)
+        dists = torch.cdist(x_flat, x_flat, p=2)
+        # Remove diagonal (zeros) and get median
+        dists = dists[dists > 0]
+        return torch.median(dists)
+
+
+class SingleOutputGP(gpytorch.models.ExactGP):
+    def __init__( self, train_x, train_y, likelihood, bandwidth=None, scale=None ):
+        super().__init__( train_x, train_y, likelihood )
+        self.mean_module = ZeroMean()
+        self.covar_module = ScaleKernel(RBFKernel())
+        if bandwidth is not None: self.covar_module.base_kernel.lengthscale = bandwidth
+        if scale is not None:     self.covar_module.outputscale = scale
+    def forward(self, x):
+        mean_x = self.mean_module(x)
+        covar_x = self.covar_module(x)
+        return MultivariateNormal(mean_x,covar_x)
+
+
+class MultiOutputGP(torch.nn.Module):
+    def __init__( self, train_x, train_y, bandwidths=None, scales=None, etas=None ):
+        super().__init__()
+        self.num_outputs = train_y.shape[1]
+        default_bw = median_pairwise_distance(train_x)
+        if bandwidths is None: bandwidths = self.num_outputs*[default_bw]
+        if scales is None: scales = self.num_outputs*[1]
+        if etas is None: etas = self.num_outputs*[0.001]
+        self.likelihoods = torch.nn.ModuleList([
+            GaussianLikelihood(noise=noise)
+            for noise in etas
+        ])
+        self.models = torch.nn.ModuleList([
+            SingleOutputGP( train_x, train_y[:,i], self.likelihoods[i], bandwidth=bandwidths[i], scale=scales[i] )
+            for i in range(self.num_outputs)
+        ])
+    #
+    # ~~~ Tune the hyperparameters
+    def tune_hyperpars( self, training_iter=50, lr=0.1 ):
+        self.models.train()
+        self.likelihoods.train()
+        optimizer = torch.optim.Adam( self.models.parameters(), lr=lr )
+        for i in trange( training_iter, desc="Tuning Hyperparameters" ):
+            output = self.models(*[m.train_inputs[0] for m in self.models])
+            loss = -self.mll(output, list(m.train_targets for m in self.models))
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+    #
+    # ~~~ 
+    def post_mu_and_Sigma( self, x, add_stabilizing_noise=True ):
+        self.models.eval()
+        self.likelihoods.eval()
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
+            mvns = [ model(x) for model in self.models ]
+            if add_stabilizing_noise: mvns = [ likelihood(mvn) for likelihood, mvn in zip(self.likelihoods,mvns) ]
+        means = torch.stack([ mvn.mean for mvn in mvns ])  # ( num_outputs, len(x) )
+        covariances = torch.stack([ mvn.covariance_matrix for mvn in mvns ])  # ( num_outputs, len(x), len(x) )
+        return means.T, covariances
+    #
+    # ~~~
+    def posterior_samples( self, x, n, add_stabilizing_noise=True ):
+        self.models.eval()
+        self.likelihoods.eval()
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
+            mvns = [ model(x) for model in self.models ]
+            if add_stabilizing_noise: mvns = [ likelihood(mvn) for likelihood, mvn in zip(self.likelihoods,mvns) ]
+            samples = [ mvn.rsample(sample_shape=torch.Size([n])) for mvn in mvns ]
+            return torch.stack(samples).permute(1,2,0)  # ( n, len(x), num_outputs )
+    #
+    # ~~~ 
+    def prior_samples(self, x, n, add_stabilizing_noise=False):
+        self.eval()
+        with torch.no_grad():
+            priors = [model.prior_distribution(x) for model in self.models]
+            samples = [prior.rsample(torch.Size([n])) for prior in priors]
+            if add_stabilizing_noise:
+                noise_samples = [
+                    torch.randn_like(s) * likelihood.noise.sqrt().item()
+                    for s, likelihood in zip(samples, self.likelihoods)
+                ]
+                samples = [s + eps for s, eps in zip(samples, noise_samples)]
+            return torch.stack(samples).permute(1,2,0)  # ( n, len(x), num_outputs )
