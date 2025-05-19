@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 #
 # ~~~ Do GPR
 torch.set_default_dtype(torch.float64)
-# gpr = GPR( out_features=2, bandwidths=[0.2,0.5], scales=[1,1.1], etas=[0.0001,0.1] )
+# gpr = GPR( out_features=2, bws=[0.2,0.5], scales=[1,1.1], etas=[0.0001,0.1] )
 gpr = GPR( out_features=2, etas=[0.0001,0.0001] )
 gpr.fit( x_train, y_train )
 mu_post, sigma_post = gpr.post_mu_and_Sigma(x_test)

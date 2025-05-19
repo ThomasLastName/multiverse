@@ -17,7 +17,7 @@ x_test = torch.randn( n_samples, n_features, device=device )
 # ~~~ Define models
 gpr = GPR( out_features=n_features )
 _,_ = gpr.prior_mu_and_Sigma( x_test )
-backend = GPYBackend( x_test, out_features=gpr.out_features, bandwidths=copy(gpr.bandwidths), scales=gpr.scales, etas=gpr.etas )
+backend = GPYBackend( x_test, out_features=gpr.out_features, bws=copy(gpr.bws), scales=gpr.scales, etas=gpr.etas )
 
 with support_for_progress_bars():
     for C in (True,False):

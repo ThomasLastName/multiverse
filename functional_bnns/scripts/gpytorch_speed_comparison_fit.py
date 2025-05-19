@@ -30,7 +30,7 @@ y_test = x_test.abs()
 torch.manual_seed(2025)
 gpr = GPR(
         out_features = n_features,
-        bandwidths = ( torch.randn(n_features)**2 * torch.cdist(x_train,x_train).median().item() ).numpy().tolist(),
+        bws = ( torch.randn(n_features)**2 * torch.cdist(x_train,x_train).median().item() ).numpy().tolist(),
         scales = (torch.randn(n_features)**2).numpy().tolist(),
         etas = torch.linspace( 0.0001, 0.01, n_features ).numpy().tolist(),
         means = lambda x: torch.zeros( x.shape[0], n_features ).to( device=x.device, dtype=x.dtype ),
@@ -38,7 +38,7 @@ gpr = GPR(
 _,_ = gpr.prior_mu_and_Sigma( x_train )
 gpy = GPY(
         out_features = n_features,
-        bandwidths = copy(gpr.bandwidths),
+        bws = copy(gpr.bws),
         scales = gpr.scales,
         etas = gpr.etas
     )
