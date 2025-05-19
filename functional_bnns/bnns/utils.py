@@ -756,6 +756,8 @@ def plot_trained_model_from_dataframe( dataframe, i, n_samples=200, **kwargs ):
             x_train = x_train_cpu,
             y_train = y_train_cpu,
             predictions = predictions,
+            extra_std = False,
+            how_many_individual_predictions = dataframe.iloc[i].HOW_MANY_INDIVIDUAL_PREDICTIONS,
             **kwargs    # ~~~ such as "title" and "extra_std"
             )
         plt.show()

@@ -61,13 +61,13 @@ plt.show()
 ### ~~~
 
 indices_with_great_accuracy_despite_high_noise = np.where( (results.LIKELIHOOD_STD==0.1) & (results.METRIC_rmse_of_mean < 0.02) )[0]
-for i in indices_with_great_accuracy_despite_high_noise[0,1,2]: plot_trained_model_from_dataframe( results, i, title="A Model with Coverage {}" )
+for i in indices_with_great_accuracy_despite_high_noise[:3]: plot_trained_model_from_dataframe( results, i, title="A Model with Coverage {}" )
 
 
 def plot_k( dataframe, metric, small=True, k=3 ):
     selector = k_smallest_indices if small else k_largest_indices
     indices = selector( dataframe, "METRIC_"+metric, k=k )
-    for i in indices: plot_trained_model_from_dataframe( results, i, title=f"A Model with {metric} {results.METRIC_coverage.iloc[i]}" )
+    for i in indices: plot_trained_model_from_dataframe( results, i, title=f"Title?" )
 
 plot_k( results, "coverage", small=False )                          # ~~~ plot the 3 models with highest coverage
 plot_k( abs(results.METRIC_coverage-0.95), "coverage", small=True ) # ~~~ plot the 3 models coverage closest to 95%
