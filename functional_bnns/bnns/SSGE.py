@@ -80,7 +80,8 @@ class BaseScoreEstimator:
         # """
         with torch.no_grad():
             x1, x2 = vertical(x1), vertical(x2)
-            return torch.cdist(x1,x2).median()
+            dists = torch.cdist(x1,x2)
+            return dists[dists>0].median().item()
     #
     # ~~~ Placeholder method for the content of __call__(...)
     @abstractmethod
