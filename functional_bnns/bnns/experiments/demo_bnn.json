@@ -20,10 +20,10 @@
     "OPTIMIZER": "Adam",    // from torch.optim import OPTIMIZER
 	"LR": 0.0005,           // learning rate
 	"BATCH_SIZE": 64,       // batch size
-	"N_EPOCHS": 10000,      // how many epochs to run
+	"N_EPOCHS": 10000,      // positive int, or a list of positive int's, which entails multiple checkpoints 
 	"EARLY_STOPPING": true, // if true, "stop when (val_loss-min_val_loss)/abs(min_val_loss) > DELTA for PATICIENCE times consecutively," where the loss values checked every `HOW_OFTEN` iter's and de-noised (see STRIDE)
 	"DELTA": 0.05,          // float or a list of float's
-	"PATIENCE": 50,         // positive int or a list of positive int's
+	"PATIENCE": 50,         // positive int, or a list of positive int's, which entails multiple checkpoints
 	"STRIDE": 50,           // positive int or a list of positive int's; the val_loss values used to determine the early stopping criteria are "de-noised" by taking a weighted average with bin width STRIDE
     "HOW_OFTEN": 10,        // check the validation loss (and other stuff that doesn't need to happen every single iteration) every HOW_OFTEN iterations
     //
