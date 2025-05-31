@@ -83,7 +83,6 @@ hyperparameter_template = {
     "N_MC_SAMPLES" : 1,
     "WEIGHTING" : "standard",           # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
     "DEFAULT_INITIALIZATION" : "new",   # ~~~ whether or not to take the prior as the initialization of the posterior
-    "DEFAULT_PRIOR" : "old",
     #
     # ~~~ For visualization (only applicable on 1d data)
     "MAKE_GIF" : True,
@@ -208,26 +207,20 @@ except:
             *architecture,
             likelihood_std = torch.tensor(LIKELIHOOD_STD),
             auto_projection = (PROJECTION_METHOD.upper()=="HARD"),
-            posterior_distribution = VARIATIONAL_FAMILY
+            posterior_distribution = VARIATIONAL_FAMILY,
+            **SSGE_HYPERPARAMETERS
         )
 
 BNN = BNN.to( device=DEVICE, dtype=DTYPE )
-BNN.set_prior_hyperparameters( **hyperparameters )
-BNN.prior_J = PRIOR_J                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
-BNN.post_J = POST_J                                 # ~~~ SSGE accuracyhyperparameter (only relevant for Sun et al. 2019)
-BNN.prior_eta = PRIOR_ETA                           # ~~~ stabilizing noise for SSGE (only relevant for Sun et al. 2019)
-BNN.post_eta = POST_ETA                             # ~~~ stabilizing noise for SSGE (only relevant for Sun et al. 2019)
-BNN.prior_M = PRIOR_M                               # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
-BNN.post_M = POST_M                                 # ~~~ SSGE accuracy hyperparameter (only relevant for Sun et al. 2019)
+BNN.set_prior_hyperparameters( **PRIOR_HYPERPARAMETERS )
 BNN.post_GP_ETA = POST_GP_ETA                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
 
-if DEFAULT_INITIALIZATION in ("new","old"):
-    BNN.set_default_uncertainty(DEFAULT_INITIALIZATION=="new")
+if DEFAULT_INITIALIZATION is not None:
+    BNN.set_default_uncertainty(**DEFAULT_INITIALIZATION)
 
 if not PROJECTION_METHOD.upper()=="HARD":
     BNN.setup_soft_projection(PROJECTION_METHOD)
-    if DEFAULT_INITIALIZATION is None:
-        BNN.apply_soft_projection()
+    if DEFAULT_INITIALIZATION is None: BNN.apply_soft_projection()
 
 
 
@@ -323,7 +316,6 @@ if EARLY_STOPPING:
 
 #
 # ~~~ Set "regularization parameters" for a Bayesian loss function (i.e., relative weights of the likelihood and the KL divergence)
-WEIGHTING = WEIGHTING.lower()
 if not isinstance(WEIGHTING,str):
     my_warn(f"Expected WEIGHTING to be a string, but found instead type(WEIGHTING)=={type(WEIGHTING)}. The loss function will be weighted as if WEIGHTING='standard'.")
 elif WEIGHTING=="Blundell":

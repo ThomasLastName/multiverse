@@ -5,7 +5,7 @@ import torch
 from torch import nn
 
 from bnns.utils import flatten_parameters, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity, get_key_or_default
-from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN
+from bnns.NoPriorBNNs import IndepLocScaleBNN
 
 from quality_of_life.my_base_utils  import my_warn, support_for_progress_bars
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
@@ -16,7 +16,7 @@ from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 ## ~~~ Implement `estimate_expected_prior_log_density`, `prior_forward`, and `set_prior_hyperparameters` for the "homoskedastic" mixture prior on the network weights employed in Blundell et al. 2015 (https://arxiv.org/abs/1505.05424)
 ### ~~~
 
-class MixtureWeightPrior2015BNN(IndepLocScaleSequentialBNN):
+class MixturePrior2015BNN(IndepLocScaleBNN):
     def __init__(
                 self,
                 *args,
@@ -183,7 +183,7 @@ class MixtureWeightPrior2015BNN(IndepLocScaleSequentialBNN):
 ## ~~~ Implement `estimate_expected_prior_log_density`, `prior_forward`, and `set_prior_hyperparameters` for the case in which the prior distribution is an independent location-scale family on weights (most commonly, Gaussian is used)
 ### ~~~
 
-class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
+class IndepLocScalePriorBNN(IndepLocScaleBNN):
     def __init__(
                 #
                 # ~~~ Architecture and stuff
@@ -229,16 +229,16 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
         # ~~~ Set the prior standard deviations
         self.default_prior_type = "torch.nn.init"   # ~~~ also supported are "Xavier" and "IID"
         self.default_scale = 1.
-        self.default_extra_gain = 1.
-        self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale, extra_gain=self.default_extra_gain )
+        self.default_gain_multiplier = 1.
+        self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale, gain_multiplier=self.default_gain_multiplier )
     #
     # ~~~ Allow these to be set at runtime
     def set_prior_hyperparameters( self, **kwargs ):
         #
         # ~~~ If any of the hyper-parameters are unspecified, then use the class level defaults
-        prior_type = get_key_or_default( kwargs, "prior_type", self.default_prior_type )
-        scale      = get_key_or_default( kwargs, "scale",      self.default_scale      )
-        extra_gain = get_key_or_default( kwargs, "extra_gain", self.default_extra_gain )
+        prior_type      = get_key_or_default( kwargs, "prior_type", self.default_prior_type )
+        scale           = get_key_or_default( kwargs, "scale",      self.default_scale      )
+        gain_multiplier = get_key_or_default( kwargs, "gain_multiplier", self.default_gain_multiplier )
         #
         # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
         if not scale>0:
@@ -251,19 +251,19 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
         if prior_type=="torch.nn.init": # ~~~ use the stanard deviation of the distribution of pytorch's default initialization
             for layer in self.prior_std:
                 if isinstance(layer,nn.Linear):
-                    std = extra_gain*std_per_layer(layer)
+                    std = gain_multiplier*std_per_layer(layer)
                     layer.weight.data = std * torch.ones_like(layer.weight.data)
                     if layer.bias is not None: layer.bias.data = std * torch.ones_like(layer.bias.data)
         #
         # ~~~ Implement prior_type=="Xavier"
         if prior_type=="Xavier":
             for p in self.prior_std.parameters():
-                p.data = extra_gain*std_per_param(p)*torch.ones_like(p.data)
+                p.data = gain_multiplier*std_per_param(p)*torch.ones_like(p.data)
         #
         # ~~~ Implement prior_type=="IID"
         if prior_type=="IID":
             for p in self.prior_std.parameters():
-                p.data = extra_gain * torch.ones_like(p.data)
+                p.data = gain_multiplier * torch.ones_like(p.data)
         #
         # ~~~ Scale the range of output, by scaling the parameters of the final linear layer, much like the scale paramter in a GP
         for layer in reversed(self.prior_std):
@@ -310,7 +310,7 @@ class IndepLocScalePriorBNN(IndepLocScaleSequentialBNN):
 ## ~~~ Defint the projection method for the case in which the posterior and prior distributions over weights both have full support
 ### ~~~
 
-class FullSupportLocScaleBNN(IndepLocScalePriorBNN):
+class FullSupportIndepLocScaleBNN(IndepLocScalePriorBNN):
     def __init__( self, *args, **kwargs ):
         super().__init__( *args, **kwargs )
     #
@@ -339,7 +339,7 @@ class FullSupportLocScaleBNN(IndepLocScalePriorBNN):
 ## ~~~ Define what most people are talking about when they say "Bayesian neural networks"
 ### ~~~
 
-class GaussianBNN(FullSupportLocScaleBNN):
+class GaussianBNN(FullSupportIndepLocScaleBNN):
     def __init__(
                 self,
                 *args,
@@ -348,6 +348,7 @@ class GaussianBNN(FullSupportLocScaleBNN):
                 posterior_generator = None,
                 prior_generator = None,
                 posterior_distribution = None,  # ~~~ un-used argument for API compatibility
+                **kwargs
             ):
         assert posterior_distribution is None, f"GaussianBNN simply implements a Gaussian distribution, which conflicts with the supplied value of the `posterior_distribution` keyword argument: {posterior_distribution}. Please specify the `posterior_distribution` keyword argument to `None`."
         super().__init__(
@@ -357,7 +358,8 @@ class GaussianBNN(FullSupportLocScaleBNN):
                 posterior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
                 posterior_standard_sampler     = lambda *shape, **kwargs: torch.randn(*shape, generator=posterior_generator, **kwargs),
                 prior_standard_log_density = lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) ),
-                prior_standard_sampler     = lambda *shape, **kwargs: torch.randn(*shape, generator=prior_generator, **kwargs)
+                prior_standard_sampler     = lambda *shape, **kwargs: torch.randn(*shape, generator=prior_generator, **kwargs),
+                **kwargs
             )
     #
     # ~~~ Specify an exact formula for the KL divergence

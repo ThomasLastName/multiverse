@@ -21,16 +21,26 @@ from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 #
 # ~~~ Main class: intended to mimic nn.Module
 class BayesianModule(nn.Module):
-    def __init__(self):
+    def __init__(
+                self,
+                #
+                # ~~~ Attributes for SSGE, used for computing gradients of the loss from Sun et al. 2019 (https://arxiv.org/abs/1903.05779)
+                prior_J   =  20,
+                post_J    =  20,
+                prior_eta =  0.01,
+                post_eta  =  0.05,
+                prior_M   =  200,
+                post_M    =  200
+            ):
         super().__init__()
         #
         # ~~~ Attributes for SSGE, used for computing gradients of the loss from Sun et al. 2019 (https://arxiv.org/abs/1903.05779)
-        self.prior_J   =  20
-        self.post_J    =  20
-        self.prior_eta =  0.01
-        self.post_eta  =  0.05
-        self.prior_M   =  200
-        self.post_M    =  200
+        self.prior_J   =  prior_J
+        self.post_J    =  post_J
+        self.prior_eta =  prior_eta
+        self.post_eta  =  post_eta
+        self.prior_M   =  prior_M
+        self.post_M    =  post_M
         self.prior_SSGE = None
         self.prior_samples_batch_size = None    # ~~~ see `setup_prior_SSGE`
     #
@@ -161,7 +171,7 @@ class BayesianModule(nn.Module):
 
 #
 # ~~~ Main class: variational family models weights as independent, all from the same location scale family (STILL NO PRIOR DISTRIBUTION AT THIS LEVEL OF ABSTRACTION)
-class IndepLocScaleSequentialBNN(BayesianModule):
+class IndepLocScaleBNN(BayesianModule):
     def __init__(
                 self,
                 *args,
@@ -172,11 +182,12 @@ class IndepLocScaleSequentialBNN(BayesianModule):
                 posterior_distribution = torch.distributions.Normal,    # ~~~ either, specify this, of specify the following two methods
                 posterior_standard_log_density = None,  # ~~~ should be a callable that accepts generic torch.tensors as input, but ideally also works on numpy arrays (otherwise `check_moments` will fail), e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
                 posterior_standard_sampler = None,      # ~~~ should be a callable that returns a tensor of random samples from the distribution with mean 0 and variance 1, e.g., `torch.randn` for Gaussian
-                check_moments = True                    # ~~~ if true, test that `\int z*posterior_standard_log_density(z) \dee z = 0` and `\int z**2*posterior_standard_log_density(z) \dee z = 1`
+                check_moments = True,                   # ~~~ if true, test that `\int z*posterior_standard_log_density(z) \dee z = 0` and `\int z**2*posterior_standard_log_density(z) \dee z = 1`
+                **SSGE_hyperparameters
             ):
         #
         # ~~~ Means and standard deviations for each network parameter
-        super().__init__()
+        super().__init__(**SSGE_hyperparameters)
         self.posterior_mean = nn.Sequential(*args)
         self.posterior_std  = nonredundant_copy_of_module_list(self.posterior_mean)
         self.realized_standard_posterior_sample  =  nonredundant_copy_of_module_list(self.posterior_mean)  # ~~~ a "standard normal [or whatever] distribution in the shape of our neural network"
@@ -271,7 +282,7 @@ class IndepLocScaleSequentialBNN(BayesianModule):
     @abstractmethod
     def apply_hard_projection( self, tol=1e-6 ):
         with torch.no_grad():
-            raise NotImplementedError("The class IndepLocScaleSequentialBNN leaves the method `apply_hard_projection` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
+            raise NotImplementedError("The class IndepLocScaleBNN leaves the method `apply_hard_projection` to be implented in user-defined subclasses, because it may depend on the prior distribution.")
     #
     # ~~~ If using projected gradient descent, then project onto the non-negative orthant
     def apply_soft_projection(self):
@@ -291,25 +302,37 @@ class IndepLocScaleSequentialBNN(BayesianModule):
                     raise
     #
     # ~~~ Initialize the posterior standard deviations to match the standard deviations of a possible prior distribution
-    def set_default_uncertainty( self, comparable_to_default_torch_init=False, scale=1.0 ):
-        with torch.no_grad():
-            if comparable_to_default_torch_init:
-                for layer in self.posterior_std:
-                    if isinstance(layer,nn.Linear):
-                        std = std_per_layer(layer)
-                        layer.weight.data = std * torch.ones_like(layer.weight.data)
-                        if layer.bias is not None:
-                            layer.bias.data = std * torch.ones_like(layer.bias.data)
-            else:
-                for p in self.posterior_std.parameters():
-                    p.data = std_per_param(p)*torch.ones_like(p.data)
-            #
-            # ~~~ Scale the parameters of the last linear layer; the effect is comparable to the scale paramter in a GP
-            for layer in reversed(self.posterior_std):
-                if isinstance( layer, nn.Linear ):
-                    for p in layer.parameters():
-                        p.data *= scale
-                    break
+    def set_default_uncertainty( self, scale=1.0, gain_multiplier=1, type="Xavier" ):
+        #
+        # ~~~ Very basic safety check
+        if not scale>0: raise ValueError("`scale` must be positive")
+        if not gain_multiplier>0: raise ValueError("`gain_multiplier` must be positive")
+        if not type in ( "Xavier", "torch.nn.init", "IID" ): raise ValueError('`type` must be one of: "Xavier", "torch.nn.init", "IID"')
+        #
+        # ~~~ Implement type=="torch.nn.init"
+        if type=="torch.nn.init": # ~~~ use the stanard deviation of the distribution of pytorch's default initialization
+            for layer in self.prior_std:
+                if isinstance(layer,nn.Linear):
+                    std = gain_multiplier*std_per_layer(layer)
+                    layer.weight.data = std * torch.ones_like(layer.weight.data)
+                    if layer.bias is not None: layer.bias.data = std * torch.ones_like(layer.bias.data)
+        #
+        # ~~~ Implement type=="Xavier"
+        if type=="Xavier":
+            for p in self.prior_std.parameters():
+                p.data = gain_multiplier*std_per_param(p)*torch.ones_like(p.data)
+        #
+        # ~~~ Implement type=="IID"
+        if type=="IID":
+            for p in self.prior_std.parameters():
+                p.data = gain_multiplier * torch.ones_like(p.data)
+        #
+        # ~~~ Scale the range of output, by scaling the parameters of the final linear layer, much like the scale paramter in a GP
+        for layer in reversed(self.prior_std):
+            if isinstance(layer,nn.Linear):
+                layer.weight.data *= scale
+                if layer.bias is not None: layer.bias.data *= scale
+                break
     #
     # ~~~ Sample the distribution of Y|X=x,W=w
     def forward( self, x, n=0 ):

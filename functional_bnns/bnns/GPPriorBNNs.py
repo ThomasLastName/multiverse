@@ -1,9 +1,9 @@
 
 import torch
 
-from bnns.NoPriorBNNs import IndepLocScaleSequentialBNN
+from bnns.NoPriorBNNs import IndepLocScaleBNN
 from bnns.GPR import GPYBackend
-from bnns.utils import get_key_or_default, randmvns
+from bnns.utils import get_key_or_default
 
 
 
@@ -11,7 +11,7 @@ from bnns.utils import get_key_or_default, randmvns
 ## ~~~ Implement `prior_forward` and `set_prior_hyperparameters` for a GP prior
 ### ~~~
 
-class GPPriorBNN(IndepLocScaleSequentialBNN):
+class GPPriorBNN(IndepLocScaleBNN):
     def __init__(
                 self,
                 *args,

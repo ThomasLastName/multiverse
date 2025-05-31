@@ -1,51 +1,78 @@
 {
+    //
+    // Misc
 	"DEVICE": "cpu",
-	"DTYPE": "float",
-	"SEED": 2025,
-	"DATA": "univar_missing_middle",
-	"ARCHITECTURE" : "univar_NN.univar_NN_100_100",
-	"MODEL": "FullSupportLocScaleBNN",
-    "VARIATIONAL_FAMILY" : "Uniform",
-	"pi" : 0.5,
-	"sigma1" : 1.0,
-	"sigma2" : 0.002,
-	"GAUSSIAN_APPROXIMATION": false,
-	"APPPROXIMATE_GAUSSIAN_MEAN" : false,
-	"FUNCTIONAL": true,
-	"MEASUREMENT_SET_SAMPLER" : "data_only",
-	"N_MEAS" : 100,
-	"EXACT_WEIGHT_KL" : false,
-	"PROJECTION_METHOD": "HARD",
-	"PRIOR_J": 30,
-	"POST_J": 10,
-	"PRIOR_ETA": 0.5,
-	"POST_ETA": 0.5,
-	"PRIOR_M": 300,
-	"POST_M": 40,
-	"POST_GP_ETA": 0.001,
-	"LIKELIHOOD_STD": 0.05,
-	"OPTIMIZER": "Adam",
-	"LR": 0.0005,
-	"BATCH_SIZE": 64,
-	"N_EPOCHS": 10000,
-	"EARLY_STOPPING": true,
-	"DELTA": 0.05,
-	"PATIENCE": 50,
-	"STRIDE": 50,
-	"N_MC_SAMPLES": 1,
-	"WEIGHTING": "standard",
-	"DEFAULT_INITIALIZATION" : null,
-	"DEFAULT_PRIOR" : "old",
-	"MAKE_GIF": true,
-	"TITLE" : "BBB with Mixture Prior 2015",
-	"HOW_OFTEN": 10,
-	"INITIAL_FRAME_REPETITIONS": 24,
-	"FINAL_FRAME_REPETITIONS": 48,
-	"HOW_MANY_INDIVIDUAL_PREDICTIONS": 6,
-	"VISUALIZE_DISTRIBUTION_USING_QUANTILES": false,
-	"N_POSTERIOR_SAMPLES": 100,
-	"EXTRA_STD": true,
-	"N_POSTERIOR_SAMPLES_EVALUATION": 100,
-	"SHOW_DIAGNOSTICS" : false,
-	"SHOW_PLOT" : false
+	"DTYPE": "double",  // torch.set_default_dtype(torch.DTYPE)
+	"SEED": 2025,       // torch.manual_seed(SEED)
+    //
+    // The data, the prior distribution, and the variational family
+	"DATA": "univar_missing_middle",                // from DATA import D_train, D_val, D_test, interpolary_grid, extrapolary_grid, extrapolation_grid, <MEASUREMENT_SET_SAMPLER>
+	"ARCHITECTURE" : "univar_NN.univar_NN_100_100", // from ARCHITECTURE import NN as architecture
+	"MODEL": "MixturePrior2015BNN",                 // BNN = bnns.MODEL( *architecture, likeilihood_std=LIKELIHOOD_STD, **PRIOR_HYPERPARAMETERS )
+    "VARIATIONAL_FAMILY" : "Uniform",               // from torch.distributions import VARIATIONAL_FAMILY
+    "PRIOR_HYPERPARAMETERS" : {                     // please, see documentation for the MODEL of choice to determine which fields are necessary, as each prior has its own hyper-parameters
+            "pi" : 0.5,
+            "sigma1" : 1.0,
+            "sigma2" : 0.002
+        },
+    //
+    // Training hyper-parameters for neural networks in general
+    "OPTIMIZER": "Adam",    // from torch.optim import OPTIMIZER
+	"LR": 0.0005,           // learning rate
+	"BATCH_SIZE": 64,       // batch size
+	"N_EPOCHS": 10000,      // how many epochs to run
+	"EARLY_STOPPING": true, // if true, "stop when (val_loss-min_val_loss)/abs(min_val_loss) > DELTA for PATICIENCE times consecutively," where the loss values checked every `HOW_OFTEN` iter's and de-noised (see STRIDE)
+	"DELTA": 0.05,          // float or a list of float's
+	"PATIENCE": 50,         // positive int or a list of positive int's
+	"STRIDE": 50,           // positive int or a list of positive int's; the val_loss values used to determine the early stopping criteria are "de-noised" by taking a weighted average with bin width STRIDE
+    "HOW_OFTEN": 10,        // check the validation loss (and other stuff that doesn't need to happen every single iteration) every HOW_OFTEN iterations
+    //
+    // Training hyper-parameters introduced by BNNs in general
+	"FUNCTIONAL": true,                     // whether to use functional training (true) of BBB (false); note: for purely functional priors (e.g., if MODEL is "GPPrior2023BNN"), false isn't allowed
+	"PROJECTION_METHOD": "HARD",            // if "HARD", use projected gradient descent to enforece sigma>0; if "Blundell", set sigma=ln(1+exp(rho)); if "torchbnn" set sigma=exp(rho)
+	"LIKELIHOOD_STD": 0.05,                 // assume that the data labels in regression are corrupted by mean-zero Gaussian noise with this standard deviation
+	"N_MC_SAMPLES": 1,                      // number of random samples to use in the random sampling average estimates of the loss function (this is almost universally taken to be 1)
+	"WEIGHTING": "standard",                // choose a weighting scheme from among "Blundell", "Sun in principle", "Sun in practice", "naive", "standard"
+	"DEFAULT_INITIALIZATION" : null,        // if null, initialize variational standard deviations randomly; if a dictionary, initialize them with BNN.set_default_uncertaintyy(**DEFAULT_INITIALIZATION)
+	"EXTRA_STD": true,                      // whether or not to add mean-zero Gaussian noise with std_dev=LIKELIHOOD_STD to the predictive samples (so that the predictive model matches the likelihood model)
+	"N_POSTERIOR_SAMPLES_EVALUATION": 100,  // how many predictive samples to use when computing metrics such as test loss at the end of training
+    "N_POSTERIOR_SAMPLES": 30,              // how many predictive samples to use when computing intermediate tasks that occur many times (e.g., when checking the validation loss every HOW_OFTEN iterations)
+	"SHOW_DIAGNOSTICS" : false,             // whether or not to print out a whole bunch of diagnostic information at the end of training
+    //
+    // Training hyper-parameters specific to BBB (only used if FUNCTIONAL is false)
+    "EXACT_WEIGHT_KL" : false,  // when computing KL-div in BBB, call BNN.weight_kl(exact_formula=EXACT_WEIGHT_KL)
+    //
+    // Training hyper-parameters introduced by fBNNs in general (only used if FUNCTIONAL is true)
+    "N_MEAS" : 100,                             // number of measurements to use for training
+	"MEASUREMENT_SET_SAMPLER" : "data_only",    // function that generates a given number of points to be used as measurement points (`from DATA import MEASUREMENT_SET_SAMPLER`)
+    "GAUSSIAN_APPROXIMATION": false,            // whether or not to implement the training method of Rudner et al. 2023 https://arxiv.org/abs/2312.17199 (only possible if MODEL is "GPPrior2023BNN")
+    //
+    // Training hyper-parameters introduced by the SSGE (only used when FUNCTIONAL is true but GAUSSIAN_APPROXIMATION is false)
+    "SSGE_HYPERPARAMETERS" : {
+            //
+            // How many random samples to generate for the SSGE
+            "PRIOR_M": 300,     // generate prior_M samples from the functional prior distribution
+            "POST_M": 40,       // generate post_M samples from the functional variational distribution
+            //
+            // Add stabilizing noise to the kernel matrix
+            "PRIOR_ETA": 0.5,   // the kernel matrix built out of functional prior samples will receive a `+= PRIOR_ETA*identity_matrix`
+            "POST_ETA": 0.5,    // the kernel matrix built out of functional variational samples will receive a `+= POST_ETA*identity_matrix`
+            //
+            // Low rank approximation of the kernel matrices
+            "PRIOR_J": 30,      // discard all except the leading PRIOR_J eigen-components of the kernel matrix built out of functional prior samples
+            "POST_J": 10        // discard all except the leading PRIOR_J eigen-components of the kernel matrix built out of functional variational samples
+        },
+    //
+    // Hyper-parameters introduced by Rudner et al. 2023 https://arxiv.org/abs/2312.17199 (only used when FUNCATIONAL is true and MODEL is "GPPrior2023BNN")
+	"APPPROXIMATE_GAUSSIAN_MEAN" : false,   // whether to compute exactly (false), or approximately (true), the mean from eq'n (14) in https://arxiv.org/pdf/2312.17199
+	"POST_GP_ETA": 0.001,                   // stablizing noise; the estimated covariance matrix Sigma_post of the functional variational distribution recieves a `Sigma_post += POST_GP_ETA*identity_matrix`
+    //
+    // Visualization options (only possible when there's a univariate input and univariate output)
+	"MAKE_GIF": true,       // whether or not sto make a gif of the training process
+	"TITLE" : null,         // (optional) text string to be used as the title of the gif (or plot)
+	"SHOW_PLOT" : false,    // if true, be sure to plot the fitted model at the end of training (only used if MAKE_GIF is false)
+    "INITIAL_FRAME_REPETITIONS": 24,    // how many frames to linger on the prior distribution at the beginning of the gif (only used if MAKE_GIF is true)
+	"FINAL_FRAME_REPETITIONS": 48,      // how many frames to linger on fitted model at the end of the gif (only used if MAKE_GIF is true)
+	"HOW_MANY_INDIVIDUAL_PREDICTIONS": 6,           // how many individual functional predictions to plot
+	"VISUALIZE_DISTRIBUTION_USING_QUANTILES": false // whether to create confidence intervals using quantiles of the predictive distribution (true) or +/- 2*std_dev (false)
 }
