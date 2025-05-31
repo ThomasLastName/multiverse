@@ -38,15 +38,15 @@ except:
 results = infer_width_and_depth(results)
 
 #
-# ~~~ Verify that DATA==results.DATA.unique(), ARCHITECTURE==results.MODEL.unique(), and LR==results.LR.unique()
+# ~~~ Verify that DATA==results.DATA.unique(), ARCHITECTURE==results.ARCHITECTURE.unique(), and LR==results.LR.unique()
 if (
         len(DATA) == 2 == len(results.DATA.unique())
-        and len(ARCHITECTURE) == 8 == len(results.MODEL.unique())
+        and len(ARCHITECTURE) == 8 == len(results.ARCHITECTURE.unique())
         and len(LR) == 3 == len(results.LR.unique())
     ):
     if not (
                 all(DATA==results.DATA.unique())
-                and all(ARCHITECTURE==results.MODEL.unique())
+                and all(ARCHITECTURE==results.ARCHITECTURE.unique())
                 and all(LR==results.LR.unique())
             ):
         my_warn(f"The hyperparameters specified in {folder_dir} do not match their expected values")
@@ -122,12 +122,12 @@ if __name__=="__main__":
 
 # #
 # # ~~~ Average over all data train/val folds
-# mean_results = unique_results.groupby(["MODEL","LR","n_epochs"]).mean(numeric_only=True).reset_index()
+# mean_results = unique_results.groupby(["ARCHITECTURE","LR","n_epochs"]).mean(numeric_only=True).reset_index()
 
 # #
 # # ~~~ Sanity check that `groupby` works as intended
-# model, lr, n = get_attributes_from_row_i( mean_results, 0, "MODEL", "LR", "n_epochs" )
-# filtered_results = filter_by_attributes( unique_results, MODEL=model, LR=lr, n_epochs=n )
+# model, lr, n = get_attributes_from_row_i( mean_results, 0, "ARCHITECTURE", "LR", "n_epochs" )
+# filtered_results = filter_by_attributes( unique_results, ARCHITECTURE=model, LR=lr, n_epochs=n )
 # assert filtered_results.shape == (2,30)
 # a = filtered_results.mean(numeric_only=True).to_numpy()
 # b = mean_results.iloc[0,1:].to_numpy()
@@ -186,13 +186,13 @@ if __name__=="__main__":
 #         plt.show()
 
 # best_UQ = acceptable_results.METRIC_interpolation_uncertainty_spread_pm2_std.argmax()
-# model, lr, n = get_attributes_from_row_i( acceptable_results, best_UQ, "MODEL", "LR", "n_epochs" )
-# good_models = filter_by_attributes( results, MODEL=model, LR=lr, n_epochs=n )
+# model, lr, n = get_attributes_from_row_i( acceptable_results, best_UQ, "ARCHITECTURE", "LR", "n_epochs" )
+# good_models = filter_by_attributes( results, ARCHITECTURE=model, LR=lr, n_epochs=n )
 # plot_trained_model( good_models, 0, title="Model with the best UQ amongst acceptable results" )
 
 # best_loss = acceptable_results.METRIC_rmse_of_mean.argmin()
-# model, lr, n = get_attributes_from_row_i( acceptable_results, best_loss, "MODEL", "LR", "n_epochs" )
-# good_models = filter_by_attributes( results, MODEL=model, LR=lr, n_epochs=n )
+# model, lr, n = get_attributes_from_row_i( acceptable_results, best_loss, "ARCHITECTURE", "LR", "n_epochs" )
+# good_models = filter_by_attributes( results, ARCHITECTURE=model, LR=lr, n_epochs=n )
 # plot_trained_model( good_models, 0, title="Model with the best loss amongst acceptable results" )
 
 # plot_trained_model( results, results.METRIC_rmse_of_mean.argmin(), title="Model with the best loss amongst all results" )
@@ -214,7 +214,7 @@ if __name__=="__main__":
 # import matplotlib.pyplot as plt
 
 # plt.figure(figsize=(10, 6))
-# sns.lineplot(data=mean_results, x='METRIC_rmse_of_mean', y='METRIC_interpolation_uncertainty_spread_pm2_std', hue='MODEL', marker='o')
+# sns.lineplot(data=mean_results, x='METRIC_rmse_of_mean', y='METRIC_interpolation_uncertainty_spread_pm2_std', hue='ARCHITECTURE', marker='o')
 # plt.title('rMSE across Different Models and Epochs')
 # # plt.xlabel('Number of Epochs')
 # # plt.ylabel('Mean rMSE')

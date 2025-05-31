@@ -3,7 +3,7 @@
 	"DTYPE": "float",
 	"SEED": 2024,
 	"DATA": "univar_missing_middle_normalized_12",
-	"MODEL": "univar_NN_dropout",
+	"ARCHITECTURE": "univar_NN_dropout",
 	"OPTIMIZER": "Adam",
 	"LR": 0.0005,
 	"BATCH_SIZE": 64,

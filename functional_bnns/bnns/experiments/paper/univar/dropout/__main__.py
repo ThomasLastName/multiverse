@@ -23,7 +23,7 @@ hyperparameter_template = {
     #
     # ~~~ Which problem
     "DATA" : EXPLORE_DURING_TUNING,
-    "MODEL" : EXPLORE_DURING_TUNING,
+    "ARCHITECTURE" : EXPLORE_DURING_TUNING,
     #
     # ~~~ For training
     "OPTIMIZER" : "Adam",
@@ -68,7 +68,7 @@ for lr in LR:
                 # ~~~ Specify the specific values of the hyperparameters EXPLORE_DURING_TUNING
                 hyperparameter_template["LR"] = lr
                 hyperparameter_template["DATA"] = data
-                hyperparameter_template["MODEL"] = architecture
+                hyperparameter_template["ARCHITECTURE"] = architecture
                 hyperparameter_template["DROPOUT"] = p
                 #
                 # ~~~ Save the hyperparameters to a .json file

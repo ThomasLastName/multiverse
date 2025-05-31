@@ -37,15 +37,15 @@ except:
 results = infer_width_and_depth(results)
 
 #
-# ~~~ Verify that DATA==results.DATA.unique(), ARCHITECTURE==results.MODEL.unique(), and LR==results.LR.unique()
+# ~~~ Verify that DATA==results.DATA.unique(), ARCHITECTURE==results.ARCHITECTURE.unique(), and LR==results.LR.unique()
 if (
         len(DATA) == 2 == len(results.DATA.unique())
-        and len(ARCHITECTURE) == 16 == len(results.MODEL.unique())
+        and len(ARCHITECTURE) == 16 == len(results.ARCHITECTURE.unique())
         and len(LR) == 5 == len(results.LR.unique())
     ):
     if not (
                 all(DATA==results.DATA.unique())
-                and all(ARCHITECTURE==results.MODEL.unique())
+                and all(ARCHITECTURE==results.ARCHITECTURE.unique())
                 and all(LR==results.LR.unique())
             ):
         my_warn(f"The hyperparameters specified in {folder_dir} do not match their expected values")

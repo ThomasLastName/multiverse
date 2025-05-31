@@ -77,9 +77,9 @@ except:
 #
 # ~~~ Load the network architecture
 try:
-    model = import_module(f"bnns.models.{MODEL}")   # ~~~ this is equivalent to `import bnns.models.<MODEL> as model`
+    model = import_module(f"bnns.models.{ARCHITECTURE}")    # ~~~ this is equivalent to `import bnns.models.<ARCHITECTURE> as model`
 except:
-    model = import_module(MODEL)                    # ~~~ this is equivalent to `import <MODEL> as model` (works if MODEL.py is in the cwd or anywhere on the path)
+    model = import_module(ARCHITECTURE)                     # ~~~ this is equivalent to `import <ARCHITECTURE> as model` (works if ARCHITECTURE.py is in the cwd or anywhere on the path)
 
 NN = model.NN.to( device=DEVICE, dtype=DTYPE )
 
