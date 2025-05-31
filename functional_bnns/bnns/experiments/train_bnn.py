@@ -14,12 +14,11 @@ from matplotlib import pyplot as plt
 from importlib import import_module
 from itertools import product
 from time import time
-import argparse
 import os
 
 #
 # ~~~ Package-specific utils
-from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, set_Dataset_attributes, generate_json_filename, convert_to_list_and_check_items, non_negative_list, EarlyStopper
+from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, set_Dataset_attributes, generate_json_filename, convert_to_list_and_check_items, non_negative_list, EarlyStopper, parse
 from bnns.metrics import *
 
 #
@@ -36,92 +35,8 @@ from quality_of_life.my_base_utils          import support_for_progress_bars, di
 ### ~~~
 
 #
-# ~~~ Template for what the dictionary of hyperparmeters should look like
-hyperparameter_template = {
-    #
-    # ~~~ Misc.
-    "DEVICE" : "cpu",
-    "DTYPE" : "float",
-    "SEED" : 2024,
-    #
-    # ~~~ Which problem, broadly spaking
-    "DATA" : "univar_missing_middle",
-	"ARCHITECTURE" : "univar_NN.univar_NN_100_100",
-	"MODEL": "MixtureWeightPrior2015BNN",
-    "VARIATIONAL_FAMILY" : torch.distributions.Normal,
-    #
-    # ~~~ Any prior-specific hyper-parameters
-    "pi" : 0.5,
-    "sigma1" : 1.0,
-    "sigma2" : 0.002,
-    #
-    # ~~~ For training
-    "GAUSSIAN_APPROXIMATION" : True,        # ~~~ in an fBNN use a first order Gaussian approximation like Rudner et al.
-    "APPPROXIMATE_GAUSSIAN_MEAN" : False,   # ~~~ whether to compute exactly (False), or approximately (True), the mean from eq'n (14) in https://arxiv.org/pdf/2312.17199
-    "FUNCTIONAL" : False,                   # ~~~ whether or to do functional training or (if False) BBB
-    "MEASUREMENT_SET_SAMPLER" : "data_only",# ~~~ load this function from the same file where data is loaded from
-    "N_MEAS" : 100,                 # ~~~ desired size of measurement set
-    "EXACT_WEIGHT_KL" : True,       # ~~~ whether to use the exact KL divergence between the prior and posterior (True) or a Monte-Carlo approximation (False)
-    "PROJECTION_METHOD" : "HARD",   # ~~~ if "HARD", use projected gradient descent; else use the weird thing from the paper
-    "PRIOR_J"   : 100,              # ~~~ `J` in the SSGE of the prior score
-    "POST_J"    : 10,               # ~~~ `J` in the SSGE of the posterior score
-    "PRIOR_ETA" : 0.5,              # ~~~ `eta` in the SSGE of the prior score
-    "POST_ETA"  : 0.5,              # ~~~ `eta` in the SSGE of the posterior score
-    "PRIOR_M"   : 4000,             # ~~~ `M` in the SSGE of the prior score
-    "POST_M"    : 40,               # ~~~ `M` in the SSGE of the posterior score
-    "POST_GP_ETA" : 0.001,          # ~~~ the level of the "stabilizing noise" added to the Gaussian approximation of the posterior distribution if `gaussian_approximation` is True
-    "LIKELIHOOD_STD" : 0.19,
-    "OPTIMIZER" : "Adam",
-    "LR" : 0.0005,
-    "BATCH_SIZE" : 64,
-    "N_EPOCHS" : 200,
-    "EARLY_STOPPING" : True,
-    "DELTA": 0.05,
-    "PATIENCE" : 20,
-    "STRIDE" : 30,
-    "N_MC_SAMPLES" : 1,
-    "WEIGHTING" : "standard",           # ~~~ lossely speaking, this determines how the minibatch estimator is normalized
-    "DEFAULT_INITIALIZATION" : "new",   # ~~~ whether or not to take the prior as the initialization of the posterior
-    #
-    # ~~~ For visualization (only applicable on 1d data)
-    "MAKE_GIF" : True,
-    "TITLE" : "title of my gif",            # ~~~ if MAKE_GIF is True, this will be the file name of the created .gif
-    "HOW_OFTEN" : 10,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
-    "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ for how many frames should the state of initialization be rendered
-    "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ for how many frames should the state after training be rendered
-    "HOW_MANY_INDIVIDUAL_PREDICTIONS" : 6,  # ~~~ how many posterior predictive samples to plot
-    "VISUALIZE_DISTRIBUTION_USING_QUANTILES" : True, # ~~~ if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
-    "N_POSTERIOR_SAMPLES" : 100,            # ~~~ for plotting, posterior distributions are approximated as empirical dist.'s of this many samples
-    #
-    # ~~~ For metrics and visualization
-    "EXTRA_STD" : True,
-    "N_POSTERIOR_SAMPLES_EVALUATION" : 1000,# ~~~ for computing our model evaluation metrics, posterior distributions are approximated as empirical dist.'s of this many samples
-    "SHOW_DIAGNOSTICS" : True,
-    "SHOW_PLOT" : True
-}
-
-#
 # ~~~ Use argparse to extract the file name `my_hyperparmeters.json` from `python train_bnn.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
-parser = argparse.ArgumentParser()
-try:
-    parser.add_argument( '--json', type=str, required=True )
-except:
-    print("")
-    print("    Hint: try `python train_bnn.py --json demo_bnn`")
-    print("")
-    raise
-parser.add_argument( '--model_save_dir', type=str )
-parser.add_argument( '--final_test', action=argparse.BooleanOptionalAction )
-parser.add_argument( '--overwrite_json', action=argparse.BooleanOptionalAction )
-args = parser.parse_args()
-model_save_dir = args.model_save_dir
-final_test = (args.final_test is not None)
-overwrite_json = (args.overwrite_json is not None)
-input_json_filename = args.json
-input_json_filename = input_json_filename if input_json_filename.endswith(".json") else input_json_filename+".json"
-
-#
-# ~~~ Load the .json file into a dictionary
+input_json_filename, model_save_dir, final_test, overwrite_json = parse(hint="try `python train_bnn.py --json demo_bnn`")
 hyperparameters = json_to_dict(input_json_filename)
 
 #

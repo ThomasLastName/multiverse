@@ -11,6 +11,7 @@ from torch.func import jacrev, functional_call
 
 import os
 import pytz
+import argparse
 from tqdm import tqdm
 from glob import glob
 from datetime import datetime
@@ -470,6 +471,25 @@ def get_key_or_default( dictionary, key, default ):
     except KeyError:
         my_warn(f'Hyper-parameter "{key}" not specified. Using default value of {default}.')
         return default
+
+#
+# ~~~ Use argparse to extract the file name `my_hyperparmeters.json` and such from `python train_<algorithm>.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
+def parse(hint=None):
+    parser = argparse.ArgumentParser()
+    try:
+        parser.add_argument( '--json', type=str, required=True )
+        parser.add_argument( '--model_save_dir', type=str )
+        parser.add_argument( '--final_test', action=argparse.BooleanOptionalAction )
+        parser.add_argument( '--overwrite_json', action=argparse.BooleanOptionalAction )
+        args = parser.parse_args()
+    except:
+        if hint is not None: print(f"\n\n    Hint: {hint}\n")
+        raise
+    input_json_filename = args.json if args.json.endswith(".json") else args.json+".json"
+    model_save_dir      = args.model_save_dir
+    final_test          = (args.final_test is not None)
+    overwrite_json      = (args.overwrite_json is not None)
+    return input_json_filename, model_save_dir, final_test, overwrite_json
 
 
 
