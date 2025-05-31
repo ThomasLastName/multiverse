@@ -15,7 +15,6 @@ from importlib import import_module
 from itertools import product
 from time import time
 import argparse
-import sys
 import os
 
 #
@@ -85,34 +84,24 @@ hyperparameter_template = {
 }
 
 #
-# ~~~ Define the variable `input_json_filename` (str, no default), along with `model_save_dir` (str, default None), and `final_test` and `overwrite_json` (both Bool, default False)
-if hasattr(sys,"ps1"):
-    #
-    # ~~~ If this is an interactive (not srcipted) session, i.e., we are directly typing/pasting in the commands (I do this for debugging), then use the demo json name
-    input_json_filename = "demo_ensemble.json"
-    model_save_dir = None
-    final_test = False
-    overwrite_json = False
-else:
-    #
-    # ~~~ Use argparse to extract the file name name "my_hyperparmeters.json" from `python train_stein.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
-    parser = argparse.ArgumentParser()
-    try:
-        parser.add_argument( '--json', type=str, required=True )
-    except:
-        print("")
-        print("    Hint: try `python train_stein.py --json demo_ensemble`")
-        print("")
-        raise
-    parser.add_argument( '--model_save_dir', type=str )
-    parser.add_argument( '--final_test', action=argparse.BooleanOptionalAction )
-    parser.add_argument( '--overwrite_json', action=argparse.BooleanOptionalAction )
-    args = parser.parse_args()
-    model_save_dir = args.model_save_dir
-    final_test = (args.final_test is not None)
-    overwrite_json = (args.overwrite_json is not None)
-    input_json_filename = args.json
-    input_json_filename = input_json_filename if input_json_filename.endswith(".json") else input_json_filename+".json"
+# ~~~ Use argparse to extract the file name name "my_hyperparmeters.json" from `python train_stein.py --json my_hyperparmeters.json` (https://stackoverflow.com/a/67731094)
+parser = argparse.ArgumentParser()
+try:
+    parser.add_argument( '--json', type=str, required=True )
+except:
+    print("")
+    print("    Hint: try `python train_stein.py --json demo_ensemble`")
+    print("")
+    raise
+parser.add_argument( '--model_save_dir', type=str )
+parser.add_argument( '--final_test', action=argparse.BooleanOptionalAction )
+parser.add_argument( '--overwrite_json', action=argparse.BooleanOptionalAction )
+args = parser.parse_args()
+model_save_dir = args.model_save_dir
+final_test = (args.final_test is not None)
+overwrite_json = (args.overwrite_json is not None)
+input_json_filename = args.json
+input_json_filename = input_json_filename if input_json_filename.endswith(".json") else input_json_filename+".json"
 
 #
 # ~~~ Load the .json file into a dictionary
