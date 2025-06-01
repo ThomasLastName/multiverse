@@ -15,6 +15,7 @@
 	"N_MC_SAMPLES": 1,
 	"DROPOUT" : null,
 	"MAKE_GIF": false,
+	"TITLE" : "title of my gif",
 	"HOW_OFTEN": 10,
 	"INITIAL_FRAME_REPETITIONS": 24,
 	"FINAL_FRAME_REPETITIONS": 48,
