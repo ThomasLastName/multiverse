@@ -49,8 +49,9 @@ class SteinEnsemble(nn.Module):
             #
             # ~~~ Stuff for parallelizing computation of the loss function
             self.all_prior_sigma = torch.tile( torch.cat([ torch.tile(std_per_param(p),p.shape).flatten() for p in self.models[0].parameters() ]), (self.n_models,1) )
-            self.failed_to_vectorize = False    # ~~~ flag if the generic attempt to vectorize the forward pass has failed
-            self.iterative_sum = False          # ~~~ if False, then use einsum for a sub-routine, which is faster but more memory intensive then using an iterative sum
+            self.vmap_failed = False    # ~~~ flag if the generic attempt to vectorize the forward pass has failed
+            self.bmm_failed = False     # ~~~ flag if the attempt to use bmm for a sub-routine has failed
+            self.iterative_sum = False  # ~~~ if False, then use einsum for a sub-routine, which is faster but more memory intensive then using an iterative sum
             #
             # ~~~ Weird stuff for parallelizing the forward pass: from https://pytorch.org/tutorials/intermediate/ensembling.html
             base_model = copy.deepcopy(self.models[0])
@@ -165,51 +166,77 @@ class SteinEnsemble(nn.Module):
         #
         # ~~~ Three versions of the forward pass are implemented
         assert method in ["vmap","bmm","naive"]
-        #
-        # ~~~ All versions of the forward pass are equivalent to this simple on
-        if method=="naive" or self.failed_to_vectorize:
-            return torch.stack([ model(X) for model in self.models ])
+        if (
+                not len(set( len(model) for model in self.models )) == 1
+        ) and (
+            not self.vmap_failed
+        ) and (
+            not self.bmm_failed
+        ):
+            self.vmap_failed = True
+            self.bmm_failed = True
+            my_warn("The models in the ensemble do not all have the same number of layers. The vectorized implementation will not work, as a result. Falling back to naive implementation.")
         #
         # ~~~ Do the forward pass using `vmap`, which is the fastest method, but not compatible with autograd (basically, you want to use this method for prediction): from https://pytorch.org/tutorials/intermediate/ensembling.html
         if method=="vmap":
+            if not self.vmap_failed:
+                #
+                # ~~~ Try vmap
+                try:
+                    #
+                    # ~~~ As far as I can tell, the params used by vmap need to be updated manually like this
+                    if self.parameters_have_been_updated:
+                        with torch.no_grad():
+                            self.params, self.buffers = func.stack_module_state(self.models)
+                        self.parameters_have_been_updated = False
+                    #
+                    # ~~~ Use vmap with the up-to-date parameters
+                    return vmap( self.fmodel, in_dims=(0,0,None) )( self.params, self.buffers, X )
+                except:
+                    #
+                    # ~~~ If the forward pass fails, then try again with `method=bmm`, and don't try `vmap` any more going forward
+                    self.vmap_failed = True
+                    my_warn("Forward method with `vmap` failed. Falling back to `bmm`.")
             #
-            # ~~~ As far as I can tell, the params used by vmap need to be updated manually like this
-            if self.parameters_have_been_updated:
-                with torch.no_grad():
-                    self.params, self.buffers = func.stack_module_state(self.models)
-                self.parameters_have_been_updated = False
-            #
-            # ~~~ Use vmap with the up-to-date parameters
-            return vmap( self.fmodel, in_dims=(0,0,None) )( self.params, self.buffers, X )
+            # ~~~ Fall back to bmm
+            method = "bmm"
         #
         # ~~~ Do the forward pass using batched matrix multiplication (`torch.bmm`), which is not quite as fast as `vmap`, but is compatible with autograd (basically, you want to use this method for training)
         if method=="bmm":
-            try:
-                architecture = self.models[0]
-                tiled_yet = False
+            if not self.bmm_failed:
                 #
-                # ~~~ Loop over the layers
-                for j,layer in enumerate(architecture):
+                # ~~~ Try bmm
+                try:
+                    architecture = self.models[0]
+                    tiled_yet = False
                     #
-                    # ~~~ Don't tile the input until *after* the application of a shaping layer like nn.Unflatten
-                    if (not tiled_yet) and (not isinstance(layer,(nn.Unflatten,nn.Flatten))):
-                        X = torch.tile( X, (self.n_models,1,1) )
-                        tiled_yet = True    # ~~~ assumes that there are not multiple nn.Unflatten/nn.Flatten layers
-                    #
-                    # ~~~ Do `X=layer(X)` in parallel for all the models at once
-                    if isinstance(layer, nn.Linear):
+                    # ~~~ Loop over the layers
+                    for j,layer in enumerate(architecture):
                         #
-                        # ~~~ Do `X = X@layer.weight.T + layer.bias` in parallel for all the models at once
-                        X = torch.bmm( X, torch.stack([ model[j].weight.T for model in self.models ]) ) + torch.stack([ torch.tile( model[j].bias, (X.shape[1],1) ) for model in self.models ])
-                    else:
-                        #
-                        # ~~~ Assumes that every non-linear layer accepts inputs of more or less arbitrary shape (e.g., nn.ReLU)
-                        X = layer(X)
-            except:
-                self.failed_to_vectorize = True
-                my_warn("Failed to vectorize the forward pass. Falling back to the non-vectorized version.")
-                return torch.stack([ model(X) for model in self.models ])
-            return X
+                        # ~~~ Do `X=layer(X)` in parallel for all the models at once
+                        if isinstance(layer, nn.Linear):
+                            if not tiled_yet:
+                                X = torch.tile( X, (self.n_models,1,1) )
+                                tiled_yet = True    # ~~~ assumes that there are not multiple nn.Unflatten/nn.Flatten layers
+                            #
+                            # ~~~ Do `X = X@layer.weight.T + layer.bias` in parallel for all the models at once
+                            X = torch.bmm( X, torch.stack([ model[j].weight.T for model in self.models ]) ) + torch.stack([ torch.tile( model[j].bias, (X.shape[1],1) ) for model in self.models ])
+                        else:
+                            #
+                            # ~~~ Assumes that every non-linear layer accepts inputs of more or less arbitrary shape (e.g., nn.ReLU)
+                            X = torch.stack([ model[j](X[i] if tiled_yet else X) for i,model in enumerate(self.models) ])
+                            tiled_yet = True
+                    return X
+                except:
+                    self.bmm_failed = True
+                    my_warn("Failed to vectorize the forward pass. Falling back to the non-vectorized implementation.")
+            #
+            # ~~~ Fall back to naive
+            method = "naive"
+        #
+        # ~~~ All versions of the forward pass are equivalent to this simple one
+        if method=="naive":
+            return torch.stack([ model(X) for model in self.models ])
 
 #
 # ~~~ Given an architecture, initialize n_copies untrained copies with different weights

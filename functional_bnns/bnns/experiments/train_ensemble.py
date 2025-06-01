@@ -22,7 +22,7 @@ from bnns.Ensemble import SequentialSteinEnsemble as Ensemble
 
 #
 # ~~~ Package-specific utils
-from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, set_Dataset_attributes, generate_json_filename, convert_to_list_and_check_items, non_negative_list, EarlyStopper, parse
+from bnns.utils import plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, add_dropout_to_sequential_relu_network, set_Dataset_attributes, generate_json_filename, convert_to_list_and_check_items, non_negative_list, EarlyStopper, parse
 from bnns.metrics import *
 
 #
@@ -98,6 +98,12 @@ ensemble = Ensemble(
         bw = BW
     )
 
+if DROPOUT is not None:
+    assert len(DROPOUT)==N_MODELS, "If DROPOUT is a list, it must have length N_MODELS"
+    DROPOUT = convert_to_list_and_check_items( DROPOUT, classes=(float,int), other_requirement=lambda p: 0<=p<=1 )
+    for j in range(N_MODELS):
+        ensemble.models[j] = add_dropout_to_sequential_relu_network( ensemble.models[j], p=DROPOUT[j] )
+
 
 
 ### ~~~
@@ -105,10 +111,21 @@ ensemble = Ensemble(
 ### ~~~
 
 #
-# ~~~ The dataloader
+# ~~~ The dataloader and optimizer
 dataloader = torch.utils.data.DataLoader( D_train, batch_size=BATCH_SIZE )
 testloader = torch.utils.data.DataLoader( (D_test if final_test else D_val), batch_size=BATCH_SIZE )
-optimizer = Optimizer( ensemble.parameters(), lr=LR )
+
+if isinstance(LR,list):
+    assert len(LR)==N_MODELS, "If LR is a list, it must have length N_MODELS"
+    LR = non_negative_list(LR)
+    param_groups = [
+            { "params":model.parameters(), "lr":lr }
+            for model, lr in zip(ensemble.models,LR)
+        ]
+    optimizer = torch.optim.Adam(param_groups)
+else:
+    optimizer = Optimizer( ensemble.parameters(), lr=LR )
+
 n_batches = len(dataloader)
 n_test_batches = len(testloader)
 n_params = sum( p.numel() for p in ensemble.parameters() ) / N_MODELS
@@ -536,7 +553,8 @@ if data_is_univariate:
 def get_variable_name(obj,scope):
     return [name for name, value in scope.items() if value is obj]
 
-def plot( lst, w=30, title=None ):
+def plot( lst, w=None, title=None ):
+    if w is None: w = 5 if len(lst)>20 else 2
     assert len(lst)==len(iter_count)
     variable_name = get_variable_name( lst, globals() )[0]
     plt.plot( moving_average(iter_count,w), moving_average(lst,w) )
@@ -548,7 +566,7 @@ def plot( lst, w=30, title=None ):
     plt.show()
 
 if SHOW_DIAGNOSTICS:
-    plot( log_prior_curve, title="Prior Probabiliy as Training Progresses" )
+    if BAYESIAN: plot( log_prior_curve, title="Prior Probabiliy as Training Progresses" )
     plot( train_loss_curve, title="Training Loss as Training Progresses" )
     plot( val_loss_curve, title="Validation Loss as Training Progresses" )
 
