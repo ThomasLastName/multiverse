@@ -7,7 +7,7 @@ from torch import nn
 from bnns.utils import flatten_parameters, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity, get_key_or_default
 from bnns.NoPriorBNNs import IndepLocScaleBNN
 
-from quality_of_life.my_base_utils  import my_warn, support_for_progress_bars
+from quality_of_life.my_base_utils  import support_for_progress_bars
 from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
 
@@ -21,28 +21,18 @@ class MixturePrior2015BNN(IndepLocScaleBNN):
                 self,
                 *args,
                 prior_generator = None, # ~~~ the only new kwarg that this sub-class introduces
+                pi  = 0.5,
+                sigma1 = 1,
+                sigma2 = 0.002,
                 **kwargs
             ):
         super().__init__( *args, **kwargs )
-        #
-        # ~~~ Set default values for hyper-parameters of the prior found here: https://github.com/danielkelshaw/WeightUncertainty/blob/master/torchwu/bayes_linear.py
-        self.default_pi      = torch.tensor(0.5) # ~~~ WARNING: this is not the mathematical constant pi\approx3.14. I don't appreciate Blundell et al.'s use of "\pi" to refer to a value between 0 and 1...
-        self.default_sigma1  = torch.tensor(1.)
-        self.default_sigma2  = torch.tensor(0.002)
-        self.set_prior_hyperparameters( pi=self.default_pi, sigma1=self.default_sigma1, sigma2=self.default_sigma2 )
+        self.set_prior_hyperparameters( pi=pi, sigma1=sigma1, sigma2=sigma2 )
         self.prior_generator = prior_generator
     #
     # ~~~ Allow the hyper-parameters of the prior distribution to be set at runtime
-    def set_prior_hyperparameters( self, **kwargs ):
-        #
-        # ~~~ If any of the 3 hyper-parameters pi, sigma1, or sigma2 are unspecified, then use the class level defaults
-        pi     = get_key_or_default( kwargs, "pi",     self.default_pi     )
-        sigma1 = get_key_or_default( kwargs, "sigma1", self.default_sigma1 )
-        sigma2 = get_key_or_default( kwargs, "sigma2", self.default_sigma2 )
-        #
-        # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
-        if not 0<pi<1 and sigma1>0 and sigma2>0:
-            raise ValueError("The hyper-parameters of the mixture prior must be positive, and pi must be <1, as well, for specifying the a non-degenerate Gaussian mixture (equation (7) in https://arxiv.org/abs/1505.05424).")
+    def set_prior_hyperparameters( self, pi, sigma1, sigma2 ):
+        if not 0<pi<1 and sigma1>0 and sigma2>0: raise ValueError("For the Gaussian mixture (equation (7) in https://arxiv.org/abs/1505.05424), we expect sigma1,sigma2,pi>0 and pi<1, but found pi={pi}, sigma1={sigma1}, and sigma2={sigma2} ).")
         self.pi     = nn.Parameter( pi     if isinstance(pi,    torch.Tensor) else torch.tensor(pi)    , requires_grad=False )
         self.sigma1 = nn.Parameter( sigma1 if isinstance(sigma1,torch.Tensor) else torch.tensor(sigma1), requires_grad=False )
         self.sigma2 = nn.Parameter( sigma2 if isinstance(sigma2,torch.Tensor) else torch.tensor(sigma2), requires_grad=False )
@@ -195,6 +185,11 @@ class IndepLocScalePriorBNN(IndepLocScaleBNN):
                 prior_standard_log_density = None,  # ~~~ should be a callable that accepts generic torch.tensors as input, but ideally also works on numpy arrays (otherwise `check_moments` will fail), e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
                 prior_standard_sampler = None,      # ~~~ should be a callable that returns a tensor of random samples from the distribution with mean 0 and variance 1, e.g., `torch.randn` for Gaussian
                 #
+                # ~~~ Specify the spread of the location-scale prior
+                prior_type = "torch.nn.init",   # ~~~ also accepted are "Xavier" and "IID"
+                scale = 1.,
+                gain_multiplier = 1.,
+                #
                 # ~~~ The other kwargs used by parent classes
                 **kwargs
             ):
@@ -225,27 +220,14 @@ class IndepLocScalePriorBNN(IndepLocScaleBNN):
             check_moments = False
         self.prior_log_density      = LocationScaleLogDensity( prior_standard_log_density, check_moments=check_moments )
         self.prior_standard_sampler = prior_standard_sampler
-        #
-        # ~~~ Set the prior standard deviations
-        self.default_prior_type = "torch.nn.init"   # ~~~ also supported are "Xavier" and "IID"
-        self.default_scale = 1.
-        self.default_gain_multiplier = 1.
-        self.set_prior_hyperparameters( prior_type=self.default_prior_type, scale=self.default_scale, gain_multiplier=self.default_gain_multiplier )
+        self.set_prior_hyperparameters( prior_type=prior_type, scale=scale, gain_multiplier=gain_multiplier )
     #
     # ~~~ Allow these to be set at runtime
-    def set_prior_hyperparameters( self, **kwargs ):
-        #
-        # ~~~ If any of the hyper-parameters are unspecified, then use the class level defaults
-        prior_type      = get_key_or_default( kwargs, "prior_type", self.default_prior_type )
-        scale           = get_key_or_default( kwargs, "scale",      self.default_scale      )
-        gain_multiplier = get_key_or_default( kwargs, "gain_multiplier", self.default_gain_multiplier )
+    def set_prior_hyperparameters( self, prior_type, scale, gain_multiplier ):
         #
         # ~~~ Check one or two features and then set the desired hyper-parameters as attributes of the class instance
-        if not scale>0:
-            raise ValueError(f'Variable `scale` should be a positive float.')
-        if not prior_type in ( "torch.nn.init", "Xavier", "IID" ):
-            raise ValueError('Variable `prior_type` should be one of "torch.nn.init", "Xavier", or "IID".')
-        scale = scale if isinstance(scale,torch.Tensor) else torch.tensor(scale)
+        if not scale>0: raise ValueError(f'Variable `scale` should be a positive float, not {scale}.')
+        if not prior_type in ( "torch.nn.init", "Xavier", "IID" ): raise ValueError(f'Variable `prior_type` should be one of "torch.nn.init", "Xavier", or "IID", not {prior_type}.')
         #
         # ~~~ Implement prior_type=="torch.nn.init"
         if prior_type=="torch.nn.init": # ~~~ use the stanard deviation of the distribution of pytorch's default initialization

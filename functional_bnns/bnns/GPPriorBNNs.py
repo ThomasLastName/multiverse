@@ -16,24 +16,17 @@ class GPPriorBNN(IndepLocScaleBNN):
                 self,
                 *args,
                 prior_generator = None, # ~~~ the only new kwarg that this sub-class introduces
+                bw = None,
+                scale = 1,
+                eta = 0.001,
                 **kwargs
         ):
         super().__init__( *args, **kwargs )
-        #
-        # ~~~ Set default values for hyper-parameters of the prior
-        self.default_bw = None      # ~~~ the median distance between training data is used if `None`
-        self.default_scale = 1      # ~~~ a list of all 1.'s is used if `None`
-        self.default_eta = 0.001    # ~~~ add eta*I to the covariance matrices in the GP for numerical stability
-        self.set_prior_hyperparameters( bw=self.default_bw, scale=self.default_scale, eta=self.default_eta )
+        self.set_prior_hyperparameters( bw=bw, scale=scale, eta=eta )
         self.prior_generator = prior_generator
     #
     # ~~~ Allow the hyper-parameters of the prior distribution to be set at runtime
-    def set_prior_hyperparameters( self, **kwargs ):
-        #
-        # ~~~ If any of the 3 hyper-parameters bw, scale, or eta are unspecified, then use the class level defaults
-        bw    = get_key_or_default( kwargs, "bw",    self.default_bw    )
-        scale = get_key_or_default( kwargs, "scale", self.default_scale )
-        eta   = get_key_or_default( kwargs, "eta",   self.default_eta   )
+    def set_prior_hyperparameters( self, bw, scale, eta ):
         #
         # ~~~ Define a mean zero RBF kernel GP with independent output channels all sharing the same value bw, scale, and eta
         device, dtype = self.infer_device_and_dtype()

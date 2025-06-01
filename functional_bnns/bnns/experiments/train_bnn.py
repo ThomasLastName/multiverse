@@ -79,31 +79,25 @@ except: MODEL = getattr( import_module(hpars["MODEL"]), hpars["MODEL"] )    # ~~
 #
 # ~~~ Specify the scheme by which the measurment set is to be sampled
 try:
-    sampler = getattr( data, hpars["MEASUREMENT_SET_SAMPLER"] )
+    sampling_function = getattr( data, hpars["MEASUREMENT_SET_SAMPLER"] )
     class MODEL_WITH_MEAS_SET_SAMPLER(MODEL):
         def __init__(self,*args,**kwargs):
             super().__init__(*args,**kwargs)
         def resample_measurement_set( self, n=hpars["N_MEAS"] ):
-            return sampler(self,n)
-    BNN = MODEL_WITH_MEAS_SET_SAMPLER(
-            *architecture,
-            likelihood_std = torch.tensor(hpars["LIKELIHOOD_STD"]),
-            auto_projection = ( hpars["PROJECTION_METHOD"].upper() == "HARD" ),
-            posterior_distribution = VARIATIONAL_FAMILY
-        )
+            return sampling_function(self,n)
 except:
     if hpars["MEASUREMENT_SET_SAMPLER"] is not None:
-        my_warn("Unable to load/define the `resample_measurement_set` method.")
-    BNN = MODEL(
-            *architecture,
-            likelihood_std = torch.tensor(hpars["LIKELIHOOD_STD"]),
-            auto_projection = ( hpars["PROJECTION_METHOD"].upper() == "HARD" ),
-            posterior_distribution = VARIATIONAL_FAMILY,
-            **hpars["SSGE_HYPERPARAMETERS"]
-        )
+        my_warn("Unable to load/define the `resample_measurement_set` method. Falling back to default implementation")
+    MODEL_WITH_MEAS_SET_SAMPLER = MODEL
 
-BNN = BNN.to( device=hpars["DEVICE"], dtype=DTYPE )
-BNN.set_prior_hyperparameters( **hpars["PRIOR_HYPERPARAMETERS"] )
+BNN = MODEL_WITH_MEAS_SET_SAMPLER(
+        *architecture,
+        likelihood_std = torch.tensor(hpars["LIKELIHOOD_STD"]),
+        auto_projection = ( hpars["PROJECTION_METHOD"].upper() == "HARD" ),
+        posterior_distribution = VARIATIONAL_FAMILY,
+        **hpars["SSGE_HYPERPARAMETERS"],
+        **hpars["PRIOR_HYPERPARAMETERS"]
+    ).to( device=hpars["DEVICE"], dtype=DTYPE )
 BNN.post_GP_ETA = hpars["POST_GP_ETA"]                       # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
 
 if hpars["DEFAULT_INITIALIZATION"] is not None:
