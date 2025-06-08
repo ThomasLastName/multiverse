@@ -384,6 +384,8 @@ while keep_training and (target_epochs>0):
         def predict(loader,n):
             with torch.no_grad():
                 data_is_unlabeled = isinstance( next(iter(loader)), torch.Tensor )
+                #
+                # ~~~ Although it'd be more efficient, we DO NOT use the `n` kwarg here, as we want to use the same "funtional" sample across all batches, which `torch.concatenate([ BNN(batch,n)` for batch in loader ])` would *not*, as that would resample the weights each batch
                 predictions = []
                 for _ in range(n):
                     BNN.resample_weights()
@@ -392,8 +394,7 @@ while keep_training and (target_epochs>0):
                             for batch in loader
                         ]))
                 predictions = torch.stack(predictions)
-                if hpars["EXTRA_STD"]:
-                    predictions += hpars["LIKELIHOOD_STD"]*torch.randn_like(predictions)
+                if hpars["EXTRA_STD"]: predictions += hpars["LIKELIHOOD_STD"]*torch.randn_like(predictions)
                 return predictions
         #
         # ~~~ Compute the posterior predictive distribution on the testing dataset(s)

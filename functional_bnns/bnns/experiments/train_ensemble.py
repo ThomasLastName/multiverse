@@ -377,8 +377,7 @@ while keep_training:
                                     ensemble( batch if data_is_unlabeled else batch[0] )
                                     for batch in loader
                                 ], dim=1)
-                if hpars["EXTRA_STD"]:
-                    predictions += hpars["LIKELIHOOD_STD"]*torch.randn_like(predictions)
+                if hpars["EXTRA_STD"]: predictions += hpars["LIKELIHOOD_STD"]*torch.randn_like(predictions)
                 return predictions
         #
         # ~~~ Compute the posterior predictive distribution on the testing dataset(s)
