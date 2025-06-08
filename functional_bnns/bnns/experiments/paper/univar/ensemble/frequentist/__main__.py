@@ -1,11 +1,70 @@
 
-
 import os
-from glob import glob
 import random
-from quality_of_life.my_base_utils import dict_to_json, json_to_dict
-from bnns.experiments.paper.univar.ensemble import folder_name as parent_folder
-from bnns.experiments.paper.univar.ensemble.frequentist import folder_name
+import torch
+from quality_of_life.my_base_utils import dict_to_json, my_warn
+from bnns.experiments.paper.univar.ensemble.frequentist import folder_name, DATA, ARCHITECTURE, LR, N_TRIALS_PER_CONFIG
+
+
+
+### ~~~
+## ~~~ Create a folder and populate it with a whole bunch of JSON files
+### ~~~
+
+if torch.cuda.is_available():
+	props = torch.cuda.get_device_properties("cuda")
+	GPU_RAM = props.total_memory / (1024 ** 3)  # Convert bytes to gigabytes
+	print("")
+	print(f'    Experiments will be run on device "cuda" which has {GPU_RAM:.2f} GB of RAM')
+	if GPU_RAM < 7.5:
+		my_warn("These experiments have been run on a laptop with an 8GB NVIDIA 4070. They have not been tested on a GPU with less than 8GB of ram; it is possible that a cuda 'out of memory' error could arise")
+
+#
+# ~~~ Define all hyperparmeters *including* even the ones not to be tuned
+EXPLORE_DURING_TUNING = "placeholder value"
+IT_DEPENDS = "placeholder value"
+hyperparameter_template = {
+    #
+    # ~~~ Misc.
+    "DEVICE" : "cuda" if torch.cuda.is_available() else "cpu",
+    "DTYPE" : "float",
+    "SEED" : 2025,
+    #
+    # ~~~ Which problem
+    "DATA" : EXPLORE_DURING_TUNING,
+    "ARCHITECTURE" : EXPLORE_DURING_TUNING,
+    #
+    # ~~~ For training
+	"DROPOUT" : None,
+    "STEIN" : False,
+	"BAYESIAN" : False,
+    "LIKELIHOOD_STD" : 0,
+    "BW" : None,
+    "N_MODELS" : N_TRIALS_PER_CONFIG*len(LR),
+    "OPTIMIZER" : "Adam",
+    "LR" : N_TRIALS_PER_CONFIG*LR,
+    "BATCH_SIZE" : 64,
+    "N_EPOCHS" : [10000,20000,30000],
+    "EARLY_STOPPING" : True,
+    "DELTA": [ 0.05, 0.15 ],
+    "PATIENCE" : [ 25, 75 ],
+    "STRIDE" : 15,
+    "WEIGHTING" : "N/A",
+    #
+    # ~~~ For visualization (only applicable on 1d data)
+    "MAKE_GIF" : False,
+    "TITLE" : "title of my gif",            # ~~~ if MAKE_GIF is True, this will be the file name of the created .gif
+    "HOW_OFTEN" : 50,                       # ~~~ how many snap shots in total should be taken throughout training (each snap-shot being a frame in the .gif)
+    "INITIAL_FRAME_REPETITIONS" : 24,       # ~~~ for how many frames should the state of initialization be rendered
+    "FINAL_FRAME_REPETITIONS" : 48,         # ~~~ for how many frames should the state after training be rendered
+    "HOW_MANY_INDIVIDUAL_PREDICTIONS" : 6,  # ~~~ how many posterior predictive samples to plot
+    "VISUALIZE_DISTRIBUTION_USING_QUANTILES" : True, # ~~~ if False, use mean +/- two standard deviatiations; if True, use empirical median and 95% quantile
+    #
+    # ~~~ For metrics and visualization
+    "EXTRA_STD" : False,
+    "SHOW_DIAGNOSTICS" : False,
+    "SHOW_PLOT" : False
+}
 
 #
 # ~~~ Create and populate a folder for the hyperparameter search
@@ -13,26 +72,19 @@ os.mkdir(folder_name)
 os.mkdir(os.path.join( folder_name, "experimental_models" ))
 
 #
-# ~~~
-list_of_json_files = glob(os.path.join(parent_folder,'*.json'))
-if len(list_of_json_files)==0: raise OSError(f"Unable to Locate any .json files in directory {parent_folder}. This is likely because `__main__.py` was not run in that folder.")
-
-#
 # ~~~ Loop over the hyperparameter grid, saving each one to a .json file called `RUN_THIS_<count>.json`
 count = 1
 random.seed(2025)
-for hyperparameter_template in list_of_json_files:
-    hyperparameter_template = json_to_dict(hyperparameter_template)
-    hyperparameter_template["BAYESIAN"] = False
-    hyperparameter_template["STEIN"] = False
-    hyperparameter_template["LIKELIHOOD_STD"] = 0
-    hyperparameter_template["EXTRA_STD"] = False
-    #
-    # ~~~ Save the hyperparameters to a .json file
-    tag = f"RUN_THIS_{count}.json"
-    json_filename = os.path.join(folder_name,tag)
-    count += 1
-    dict_to_json( hyperparameter_template, json_filename, verbose=False )
+for architecture in ARCHITECTURE:
+	for data in DATA:
+		#
+		# ~~~ Save the hyperparameters to a .json file
+		hyperparameter_template["DATA"] = data
+		hyperparameter_template["ARCHITECTURE"] = architecture
+		tag = f"RUN_THIS_{count}.json"
+		json_filename = os.path.join(folder_name,tag)
+		count += 1
+		dict_to_json( hyperparameter_template, json_filename, verbose=False )
 
 print("")
 print(f"Successfully created and populted the folder {folder_name} with {count-1} .json files. To run an hour of hyperparameter search, navigate to the directory of `tuning_loop.py` and say:")
