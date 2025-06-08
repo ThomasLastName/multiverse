@@ -74,7 +74,7 @@ class RPF_kernel_GP:
         return torch.stack(list_of_kernel_matrices)
     #
     # ~~~ Compute the means and covariances of the prior GP at x; also, reshape, and apply linear algebra routines, as desired
-    def prior_mu_and_Sigma( self, x, add_stabilizing_noise=False, flatten=False, cholesky=False, gpytorch=False ):
+    def prior_mu_and_Sigma( self, x, add_stabilizing_noise=True, flatten=False, cholesky=False, gpytorch=False ):
         #
         # ~~~ Compute and process the means
         stacked_means = self.means(x)
@@ -155,13 +155,13 @@ class RPF_kernel_GP:
         return μ_POST_test, Σ_POST_test
     #
     # ~~~ Return n samples from the posterior distribution at x
-    def __call__( self, x, n=1, gpytorch=True ):
+    def __call__( self, x, n=1, gpytorch=False ):
         if not self.already_fitted: raise RuntimeError("This GPR instance has not been fitted yet Please call self.fit(x_train,y_train) first.")
         μ, Σ = self.post_mu_and_Sigma( x, add_stabilizing_noise=True, flatten=False, cholesky=True, gpytorch=gpytorch )
         return randmvns( μ, Σ, n=n )
     #
     # ~~~ Return n samples from the prior distribution at x
-    def prior_forward( self, x, n=1, gpytorch=True ):
+    def prior_forward( self, x, n=1, gpytorch=False ):
         if not gpytorch:
             #
             # ~~~ Directly ("eagerly") compute the Cholesky factorization of the prior covariance matrix using torch.linalg.cholesky, then return mu + Sigma^{1/2} @ Z_samples
@@ -209,10 +209,10 @@ class SingleOutputRBFKernelGP(gpytorch.models.ExactGP):
         self.mean_module = ZeroMean()
         self.covar_module = ScaleKernel(RBFKernel())
         self.covar_module.outputscale = scale
-        self.covar_module.base_kernel.lengthscale = bw or max( torch.cdist(x_train,x_train).median().item(), 1e-6 )
+        self.covar_module.base_kernel.lengthscale = bw or max( torch.cdist(vertical(x_train),vertical(x_train)).median().item(), 1e-6 )
         self.likelihood.noise = eta
     def forward(self,x):
-        return MultivariateNormal( self.mean_module(x), self.covar_module(x) )
+        return MultivariateNormal( self.mean_module(vertical(x)), self.covar_module(vertical(x)) )
     def print_hyperpars(self):
         print("")
         print(f"bw = {self.covar_module.base_kernel.lengthscale.item()}")
@@ -254,10 +254,10 @@ class GPY:
     #
     # ~~~ Return n samples from the posterior distribution at x
     def prior_forward( self, x, n=1 ):
-        with torch.no_grad():
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
             prior_samples = []
             for gp in self.models:
-                prior_dist = MultivariateNormal( gp.mean_module(x), gp.covar_module(x) )
+                prior_dist = MultivariateNormal( gp.mean_module(vertical(x)), gp.covar_module(vertical(x)) )
                 prior_samples.append( prior_dist.rsample(torch.Size([n])) )
             return torch.stack( prior_samples, dim=-1 ) # ~~~ has shape ( n, len(x), features )
     #
@@ -265,10 +265,11 @@ class GPY:
     def prior_mu_and_Sigma( self, x, add_stabilizing_noise=False, flatten=False, cholesky=False ):
         with torch.no_grad():
             μ = torch.zeros( x.shape[0], self.out_features, device=x.device, dtype=x.dtype )
+            if flatten: μ = μ.flatten()
             covariance_matrices = []
             for gp in self.models:
-                Σ_lazy = gp.covar_module(x)
-                if add_stabilizing_noise: Σ_lazy = gp.likelihood(MultivariateNormal( gp.mean_module(x), Σ_lazy )).lazy_covariance_matrix
+                Σ_lazy = gp.covar_module(vertical(x))
+                if add_stabilizing_noise: Σ_lazy = gp.likelihood(MultivariateNormal( gp.mean_module(vertical(x)), Σ_lazy )).lazy_covariance_matrix
                 if cholesky: Σ_lazy = Σ_lazy.cholesky()
                 covariance_matrices.append(Σ_lazy.to_dense())
             Σ = torch.block_diag(*covariance_matrices) if flatten else (torch.stack(covariance_matrices) if isinstance(covariance_matrices,list) else covariance_matrices)
@@ -315,7 +316,8 @@ class GPY:
 class GPYBackend(GPY):
     def __init__( self, x, out_features, bws=None, scales=None, etas=None ):
         super().__init__( out_features, bws, scales, etas )
-        dummy_x_train = x[0:2,:]
+        try: dummy_x_train = x[0:2,:]
+        except IndexError: dummy_x_train = x[0:2]
         dummy_y_train = torch.zeros( 2, out_features, device=x.device, dtype=x.dtype )
         self.fit( dummy_x_train, dummy_y_train )    # ~~~ supply dummy training data to get a useless but cheaply fit posterior distibution (we only want the prior)
         for model in self.models: model = model.to( device=x.device, dtype=x.dtype )
