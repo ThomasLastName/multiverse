@@ -2,9 +2,8 @@
 import torch
 
 from bnns.NoPriorBNNs import IndepLocScaleBNN
-from bnns.GPR import GPYBackend
-from bnns.utils import get_key_or_default
-
+from bnns.GPR import GPYBackend, RPF_kernel_GP
+from quality_of_life.my_base_utils import my_warn
 
 
 ### ~~~
@@ -19,20 +18,30 @@ class GPPriorBNN(IndepLocScaleBNN):
                 bw = None,
                 scale = 1,
                 eta = 0.001,
+                gpytorch = False,
                 **kwargs
         ):
         super().__init__( *args, **kwargs )
-        self.set_prior_hyperparameters( bw=bw, scale=scale, eta=eta )
+        self.set_prior_hyperparameters( bw=bw, scale=scale, eta=eta, gpytorch=gpytorch )
         self.prior_generator = prior_generator
     #
     # ~~~ Allow the hyper-parameters of the prior distribution to be set at runtime
-    def set_prior_hyperparameters( self, bw, scale, eta ):
+    def set_prior_hyperparameters( self, bw, scale, eta, gpytorch ):
         #
         # ~~~ Define a mean zero RBF kernel GP with independent output channels all sharing the same value bw, scale, and eta
         device, dtype = self.infer_device_and_dtype()
         fake_data_of_correct_shape = torch.randn( 10, self.in_features ).to( device=device, dtype=dtype )
-        self.GP = GPYBackend(
-                x = fake_data_of_correct_shape,
+        if gpytorch:
+            if eta < 1e-4: my_warn(f'The supplied value of eta={eta} is smaller than the lowerest value 1e-4 allowed by GPyTorch. You must, either, use a higher value of eta, or switch to the non-GPyTorch backend by specifying `"gpytorch" : false` as one of the prior hyper-parameters.')
+            self.GP = GPYBackend(
+                    x = fake_data_of_correct_shape,
+                    out_features = self.out_features,
+                    bws = self.out_features*[bw],
+                    scales = self.out_features*[scale],
+                    etas = self.out_features*[eta]
+                )
+        else:
+            self.GP = RPF_kernel_GP(
                 out_features = self.out_features,
                 bws = self.out_features*[bw],
                 scales = self.out_features*[scale],

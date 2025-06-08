@@ -319,9 +319,35 @@ class GPY:
 # ~~~ Prior GP Only
 class GPYBackend(GPY):
     def __init__( self, x, out_features, bws=None, scales=None, etas=None ):
-        super().__init__( out_features, bws, scales, etas )
-        try: dummy_x_train = x[0:2,:]
-        except IndexError: dummy_x_train = x[0:2]
-        dummy_y_train = torch.zeros( 2, out_features, device=x.device, dtype=x.dtype )
-        self.fit( dummy_x_train, dummy_y_train )    # ~~~ supply dummy training data to get a useless but cheaply fit posterior distibution (we only want the prior)
-        for model in self.models: model = model.to( device=x.device, dtype=x.dtype )
+        self.out_features = out_features
+        self.bws = bws
+        self.scales = scales
+        self.etas = etas
+        try: self.dummy_x_train = x[0:2,:]
+        except IndexError: self.dummy_x_train = x[0:2]
+        self.dummy_y_train = torch.zeros( 2, out_features, device=x.device, dtype=x.dtype )
+    #
+    # ~~~ Don't actually setting up GP's until supplied with any data that can be used to set the bandwidth auomatically (in case None)
+    def no_but_really__init__(self,x):
+        #
+        # ~~~ *Nowww* set the bandwidth to be the median
+        median_bw = torch.cdist(vertical(x),vertical(x)).median().item()
+        for j, bw in enumerate(self.bws):
+            if bw is None:
+                self.bws[j] = median_bw
+        #
+        # ~~~ *Thennn* fit the GP on the fake data
+        super().__init__( self.out_features, self.bws, self.scales, self.etas )
+        self.dummy_x_train = self.dummy_x_train.to( device=x.device, dtype=x.dtype )
+        self.dummy_y_train = self.dummy_y_train.to( device=x.device, dtype=x.dtype )
+        self.fit( self.dummy_x_train, self.dummy_y_train )  # ~~~ supply dummy training data to get a useless but cheaply fit posterior distibution (we only want the prior)
+    #
+    # ~~~ Intercept real data for the sake of automatically setting bandwidth
+    def prior_mu_and_Sigma( self, x, n=1, **other_kwargs ):
+        if not hasattr(self,"models"): self.no_but_really__init__(x)
+        return super().prior_mu_and_Sigma( x, n, **other_kwargs )
+    #
+    # ~~~ Intercept real data for the sake of automatically setting bandwidth
+    def prior_forward( self, x, n=1 ):
+        if not hasattr(self,"models"): self.no_but_really__init__(x)
+        return super().prior_forward(x,n)

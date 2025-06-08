@@ -2,18 +2,19 @@
     //
     // Misc
 	"DEVICE": "cpu",
-	"DTYPE": "double",  // torch.set_default_dtype(torch.DTYPE)
+	"DTYPE": "float",   // torch.set_default_dtype(torch.DTYPE)
 	"SEED": 2025,       // torch.manual_seed(SEED)
     //
     // The data, the prior distribution, and the variational family
 	"DATA": "univar_missing_middle",                // from DATA import D_train, D_val, D_test, interpolary_grid, extrapolary_grid, extrapolation_grid, <MEASUREMENT_SET_SAMPLER>
 	"ARCHITECTURE" : "univar_NN.univar_NN_100_100", // from ARCHITECTURE import NN as architecture
-	"MODEL": "GPPrior2023BNN",                 // BNN = bnns.MODEL( *architecture, likeilihood_std=LIKELIHOOD_STD, **PRIOR_HYPERPARAMETERS )
+	"MODEL": "GPPrior2023BNN",                      // BNN = bnns.MODEL( *architecture, likeilihood_std=LIKELIHOOD_STD, **PRIOR_HYPERPARAMETERS )
     "VARIATIONAL_FAMILY" : "Uniform",               // from torch.distributions import VARIATIONAL_FAMILY
     "PRIOR_HYPERPARAMETERS" : {                     // please, see documentation for the MODEL of choice to determine which fields are necessary, as each prior has its own hyper-parameters
-            "bw" : null,
-            "scale" : 1,
-            "eta" : 0.05
+            "bw" : 0.1,
+            "scale" : 3,
+            "eta" : 0.02,
+            "gpytorch" : true
         },
     //
     // Training hyper-parameters for neural networks in general
@@ -30,7 +31,7 @@
     // Training hyper-parameters introduced by BNNs in general
 	"FUNCTIONAL": true,                     // whether to use functional training (true) of BBB (false); note: for purely functional priors (e.g., if MODEL is "GPPrior2023BNN"), false isn't allowed
 	"PROJECTION_METHOD": "HARD",            // if "HARD", use projected gradient descent to enforece sigma>0; if "Blundell", set sigma=ln(1+exp(rho)); if "torchbnn" set sigma=exp(rho)
-	"LIKELIHOOD_STD": 0.05,                 // assume that the data labels in regression are corrupted by mean-zero Gaussian noise with this standard deviation
+	"LIKELIHOOD_STD": 0.2,                  // assume that the data labels in regression are corrupted by mean-zero Gaussian noise with this standard deviation
 	"N_MC_SAMPLES": 1,                      // number of random samples to use in the random sampling average estimates of the loss function (this is almost universally taken to be 1)
 	"WEIGHTING": "standard",                // choose a weighting scheme from among "Blundell", "Sun in principle", "Sun in practice", "naive", "standard"
 	"DEFAULT_INITIALIZATION" : null,        // if null, initialize variational standard deviations randomly; if a dictionary, initialize them with BNN.set_default_uncertaintyy(**DEFAULT_INITIALIZATION)
