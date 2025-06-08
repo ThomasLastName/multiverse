@@ -316,7 +316,7 @@ def load_filtered_json_files( directory, verbose=True ):
 
 #
 # ~~~ Infer the width of each model
-def infer_width_and_depth( dataframe, field="MODEL" ):
+def infer_width_and_depth( dataframe, field="ARCHITECTURE" ):
     #
     # ~~~ Infer the width of each model
     width_mapping = {}
@@ -351,29 +351,51 @@ def filter_by_attributes(dataframe,**kwargs):
     return filtered_results
 
 #
-# ~~~ Load a trained model, based on the string `architecture` that points to the file where the model is defined
-def load_trained_model( architecture:str, model:str, state_dict_path ):
+# ~~~ Load a trained BNN, based on the string `architecture` that points to the file where the model is defined
+def load_trained_bnn( architecture:str, model:str, state_dict_path ):
     #
     # ~~~ Load the untrained model
     import bnns
     architecture = import_module(f"bnns.models.{architecture}").NN  # ~~~ e.g., architecture=="my_model" points to a file `my_model.py` in the `models` folder
-    try:
-        model = getattr(bnns,model)(*architecture)
-        model.load_state_dict(torch.load(state_dict_path))
-        return model
-    except:
-        architecture.load_state_dict(torch.load(state_dict_path))
-        return architecture
+    model = getattr(bnns,model)(*architecture)
+    model.load_state_dict(torch.load(state_dict_path))
+    return model
+
+#
+# ~~~ Load a trained ensemble, based on the string `architecture` that points to the file where the model is defined
+def load_trained_ensemble( architecture:str, n_models:str, state_dict_path ):
+    #
+    # ~~~ Load the untrained model
+    import bnns
+    architecture = import_module(f"bnns.models.{architecture}").NN  # ~~~ e.g., architecture=="my_model" points to a file `my_model.py` in the `models` folder
+    ensemble = bnns.Ensemble.SequentialSteinEnsemble( architecture, n_models )
+    ensemble.load_state_dict(torch.load(state_dict_path))
+    return ensemble
+
+#
+# ~~~ Load a trained conventional neural network, based on the dataframe of results you get from hyperparameter search
+def load_trained_nn( architecture:str, state_dict_path ):
+    import bnns
+    architecture = import_module(f"bnns.models.{architecture}").NN  # ~~~ e.g., architecture=="my_model" points to a file `my_model.py` in the `models` folder
+    architecture.load_state_dict(torch.load(state_dict_path))
+    return architecture
 
 #
 # ~~~ Load a trained model, based on the dataframe of results you get from hyperparameter search
 def load_trained_model_from_dataframe( results_dataframe, i ):
     #
     # ~~~ Load the untrained model
-    model = results_dataframe.iloc[i].MODEL
     architecture = results_dataframe.iloc[i].ARCHITECTURE
     state_dict_path = results_dataframe.iloc[i].STATE_DICT_PATH
-    return load_trained_model( architecture, model, state_dict_path )
+    try:
+        model = results_dataframe.iloc[i].MODEL
+        return load_trained_bnn( architecture, model, state_dict_path )
+    except:
+        try:
+            n_models = results_dataframe.iloc[i].N_MODELS
+            return load_trained_ensemble( architecture, n_models, state_dict_path )
+        except:
+            return load_trained_nn( architecture, state_dict_path )
 
 #
 # ~~~ Generate a .json filename based on the current datetime
@@ -757,28 +779,39 @@ def plot_bnn_empirical_quantiles(
 
 #
 # ~~~ Load a trained model, based on the dataframe of results you get from hyperparameter search, and then plot it
-def plot_trained_model_from_dataframe( dataframe, i, n_samples=200, **kwargs ):
+def plot_trained_model_from_dataframe(
+            dataframe,
+            i,
+            n_samples = 50,
+            show = True,
+            extra_std = False,
+            title = None,
+            **other_kwargs
+        ):
     data = import_module(f"bnns.data.{dataframe.iloc[i].DATA}")
     grid        =  data.x_test.cpu()
     green_curve =  data.y_test.cpu().squeeze()
     x_train_cpu = data.x_train.cpu()
     y_train_cpu = data.y_train.cpu().squeeze()
-    plot_predictions = plot_bnn_empirical_quantiles if dataframe.iloc[i].VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
-    bnn = load_trained_model_from_dataframe(dataframe,i)
-    with torch.no_grad():
-        predictions = bnn(grid,n=n_samples).squeeze()
-        fig, ax = plt.subplots(figsize=(12,6))
-        fig, ax = plot_predictions(
-            fig = fig,
-            ax = ax,
-            grid = grid,
-            green_curve = green_curve,
-            x_train = x_train_cpu,
-            y_train = y_train_cpu,
-            predictions = predictions,
-            extra_std = False,
-            how_many_individual_predictions = dataframe.iloc[i].HOW_MANY_INDIVIDUAL_PREDICTIONS,
-            **kwargs    # ~~~ such as "title" and "extra_std"
-            )
-        plt.show()
-    return bnn
+    model = load_trained_model_from_dataframe(dataframe,i)
+    if show:
+        plot_predictions = plot_bnn_empirical_quantiles if dataframe.iloc[i].VISUALIZE_DISTRIBUTION_USING_QUANTILES else plot_bnn_mean_and_std
+        with torch.no_grad():
+            try: predictions = model(grid,n=n_samples).squeeze()
+            except TypeError: predictions = model(grid).squeeze()
+            fig, ax = plt.subplots(figsize=(12,6))
+            fig, ax = plot_predictions(
+                fig = fig,
+                ax = ax,
+                grid = grid,
+                green_curve = green_curve,
+                x_train = x_train_cpu,
+                y_train = y_train_cpu,
+                predictions = predictions,
+                how_many_individual_predictions = dataframe.iloc[i].HOW_MANY_INDIVIDUAL_PREDICTIONS,
+                extra_std = extra_std,
+                title = title or f"Trained Model i={i}/{len(dataframe)}",
+                **other_kwargs
+                )
+            plt.show()
+    return model, x_train_cpu, y_train_cpu, grid, green_curve
