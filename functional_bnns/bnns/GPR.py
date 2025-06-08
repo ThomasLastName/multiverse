@@ -286,7 +286,11 @@ class GPY:
                 if cholesky: Σ_lazy = Σ_lazy.cholesky()
                 means.append(μ_post)
                 covariance_matrices.append(Σ_post.to_dense())
-            return torch.stack(means).T, torch.block_diag(*covariance_matrices) if flatten else torch.stack(covariance_matrices)
+            means = torch.stack(means).T
+            return (
+                means.flatten() if flatten else means,
+                torch.block_diag(*covariance_matrices) if flatten else torch.stack(covariance_matrices)
+            )
     #
     # ~~~ Build a list of covariance matrices (one for each output) K_{i,j} = kernel(x_i,y_j)
     def build_kernel_matrices( self, x, y=None, add_stabilizing_noise=True, check_symmetric=True ):
