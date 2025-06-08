@@ -10,6 +10,7 @@ __version__ = dist.version
 from .NoPriorBNNs import *
 from .WeightPriorBNNs import *
 from .GPPriorBNNs import *
+from .Ensemble import *
 
 #
 # ~~~ Deprecation warnings
