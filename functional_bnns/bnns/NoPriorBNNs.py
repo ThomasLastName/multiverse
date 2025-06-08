@@ -5,12 +5,9 @@ import math
 import torch
 from torch import nn
 
-from bnns.utils import manual_Jacobian, flatten_parameters, std_per_param, std_per_layer, compute_Jacobian_of_flattened_model, get_batch_sizes
+from bnns.utils.math import manual_Jacobian, std_per_param, std_per_layer, compute_Jacobian_of_flattened_model, log_gaussian_pdf
+from bnns.utils.handling import flatten_parameters, my_warn, nonredundant_copy_of_module_list, get_batch_sizes
 from bnns.SSGE import SpectralSteinEstimator as SSGE
-from bnns.utils import log_gaussian_pdf
-
-from quality_of_life.my_base_utils import my_warn
-from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
 
 

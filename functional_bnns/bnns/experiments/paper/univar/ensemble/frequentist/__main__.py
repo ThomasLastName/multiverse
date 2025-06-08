@@ -2,7 +2,7 @@
 import os
 import random
 import torch
-from quality_of_life.my_base_utils import dict_to_json, my_warn
+from bnns.utils.handling import dict_to_json, my_warn
 from bnns.experiments.paper.univar.ensemble.frequentist import folder_name, DATA, ARCHITECTURE, LR, N_TRIALS_PER_CONFIG
 
 

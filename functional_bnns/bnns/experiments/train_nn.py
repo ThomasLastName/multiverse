@@ -17,16 +17,12 @@ from time import time
 import os
 
 #
-# ~~~ Package-specific utils
-from bnns.utils import plot_nn, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, generate_json_filename, set_Dataset_attributes, convert_to_list_and_check_items, non_negative_list, EarlyStopper, add_dropout_to_sequential_relu_network, parse
+# ~~~ Other parts of this package
+from bnns.utils.plotting import plot_nn, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles, GifMaker
+from bnns.utils.handling import support_for_progress_bars, dict_to_json, json_to_dict, print_dict, my_warn, process_for_saving, convert_Dataset_to_Tensors, generate_json_filename, set_Dataset_attributes, convert_to_list_and_check_items, non_negative_list, EarlyStopper, add_dropout_to_sequential_relu_network, parse
+from bnns.utils.math import moving_average
 from bnns.metrics import *
 
-#
-# ~~~ My Personal Helper Functions (https://github.com/ThomasLastName/quality_of_life)
-from quality_of_life.my_visualization_utils import GifMaker
-from quality_of_life.my_numpy_utils         import moving_average
-from quality_of_life.my_torch_utils         import convert_Dataset_to_Tensors
-from quality_of_life.my_base_utils          import support_for_progress_bars, dict_to_json, json_to_dict, print_dict, my_warn, process_for_saving
 
 
 
@@ -381,10 +377,7 @@ while keep_training:
                         os.path.split(output_json_filename.strip(".json"))[1] + ".pth"
                     )
                 hpars["STATE_DICT_PATH"] = state_dict_path
-                torch.save(
-                        best_pars_so_far,
-                        state_dict_path
-                    )
+                torch.save( best_pars_so_far, state_dict_path )
             dict_to_json(
                     hpars,
                     output_json_filename,

@@ -1,9 +1,10 @@
 
 import torch
 
+from bnns.utils.handling import my_warn
 from bnns.NoPriorBNNs import IndepLocScaleBNN
 from bnns.GPR import GPYBackend, RPF_kernel_GP
-from quality_of_life.my_base_utils import my_warn
+
 
 
 ### ~~~

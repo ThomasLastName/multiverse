@@ -1,7 +1,7 @@
 
 import torch
 torch.manual_seed(1234)
-from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
+from bnns.utils.handling import convert_Tensors_to_Dataset
 from bnns.data.univar_missing_middle import x_train, x_test, x_val, y_train, y_test, y_val, f
 
 #

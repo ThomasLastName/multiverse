@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 import os
-from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
+from bnns.utils.handling import convert_Tensors_to_Dataset
 from bnns.data.slosh_70_15_15 import coords_np, inputs_np, out_np, idx_train, idx_test, idx_val, extrapolary_grid, interpolary_grid, data_folder
 
 #

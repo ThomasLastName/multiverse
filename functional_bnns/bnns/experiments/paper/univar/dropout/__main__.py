@@ -2,7 +2,7 @@
 
 import os
 import torch
-from quality_of_life.my_base_utils import dict_to_json
+from bnns.utils.handling import dict_to_json
 from bnns.experiments.paper.univar.dropout import folder_name, DATA, ARCHITECTURE, LR, DROPOUT
 
 

@@ -21,7 +21,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 import torch
 from abc import abstractmethod
-from quality_of_life.my_base_utils import my_warn
+from bnns.utils.handling import my_warn
 
 #
 # ~~~ Convert a 1D tensor to a 2D column tensor, but leave every other tensor as is

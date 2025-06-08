@@ -1,7 +1,7 @@
 
 import torch
 torch.manual_seed(1234)
-from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
+from bnns.utils.handling import convert_Tensors_to_Dataset
 
 #
 # ~~~ Data settings

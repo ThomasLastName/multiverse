@@ -7,7 +7,8 @@ import torch
 from torch import nn
 from torch.nn.init import _calculate_fan_in_and_fan_out, calculate_gain     # ~~~ used to define the prior distribution on network weights
 from torch.func import jacrev, functional_call
-from quality_of_life.my_base_utils import my_warn
+
+from bnns.utils.handling import my_warn
 
 
 
@@ -202,3 +203,13 @@ def randmvns( mu, root_Sigma, n=1, **kwargs ):
     #
     # ~~~ Sample from the N(mu,Sigma) distribution by taking mu + Sigma^{1/2}z, where z is a sampled from the N(0,I) distribtion
     return mu + torch.bmm( root_Sigma, IID_standard_normal_samples ).permute(2,1,0) # ~~~ returns a shape consistent with the output of `forward` and the assumption bnns.metrics: ( n_samples, n_test, n_out_features ), i.e., ( n, x.shape[0], self.out_features )
+
+
+
+### ~~~
+## ~~~ Dependencies from https://github.com/ThomasLastName/quality-of-life/blob/main/quality_of_life/my_numpy_utils.py
+### ~~~
+
+#
+# ~~~ Compute the moving average of a list (this reduces the list's length)
+moving_average = lambda list, window_size: np.convolve( list, np.ones(window_size) / window_size, mode='valid' )

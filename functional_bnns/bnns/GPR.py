@@ -1,8 +1,9 @@
 
 import torch
-from quality_of_life.my_base_utils import my_warn
-from bnns.utils import randmvns
 from copy import copy
+
+from bnns.utils.math import randmvns
+from bnns.utils.handling import my_warn
 
 #
 # ~~~ Convert a 1D tensor to a 2D column tensor, but leave every other tensor as is

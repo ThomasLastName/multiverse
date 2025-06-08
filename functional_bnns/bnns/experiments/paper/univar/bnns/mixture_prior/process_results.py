@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from importlib import import_module
 from bnns.utils import infer_width_and_depth, plot_trained_model_from_dataframe, k_smallest_indices, k_largest_indices
-from quality_of_life.my_base_utils import json_to_dict, my_warn, print_dict
 
 from bnns.experiments.paper.univar.bnns.mixture_prior import folder_name
 

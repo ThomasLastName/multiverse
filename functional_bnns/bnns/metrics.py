@@ -1,9 +1,8 @@
 
 import torch
-from matplotlib import pyplot as plt
-from bnns.utils import iqr, cor, univar_poly_fit
-from quality_of_life.my_base_utils          import my_warn
-from quality_of_life.my_visualization_utils import points_with_curves
+from bnns.utils.math import iqr, cor, univar_poly_fit
+from bnns.utils.handling import my_warn
+from bnns.utils.plotting import points_with_curves
 
 
 

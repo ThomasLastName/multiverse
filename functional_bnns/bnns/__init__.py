@@ -1,6 +1,7 @@
 #
 # ~~~ See distribution
-from quality_of_life.my_base_utils import my_warn
+try: from bnns.utils.handling import my_warn
+except: from warnings import warn as my_warn
 from pkg_resources import get_distribution
 dist = get_distribution("bnns")
 

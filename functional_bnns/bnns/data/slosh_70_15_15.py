@@ -3,9 +3,8 @@ import os
 import torch
 import pandas as pd
 import numpy as np
-from quality_of_life.my_base_utils import my_warn
-from quality_of_life.my_torch_utils import convert_Tensors_to_Dataset
-from bnns.utils import process_grid_of_unit_cube
+from bnns.utils.handling import my_warn, convert_Tensors_to_Dataset
+from bnns.utils.math import process_grid_of_unit_cube
 from bnns import __path__
 
 #

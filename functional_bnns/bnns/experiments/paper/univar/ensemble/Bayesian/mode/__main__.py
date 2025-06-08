@@ -3,7 +3,7 @@
 import os
 from glob import glob
 import random
-from quality_of_life.my_base_utils import dict_to_json, json_to_dict
+from bnns.utils.handling import dict_to_json, json_to_dict
 from bnns.experiments.paper.univar.ensemble.Bayesian import folder_name as master_folder
 from bnns.experiments.paper.univar.ensemble.Bayesian.mode import folder_name
 

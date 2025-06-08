@@ -4,11 +4,8 @@ import torch
 from torch import nn, func, vmap
 import copy
 from bnns.SSGE import BaseScoreEstimator as SSGE_backend
-from bnns.utils import log_gaussian_pdf, std_per_param
-
-from quality_of_life.my_base_utils import my_warn
-from quality_of_life.my_torch_utils import get_flat_grads, set_flat_grads, nonredundant_copy_of_module_list
-
+from bnns.utils.math import log_gaussian_pdf, std_per_param
+from bnns.utils.handling import my_warn, get_flat_grads, set_flat_grads, nonredundant_copy_of_module_list
 
 kernel_matrix = SSGE_backend().gram_matrix
 kernel_stuff = SSGE_backend().grad_gram

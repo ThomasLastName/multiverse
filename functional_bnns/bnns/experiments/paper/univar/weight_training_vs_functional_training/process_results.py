@@ -5,8 +5,7 @@ import torch
 from matplotlib import pyplot as plt
 from importlib import import_module
 from bnns.experiments.paper.univar.weight_training_vs_functional_training import folder_name
-from bnns.utils import load_filtered_json_files, load_trained_model_from_dataframe, get_attributes_from_row_i, filter_by_attributes, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles
-from quality_of_life.my_base_utils import json_to_dict
+from bnns.utils import load_filtered_json_files, load_trained_model_from_dataframe, plot_bnn_mean_and_std, plot_bnn_empirical_quantiles
 
 
 

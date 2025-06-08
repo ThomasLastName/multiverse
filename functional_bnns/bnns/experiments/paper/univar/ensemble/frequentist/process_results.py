@@ -4,9 +4,7 @@ import torch
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from bnns.utils import infer_width_and_depth, plot_trained_model_from_dataframe
-from quality_of_life.my_base_utils import my_warn
-
+from bnns.utils import infer_width_and_depth, plot_trained_model_from_dataframe, my_warn
 from bnns.experiments.paper.univar.ensemble.frequentist import folder_name, DATA, ARCHITECTURE, LR
 
 

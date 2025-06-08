@@ -3,7 +3,7 @@
 import os
 import random
 import torch
-from quality_of_life.my_base_utils import dict_to_json, my_warn
+from bnns.utils.handling import dict_to_json, my_warn
 from bnns.experiments.paper.univar.weight_training_vs_functional_training import folder_name, ARCHITECTURE, VARIATIONAL_FAMILY, LR, MODEL, PI, SIGMA1, SIGMA2, PRIOR_TYPE, SCALE, LR, LIKELIHOOD_STD, FUNCTIONAL, PROJECTION_METHOD, DEFAULT_INITIALIZATION, MEASUREMENT_SET_SAMPLER, N_MEAS, PRIOR_J, POST_J, PRIOR_ETA, POST_ETA, PRIOR_M, POST_M
 
 

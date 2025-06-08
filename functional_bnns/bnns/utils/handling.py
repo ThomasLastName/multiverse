@@ -2,16 +2,18 @@
 import numpy as np
 import pandas as pd
 import torch
-
+from torch import nn
+import platform
+import sys
 import os
+import re
+import json
 import pytz
 import argparse
 from tqdm import tqdm
 from glob import glob
 from datetime import datetime
 from importlib import import_module
-from quality_of_life.ansi import bcolors
-from quality_of_life.my_base_utils import process_for_saving, my_warn, json_to_dict, support_for_progress_bars
 
 
 
@@ -90,7 +92,7 @@ def load_filtered_json_files( directory, verbose=True ):
     # ~~~ Load (as a list of dictionaries) all the .json files in a directory that don't start with "RUN_THIS"
     with support_for_progress_bars():
         json_files = glob(os.path.join(directory,'*.json'))
-        json_files = [ json for json in json_files if not os.path.split(json)[1].startswith("RUN_THIS") ]
+        json_files = [ json for json in json_files if not get_file_name(json).startswith("RUN_THIS") ]
         all_dicts  = [ json_to_dict(json) for json in ( tqdm(json_files,desc="Loading json files") if verbose else json_files ) ]
     #
     # ~~~ Remove from each dictionary any key/value pair where the value is a list, as pandas doesn't like those
@@ -239,13 +241,13 @@ def set_Dataset_attributes( dataset, device, dtype ):
 
 #
 # ~~~ Add dropout to a standard ReLU network
-def add_dropout_to_sequential_relu_network( add_dropout_to_sequential_relu_network, p=0.5 ):
+def add_dropout_to_sequential_relu_network( sequential_relu_network, p=0.5 ):
     layers = []
-    for layer in add_dropout_to_sequential_relu_network:
+    for layer in sequential_relu_network:
         layers.append(layer)
-        if isinstance(layer, torch.nn.ReLU):
-            layers.append(torch.nn.Dropout(p=p))
-    return torch.nn.Sequential(*layers)
+        if isinstance(layer, nn.ReLU):
+            layers.append(nn.Dropout(p=p))
+    return nn.Sequential(*layers)
 
 #
 # ~~~ Generate a list of batch sizes
@@ -301,3 +303,228 @@ def parse(hint=None):
     final_test          = (args.final_test is not None)
     overwrite_json      = (args.overwrite_json is not None)
     return input_json_filename, model_save_dir, final_test, overwrite_json
+
+
+
+### ~~~
+## ~~~ Dependencies from https://github.com/ThomasLastName/quality-of-life/blob/main/quality_of_life/my_base_utils.py
+### ~~~
+
+#
+# ~~~ Format a long list for printing
+def format_value(value):
+    if isinstance(value, list) and len(value) > 4:
+        #
+        # ~~~ Show only the first two and last two elements
+        return [ value[0], value[1], "...", value[-2], value[-1] ]
+    return value
+
+#
+# ~~~ Pretty print a dictionary; from https://www.geeksforgeeks.org/python-pretty-print-a-dictionary-with-dictionary-value/
+print_dict = lambda dict: print(json.dumps( {k: format_value(v) for k, v in dict.items()}, indent=4 ))
+
+#
+# ~~~ Save a dictionary as a .json; from https://stackoverflow.com/a/7100202/11595884
+def dict_to_json( dict, path_including_file_extension, override=False, verbose=True ):
+    #
+    # ~~~ Check that the path is available
+    not_empty = os.path.exists(path_including_file_extension)
+    #
+    # ~~~ If that path already exists and the user did not say "over-ride" it, then raise an error
+    if not_empty and not override:
+        raise ValueError("The specified path already exists. Operation halted. Specify `override=True` to override this halting.")
+    #
+    # ~~~ If the file path is either available, or the user gave permission to over-ride it, then proceed to write there
+    with open(path_including_file_extension,'w') as fp:
+        json.dump( dict, fp, indent=4 )
+    #
+    # ~~~ Print helpful messages
+    if verbose:
+        if override:
+            my_warn(f"The path {path_including_file_extension} was not empty. It has been overwritten.")
+        print(f"Created {path_including_file_extension} at {os.path.abspath(path_including_file_extension)}")
+
+#
+# ~~~ Load a .json as a dictionary (https://chatgpt.com/share/683b4261-cef8-8001-8ca5-d63a2cb637b2)
+def json_to_dict(path_including_file_extension):
+    with open(path_including_file_extension, "r") as fp:
+        #
+        # ~~~ Remove // comments from the end of the line (or whole line if it starts with // after leading spaces)
+        content = "".join(
+            re.sub(r"//.*", "", line)
+            for line in fp
+            if not line.strip().startswith("//")
+        )
+    return json.loads(content)
+
+
+def get_file_extension(file_path):
+    return os.path.splitext(file_path)[1]
+
+
+def get_file_name(file_path):
+    return os.path.basename(file_path)
+
+#
+# ~~~ Turn "name of file that already eists.txt" into "name of file that already exists (1).txt"
+def modify_path(file_path_or_name,force=False):
+    #
+    # ~~~ If the path doesn't exist, then no modification is needed; do nothing
+    if (not os.path.exists(file_path_or_name)) and (not force):
+        return file_path_or_name
+    #
+    # ~~~ Remove any the doodads surring the file name, thus leaving the only thing we wish to modify
+    original_extension = get_file_extension(file_path_or_name)
+    file_name_and_extnesion = get_file_name(file_path_or_name)
+    name_only = file_name_and_extnesion.replace(original_extension,"")
+    #
+    # ~~~ Check if the name ends with " (anything)"
+    start = name_only.rfind("(")
+    end = name_only.rfind(")")
+    correct_format = name_only.endswith(")") and (not start==-1) #and name_only[start-1]==" "   # ~~~ note: .rfind( "(" ) returns -1 if "(" is not found
+    #
+    # ~~~ If the file name is like "text (2)", turn that into "text (3)"
+    if correct_format:
+        if correct_format:
+            thing_inside_the_parentheses = name_only[start + 1:end]
+            try:
+                num = int(thing_inside_the_parentheses)
+                new_num = num + 1
+                modified_name = name_only[:start + 1] + str(new_num) + name_only[end:]
+            except ValueError:
+                #
+                # ~~~ If conversion to int fails, treat it as if the name didn't end with a valid " (n)"
+                correct_format = False
+    #
+    # ~~~ If the file name didn't end with " (n)" for some n, then just append " (1)" to the file name
+    if not correct_format:
+        modified_name = name_only + " (1)"
+    #
+    # ~~~ Reattach any doodads we removed
+    return file_path_or_name.replace( file_name_and_extnesion, modified_name+original_extension )
+
+#
+# ~~~ Turn "name of file that already eists.txt" into "name of file that already exists (1).txt", and also "name of file that already exists (1).txt" into "name of file that already exists (2).txt", etc.
+def process_for_saving(file_path_or_name):
+    while os.path.exists(file_path_or_name):
+        file_path_or_name = modify_path(file_path_or_name)
+    return file_path_or_name
+
+#
+# ~~~ Optionally, load functions that further manipulate the color of console output
+try:
+    from quality_of_life.my_base_utils import support_for_progress_bars, my_warn
+except: # ~~~ however, if those functions are not available, then let their definitions be trivial (for compatibility)
+    import warnings
+    my_warn = warnings.warn
+    from contextlib import contextmanager
+    @contextmanager
+    def support_for_progress_bars():
+        yield
+
+
+
+### ~~~
+## ~~~ Dependencies from https://github.com/ThomasLastName/quality-of-life/blob/main/quality_of_life/ansi.py
+### ~~~
+
+#
+#~~~ Set up colored printing in the console
+if platform.system()=="Windows":    # platform.system() returns the OS python is running o0n | see https://stackoverflow.com/q/1854/11595884
+    os.system("color")              # Makes ANSI codes work | see Szabolcs' comment on https://stackoverflow.com/a/15170325/11595884
+class bcolors:                      # https://stackoverflow.com/a/287944/11595884
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
+
+### ~~~
+## ~~~ Dependencies from https://github.com/ThomasLastName/quality-of-life/blob/main/quality_of_life/my_torch_utils.py
+### ~~~
+
+#
+# ~~~ Extract the raw tensors from a pytorch Dataset
+def convert_Dataset_to_Tensors( object_of_class_Dataset, batch_size=None ):
+    assert isinstance( object_of_class_Dataset, torch.utils.data.Dataset )
+    if isinstance( object_of_class_Dataset, convert_Tensors_to_Dataset ):
+        return object_of_class_Dataset.X, object_of_class_Dataset.y
+    else:
+        n_data = len(object_of_class_Dataset)
+        b = n_data if batch_size is None else batch_size
+        return next(iter(torch.utils.data.DataLoader( object_of_class_Dataset, batch_size=b )))  # return the actual tuple (X,y)
+
+#
+# ~~~ Convert Tensors into a pytorch Dataset; from https://fmorenovr.medium.com/how-to-load-a-custom-dataset-in-pytorch-create-a-customdataloader-in-pytorch-8d3d63510c21
+class convert_Tensors_to_Dataset(torch.utils.data.Dataset):
+    #
+    # ~~~ Define attributes
+    def __init__( self, X_tensor, y_tensor, X_transforms_list=None, y_transforms_list=None, **kwargs ):
+        super().__init__( **kwargs )
+        assert isinstance(X_tensor,torch.Tensor)
+        assert isinstance(y_tensor,torch.Tensor)
+        assert X_tensor.shape[0]==y_tensor.shape[0]
+        self.X = X_tensor
+        self.y = y_tensor
+        self.X_transforms = X_transforms_list
+        self.y_transforms = y_transforms_list
+    #
+    # ~~~ Method which pytorch requres custom Dataset subclasses to have to enable indexing; see https://pytorch.org/tutorials/beginner/basics/data_tutorial.html#creating-a-custom-dataset-for-your-files
+    def __getitem__(self, index):
+        x = self.X[index]
+        if self.X_transforms is not None:
+            for transform in self.X_transforms: 
+                x = transform(x)
+        y = self.y[index]
+        if self.y_transforms is not None:
+            for transform in self.y_transforms: 
+                y = transform(y)
+        return x, y
+    #
+    # ~~~ Method which pytorch requres custom Dataset subclasses to have; see https://pytorch.org/tutorials/beginner/basics/data_tutorial.html#creating-a-custom-dataset-for-your-files
+    def __len__(self):
+        return self.y.shape[0]
+
+#
+# ~~~ Get all available gradients of the parameters in a pytorch model
+def get_flat_grads(model):
+    grads = []
+    for p in model.parameters():
+        if p.grad is not None:
+            grads.append(p.grad.view(-1))
+    return torch.cat(grads)
+
+#
+# ~~~ Given a flat vector of desired gradients, and a model, assign those to the .grad attribute of the model's parameters
+def set_flat_grads(model,flat_grads):
+    # TODO: a safety feature checking the shape/class of flat_grads (should be a 1d Torch vector)
+    start = 0
+    for p in model.parameters():
+        if p.requires_grad:
+            numel = p.grad.numel()
+            p.grad.data = flat_grads[start:start+numel].view_as(p.grad)
+            start += numel
+    if start>len(flat_grads):
+        my_warn(f"The lenght of the supplied vector [{len(flat_grads)}] exceeds the number of parameters in the model which require grad [{start}]")
+
+#
+# ~~~ Helper function which creates a new instance of the supplied sequential architeture
+def nonredundant_copy_of_module_list(module_list,sequential=False):
+    architecture = [ (type(layer),layer) for layer in module_list ]
+    layers = []
+    for layer_type, layer in architecture:
+        if layer_type == nn.Linear:
+            #
+            # ~~~ For linear layers, create a brand new linear layer of the same size independent of the original
+            layers.append(nn.Linear( layer.in_features, layer.out_features, bias=(layer.bias is not None) ))
+        else:
+            #
+            # ~~~ For other layers (activations, Flatten, softmax, etc.) just copy it
+            layers.append(layer)
+    return nn.Sequential(*layers) if sequential else nn.ModuleList(layers)

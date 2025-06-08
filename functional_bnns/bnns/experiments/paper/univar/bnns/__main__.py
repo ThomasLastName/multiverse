@@ -3,7 +3,7 @@
 import os
 import random
 import torch
-from quality_of_life.my_base_utils import dict_to_json, my_warn
+from bnns.utils.handling import dict_to_json, my_warn
 from bnns.experiments.paper.univar.bnns import folder_name, N_HYPERPAR_SAMPLES, SEED, DATA, ARCHITECTURE, VARIATIONAL_FAMILY, LR, WEIGHTING, LIKELIHOOD_STD, FUNCTIONAL, MEASUREMENT_SET_SAMPLER, N_MEAS, PRIOR_J, POST_J, PRIOR_ETA, POST_ETA, PRIOR_M, POST_M
 
 

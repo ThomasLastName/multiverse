@@ -5,8 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from importlib import import_module
-from bnns.utils import infer_width_and_depth
-from quality_of_life.my_base_utils import json_to_dict, my_warn, print_dict
+from bnns.utils import infer_width_and_depth, my_warn
 
 from bnns.experiments.paper.univar.dropout import folder_name, DATA, ARCHITECTURE, LR
 

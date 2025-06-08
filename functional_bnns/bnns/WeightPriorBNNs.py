@@ -4,11 +4,10 @@ from tqdm import tqdm
 import torch
 from torch import nn
 
-from bnns.utils import flatten_parameters, diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity, get_key_or_default
+from bnns.utils.math import diagonal_gaussian_kl, std_per_param, std_per_layer, LocationScaleLogDensity
+from bnns.utils.handling import flatten_parameters, support_for_progress_bars, nonredundant_copy_of_module_list
 from bnns.NoPriorBNNs import IndepLocScaleBNN
 
-from quality_of_life.my_base_utils  import support_for_progress_bars
-from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
 
 
 

@@ -11,17 +11,11 @@ from importlib import import_module
 import argparse
 
 #
-# ~~~ The guts of the model
+# ~~~ Other parts of this package
 from bnns.SSGE import BaseScoreEstimator as SSGE_backend
+from bnns.utils.handling import generate_json_filename, dict_to_json, json_to_dict, my_warn, convert_Dataset_to_Tensors
+from bnns.utils.plotting import plot_gpr
 
-#
-# ~~~ Package-specific utils
-from bnns.utils import plot_gpr, set_Dataset_attributes, generate_json_filename
-
-#
-# ~~~ My Personal Helper Functions (https://github.com/ThomasLastName/quality_of_life)
-from quality_of_life.my_base_utils import support_for_progress_bars, dict_to_json, json_to_dict, my_warn
-from quality_of_life.my_torch_utils import convert_Dataset_to_Tensors
 
 
 

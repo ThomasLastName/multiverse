@@ -4,8 +4,7 @@ import argparse
 from glob import glob
 from time import time
 from subprocess import run
-from bnns.utils import generate_json_filename
-from quality_of_life.my_base_utils import dict_to_json, json_to_dict
+from bnns.utils.handling import generate_json_filename, dict_to_json, json_to_dict
 
 
 
