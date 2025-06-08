@@ -81,13 +81,10 @@ except: MODEL = getattr( import_module(hpars["MODEL"]), hpars["MODEL"] )    # ~~
 try:
     sampling_function = getattr( data, hpars["MEASUREMENT_SET_SAMPLER"] )
     class MODEL_WITH_MEAS_SET_SAMPLER(MODEL):
-        def __init__(self,*args,**kwargs):
-            super().__init__(*args,**kwargs)
-        def resample_measurement_set( self, n=hpars["N_MEAS"] ):
-            return sampling_function(self,n)
+        def __init__(self,*args,**kwargs): super().__init__(*args,**kwargs)
+        def resample_measurement_set( self, n=hpars["N_MEAS"] ): return sampling_function(self,n)
 except:
-    if hpars["MEASUREMENT_SET_SAMPLER"] is not None:
-        my_warn("Unable to load/define the `resample_measurement_set` method. Falling back to default implementation")
+    if hpars["MEASUREMENT_SET_SAMPLER"] is not None: my_warn("Unable to load/define the `resample_measurement_set` method. Falling back to default implementation")
     MODEL_WITH_MEAS_SET_SAMPLER = MODEL
 
 BNN = MODEL_WITH_MEAS_SET_SAMPLER(
@@ -126,17 +123,13 @@ n_params = sum( p.numel() for p in BNN.posterior_mean.parameters() )
 # ~~~ Some naming stuff
 description_of_the_experiment = "fBNN" if hpars["FUNCTIONAL"] else "BBB"
 if hpars["GAUSSIAN_APPROXIMATION"]:
-    if hpars["FUNCTIONAL"]:
-        description_of_the_experiment += " Using a Gaussian Approximation"
-    else:
-        my_warn("The settings GAUSSIAN_APPROXIMATION=True and FUNCTIONAL=False are incompatible, since Rudner et al.'s Gaussian approximation is only used in fBNNs. The former will be ignored.")
+    if hpars["FUNCTIONAL"]: description_of_the_experiment += " Using a Gaussian Approximation"
+    else: my_warn("The settings GAUSSIAN_APPROXIMATION=True and FUNCTIONAL=False are incompatible, since Rudner et al.'s Gaussian approximation is only used in fBNNs. The former will be ignored.")
 
 #
 # ~~~ Use the description_of_the_experiment as the title if no TITLE is specified
-try:
-    title = description_of_the_experiment if (hpars["TITLE"] is None) else hpars["TITLE"]
-except NameError:
-    title = description_of_the_experiment
+try: title = description_of_the_experiment if (hpars["TITLE"] is None) else hpars["TITLE"]
+except NameError: title = description_of_the_experiment
 
 #
 # ~~~ Some plotting stuff
