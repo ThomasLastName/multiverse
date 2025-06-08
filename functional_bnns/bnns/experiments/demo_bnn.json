@@ -8,12 +8,12 @@
     // The data, the prior distribution, and the variational family
 	"DATA": "univar_missing_middle",                // from DATA import D_train, D_val, D_test, interpolary_grid, extrapolary_grid, extrapolation_grid, <MEASUREMENT_SET_SAMPLER>
 	"ARCHITECTURE" : "univar_NN.univar_NN_100_100", // from ARCHITECTURE import NN as architecture
-	"MODEL": "MixturePrior2015BNN",                 // BNN = bnns.MODEL( *architecture, likeilihood_std=LIKELIHOOD_STD, **PRIOR_HYPERPARAMETERS )
+	"MODEL": "GPPrior2023BNN",                 // BNN = bnns.MODEL( *architecture, likeilihood_std=LIKELIHOOD_STD, **PRIOR_HYPERPARAMETERS )
     "VARIATIONAL_FAMILY" : "Uniform",               // from torch.distributions import VARIATIONAL_FAMILY
     "PRIOR_HYPERPARAMETERS" : {                     // please, see documentation for the MODEL of choice to determine which fields are necessary, as each prior has its own hyper-parameters
-            "pi" : 0.5,
-            "sigma1" : 1.0,
-            "sigma2" : 0.002
+            "bw" : null,
+            "scale" : 1,
+            "eta" : 0.05
         },
     //
     // Training hyper-parameters for neural networks in general
@@ -34,7 +34,7 @@
 	"N_MC_SAMPLES": 1,                      // number of random samples to use in the random sampling average estimates of the loss function (this is almost universally taken to be 1)
 	"WEIGHTING": "standard",                // choose a weighting scheme from among "Blundell", "Sun in principle", "Sun in practice", "naive", "standard"
 	"DEFAULT_INITIALIZATION" : null,        // if null, initialize variational standard deviations randomly; if a dictionary, initialize them with BNN.set_default_uncertaintyy(**DEFAULT_INITIALIZATION)
-	"EXTRA_STD": true,                      // whether or not to add mean-zero Gaussian noise with std_dev=LIKELIHOOD_STD to the predictive samples (so that the predictive model matches the likelihood model)
+	"EXTRA_STD": false,                     // whether or not to add mean-zero Gaussian noise with std_dev=LIKELIHOOD_STD to the predictive samples (so that the predictive model matches the likelihood model)
 	"N_POSTERIOR_SAMPLES_EVALUATION": 100,  // how many predictive samples to use when computing metrics such as test loss at the end of training
     "N_POSTERIOR_SAMPLES": 30,              // how many predictive samples to use when computing intermediate tasks that occur many times (e.g., when checking the validation loss every HOW_OFTEN iterations)
 	"SHOW_DIAGNOSTICS" : false,             // whether or not to print out a whole bunch of diagnostic information at the end of training
@@ -51,16 +51,16 @@
     "SSGE_HYPERPARAMETERS" : {
             //
             // How many random samples to generate for the SSGE
-            "PRIOR_M": 300,     // generate prior_M samples from the functional prior distribution
-            "POST_M": 40,       // generate post_M samples from the functional variational distribution
+            "prior_M": 300,     // generate prior_M samples from the functional prior distribution
+            "post_M": 40,       // generate post_M samples from the functional variational distribution
             //
             // Add stabilizing noise to the kernel matrix
-            "PRIOR_ETA": 0.5,   // the kernel matrix built out of functional prior samples will receive a `+= PRIOR_ETA*identity_matrix`
-            "POST_ETA": 0.5,    // the kernel matrix built out of functional variational samples will receive a `+= POST_ETA*identity_matrix`
+            "prior_eta": 0.5,   // the kernel matrix built out of functional prior samples will receive a `+= PRIOR_ETA*identity_matrix`
+            "post_eta": 0.5,    // the kernel matrix built out of functional variational samples will receive a `+= POST_ETA*identity_matrix`
             //
             // Low rank approximation of the kernel matrices
-            "PRIOR_J": 30,      // discard all except the leading PRIOR_J eigen-components of the kernel matrix built out of functional prior samples
-            "POST_J": 10        // discard all except the leading PRIOR_J eigen-components of the kernel matrix built out of functional variational samples
+            "prior_J": 30,      // discard all except the leading PRIOR_J eigen-components of the kernel matrix built out of functional prior samples
+            "post_J": 10        // discard all except the leading PRIOR_J eigen-components of the kernel matrix built out of functional variational samples
         },
     //
     // Hyper-parameters introduced by Rudner et al. 2023 https://arxiv.org/abs/2312.17199 (only used when FUNCATIONAL is true and MODEL is "GPPrior2023BNN")
