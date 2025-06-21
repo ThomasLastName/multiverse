@@ -27,6 +27,13 @@ def flatten_parameters(list_of_models):
             for model in list_of_models
         ])  # ~~~ has shape (len(list_of_models),n_parameters_per_model)
 
+
+class FModel:
+    def __init__( self, base_model ):
+        self.base_model = base_model
+    def __call__( self, params, buffers, x ):
+        return func.functional_call( self.base_model, (params, buffers), (x,) )
+
 loss_fn = nn.MSELoss()
 class SteinEnsemble(nn.Module):
     def __init__( self, list_of_NNs, likelihood_std=None, bw=None, Optimizer=None ):
@@ -53,11 +60,9 @@ class SteinEnsemble(nn.Module):
             # ~~~ Weird stuff for parallelizing the forward pass: from https://pytorch.org/tutorials/intermediate/ensembling.html
             base_model = copy.deepcopy(self.models[0])
             base_model = base_model.to("meta")
-            def fmodel(params, buffers, x ):
-                return func.functional_call( base_model, (params, buffers), (x,) )
-            self.fmodel = fmodel
+            self.fmodel = FModel(base_model)
             self.params, self.buffers = func.stack_module_state(self.models)
-            self.parameters_have_been_updated = False   # ~~~ when true, then it becomes necessary to update self.params and self.buffers
+            self.parameters_have_been_updated = True   # ~~~ when true, then it becomes necessary to update self.params and self.buffers
     #
     # ~~~ Compute A and b for which SVGD prescribes replacing the gradients by `gradients = ( A@gradients + b )/n_particles`
     def compute_affine_transform( self, naive_implementation=False, iterative_sum=False ):
@@ -234,6 +239,12 @@ class SteinEnsemble(nn.Module):
         # ~~~ All versions of the forward pass are equivalent to this simple one
         if method=="naive":
             return torch.stack([ model(X) for model in self.models ])
+    #
+    # ~~~ https://chatgpt.com/share/6856f65c-c4a0-8001-9e03-aa79878c47f5
+    def load_state_dict(self, state_dict, strict=True):
+        out = super().load_state_dict(state_dict, strict)
+        self.parameters_have_been_updated = True
+        return out
 
 #
 # ~~~ Given an architecture, initialize n_copies untrained copies with different weights
