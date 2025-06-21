@@ -161,6 +161,7 @@ def load_trained_ensemble( architecture:str, n_models:int, state_dict_path ):
     architecture = import_module(f"bnns.models.{architecture}").NN  # ~~~ e.g., architecture=="my_model" points to a file `my_model.py` in the `models` folder
     ensemble = bnns.Ensemble.SequentialSteinEnsemble( architecture, n_models )
     ensemble.load_state_dict(torch.load(state_dict_path))
+    ensemble.parameters_have_been_updated = True
     return ensemble
 
 
