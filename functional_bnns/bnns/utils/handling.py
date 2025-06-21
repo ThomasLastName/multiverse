@@ -154,7 +154,7 @@ def load_trained_bnn( architecture:str, model:str, state_dict_path ):
 
 #
 # ~~~ Load a trained ensemble, based on the string `architecture` that points to the file where the model is defined
-def load_trained_ensemble( architecture:str, n_models:str, state_dict_path ):
+def load_trained_ensemble( architecture:str, n_models:int, state_dict_path ):
     #
     # ~~~ Load the untrained model
     import bnns
@@ -162,6 +162,7 @@ def load_trained_ensemble( architecture:str, n_models:str, state_dict_path ):
     ensemble = bnns.Ensemble.SequentialSteinEnsemble( architecture, n_models )
     ensemble.load_state_dict(torch.load(state_dict_path))
     return ensemble
+
 
 #
 # ~~~ Load a trained conventional neural network, based on the dataframe of results you get from hyperparameter search
@@ -342,7 +343,7 @@ def dict_to_json( dict, path_including_file_extension, override=False, verbose=T
     if verbose:
         if override:
             my_warn(f"The path {path_including_file_extension} was not empty. It has been overwritten.")
-        print(f"Created {path_including_file_extension} at {os.path.abspath(path_including_file_extension)}")
+        print(f"    Created {path_including_file_extension} at {os.path.abspath(path_including_file_extension)}:\n")
 
 #
 # ~~~ Load a .json as a dictionary (https://chatgpt.com/share/683b4261-cef8-8001-8ca5-d63a2cb637b2)
