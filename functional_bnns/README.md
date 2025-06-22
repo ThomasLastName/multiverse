@@ -78,29 +78,33 @@ Finally, since the original purpose of this package was to test rigorously which
 
 # Setup
 
+## Requirements
+
 **IMPORTANT: At this time, `git` is a prerequisite for installation.**
+
+Due to `GPyTorch` being added as a dependency, Python 3.10 or later is now required.
 
 
 ## Minimal setup instructions using git
 
 1. (_have python already set up_) Basically, just have python on your machine in an environment that allows you to install packages. Optionally, this may include setting up a virtual environment for this repository and its dependencies, which most programmers would opt to do. The below **Setup steps using anaconda and git** go into more detail on this matter, walking you through the process of setting up such an environment using `conda`.
 
-2. (_have pytorch already installed_) *This dependency is intentionally left to the user to be installed manually*, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility. If pytorch isn't already part of your python environment, you should install it now.
+2. (_have pytorch already installed_) Technically, this step can be skipped. The final `pip install` step will automatically make sure that _some_ version of `PyTorch >= 2.0` is installed as a dependency. However, if a partircular `PyTorch` distribution is necessary for CUDA-compatibility. Now's the time to install that.
 
 3. (_clone this repo_) Navigate to wherever you want this code to be stored (e.g., the Desktop, or the Documents folder), and clone this reppository there using `git clone https://github.com/ThomasLastName/multiverse.git` in the command line.
 
 4. (_install the `multiverse/functional_bnns` directory as a package_) Navigate into the folder containing `setup.py` and, from that directory, run `pip install -e .` in the command line.
 
 
-## Setup steps using anaconda and git
+## Setup steps using anaconda, pip, and git
 
 0. Open the command line and say `conda env list` to confirm that the code is not present already.
 
-1. (_create an env with standard / easy-to-install packages_) `conda create --name bnns python=3.10 matplotlib tqdm numpy scipy pandas pip` (if desired, you can swap `bnns` for your preferred name).
+1. (_create an env with standard / easy-to-install packages_) `conda create --name bnns python=3.10 matplotlib tqdm numpy scipy pandas seaborn pip` (if desired, you can swap `bnns` for your preferred name).
 
 2. (_activate the env for further installs_) `conda activate bnns`.
 
-3. (_install pytorch_) This dependency is intentionally left to the user to be installed manually, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility. Additionally, it may depend on your conda channels. The simplest installation (which is not CUDA-compatible) is to try the command `conda install pytorch`. If that doesn't work (probably because of channels) then commanding `pip install torch` while the environment is active shuold still work, although using `conda` is preferable because it reduces the likelihood of conflicts.
+3. (_install pytorch_) This dependency is intentionally left to the user to be installed manually, because the appropriate version of `torch` may depend on your hardwarde, particularly on CUDA-compatibility. Additionally, it may depend on your conda channels. The simplest installation (which is not CUDA-compatible) is to try the command `conda install pytorch`. If that doesn't work (probably because of channels) then commanding `pip install torch` while the environment is active shuold also work, although using `conda` is preferable because it reduces the likelihood of conflicts.
 
 4. (_clone this repo_) Navigate to wherever you want this code to be stored (e.g., the Desktop, or the Documents folder), and clone this reppository there using `git clone https://github.com/ThomasLastName/multiverse.git` in the command line.
 
