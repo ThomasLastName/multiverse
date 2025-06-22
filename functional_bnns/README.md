@@ -82,7 +82,7 @@ Finally, since the original purpose of this package was to test rigorously which
 
 **IMPORTANT: At this time, `git` is a prerequisite for installation.**
 
-Due to `GPyTorch` being added as a dependency, Python 3.10 or later is now required.
+Due to `GPyTorch` being added as a dependency, Python 3.8 or later is now required.
 
 
 ## Minimal setup instructions using git
