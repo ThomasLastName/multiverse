@@ -61,7 +61,7 @@ y_pred = NN(x_train)
 with torch.no_grad():
     g = SSGE(NN(x_train))
 
-loss = (g@y_pred).squeeze()
+loss = 4*(g@y_pred).squeeze()
 loss.backward()
 for p in NN.parameters():
     pass

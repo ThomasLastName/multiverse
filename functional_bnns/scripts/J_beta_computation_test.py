@@ -29,4 +29,4 @@ for _ in trange(100, desc="Using torch.func.jacrev" ):
     final_J = jacrev(functional_call, argnums=1)( NN[-1], dict(NN[-1].named_parameters()), (V,) )
     final_J = final_J["weight"].reshape(number_of_output_features*batch_size,-1)
 
-assert torch.allclose(final_J,final_J_manual)
+assert torch.allclose( final_J, final_J_manual )

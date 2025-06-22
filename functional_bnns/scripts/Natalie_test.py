@@ -33,18 +33,18 @@ from quality_of_life.my_numpy_utils import moving_average
 ### ~~~
 
 torch.manual_seed(2025)
-bnn = bnns.ConventionalBNN(
+bnn = bnns.GaussianBNN(
         nn.Unflatten( dim=-1, unflattened_size=(-1,1) ),
         nn.Linear(1,300),
         nn.ReLU(),
         nn.Linear(300,300),
         nn.ReLU(),
         nn.Linear(300,1),
+        likelihood_std = 0.0003,
+        prior_type = "Xavier"
     )
-bnn.likelihood_std = 0.0003                                             # ~~~ likelihood
-bnn.set_default_uncertainty( comparable_to_default_torch_init=False )   # ~~~ initialization
-bnn.set_prior_hyperparameters( prior_type="Tom", scale=1 )              # ~~~ prior
-# bnn.setup_soft_projection(method="Blundell")                            # ~~~ soft projection
+bnn.set_default_uncertainty(type="Xavier")      # ~~~ initialization
+# bnn.setup_soft_projection(method="Blundell")    # ~~~ soft projection
 means = flatten_parameters(bnn.posterior_mean).clone().detach()
 stds  = flatten_parameters(bnn.posterior_std).clone().detach()
 

@@ -2,11 +2,8 @@
 
 import torch
 from bnns.SSGE import SpectralSteinEstimator
-from matplotlib import pyplot as plt
-import math
 import numpy as np
 from quality_of_life.my_visualization_utils import *
-from tqdm import trange
 
 torch.manual_seed(1234)
 M = 3000   # ~~~ will be implicity rounded *down* the the nearest square number: int(sqrt(M))**2
@@ -24,10 +21,10 @@ self = SpectralSteinEstimator( eta=eta, samples=xm )
 
 
 
-_xm = torch.cat((x, xm), dim=-2)
-sigma = self.heuristic_sigma(_xm, _xm)
+_xm = torch.cat( (x, xm), dim=-2 )
+sigma = self.heuristic_sigma( _xm, _xm )
 M = torch.tensor( xm.size(-2), dtype=torch.float )
-Kxx, dKxx_dx, _ = self.grad_gram( xm, xm, sigma )
+Kxx, dKxx_dx = self.grad_gram( xm, xm, sigma )
 if self.eta is not None:
     Kxx += self.eta * torch.eye( xm.size(-2), device=xm.device )
 

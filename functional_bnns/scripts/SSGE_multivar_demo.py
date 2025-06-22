@@ -2,7 +2,6 @@
 import torch
 from bnns.SSGE import SpectralSteinEstimator
 from matplotlib import pyplot as plt
-import math
 import numpy as np
 from quality_of_life.my_base_utils import support_for_progress_bars
 from quality_of_life.my_visualization_utils import *

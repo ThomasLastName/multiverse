@@ -1,9 +1,10 @@
 
-import math
 import torch
 from torch import nn, func, vmap
 import copy
-from quality_of_life.my_torch_utils import nonredundant_copy_of_module_list
+from bnns.utils import nonredundant_copy_of_module_list
+
+
 
 ### ~~~
 ## ~~~ Define the ensemble class
@@ -36,7 +37,7 @@ class SteinEnsemble:
             losses.sum().backward()
         else:
             for model in self.models:
-                loss = loss_fn(model(X),y) # -log_gaussian_pdf( where=y, mu=model(X), sigma=self.conditional_std )loss_fn( model(X), y )
+                loss = loss_fn(model(X),y)
                 loss.backward()
         #
         # ~~~ Do the update
@@ -78,7 +79,6 @@ seed = 2024
 device = "cuda" if torch.cuda.is_available() else "cpu"
 n_Stein_particles = 100
 lr = 0.001
-conditional_std = 0.19
 
 Optimizer = torch.optim.Adam
 from bnns.models.bivar_NN import NN

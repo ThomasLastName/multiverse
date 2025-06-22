@@ -1,7 +1,7 @@
 
 import torch
 from tqdm import trange
-from quality_of_life.my_base_utils import support_for_progress_bars
+from bnns.utils import support_for_progress_bars
 
 M = 1000
 d = 400
