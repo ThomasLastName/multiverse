@@ -13,6 +13,7 @@ from statistics import mean as avg
 from matplotlib import pyplot as plt
 from importlib import import_module
 from itertools import product
+from copy import deepcopy
 from time import time
 import os
 
@@ -334,7 +335,7 @@ while keep_training and (target_epochs>0):
                         #
                         # ~~~ Save only the "best" parameters thus far
                         if val_loss < min_val_loss:
-                            best_pars_so_far = BNN.state_dict()
+                            best_pars_so_far = deepcopy(BNN.state_dict())
                             best_iter_so_far = pbar.n
                             min_val_loss = val_loss
                     #

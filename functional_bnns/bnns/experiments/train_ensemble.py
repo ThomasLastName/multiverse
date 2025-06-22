@@ -13,6 +13,7 @@ from statistics import mean as avg
 from matplotlib import pyplot as plt
 from importlib import import_module
 from itertools import product
+from copy import deepcopy
 from time import time
 import os
 
@@ -23,7 +24,6 @@ from bnns.utils.plotting import plot_bnn_mean_and_std, plot_bnn_empirical_quanti
 from bnns.utils.handling import support_for_progress_bars, dict_to_json, json_to_dict, print_dict, my_warn, process_for_saving, convert_Dataset_to_Tensors, set_Dataset_attributes, add_dropout_to_sequential_relu_network, generate_json_filename, convert_to_list_and_check_items, non_negative_list, EarlyStopper, parse
 from bnns.utils.math import moving_average
 from bnns.metrics import *
-
 
 
 
@@ -146,7 +146,7 @@ if data_is_univariate:
         #
         # ~~~ Draw from the posterior predictive distribuion
         with torch.no_grad():
-            predictions = ensemble(grid).squeeze()
+            predictions = ensemble( grid, method="vmap" ).squeeze()
         return plot_predictions( fig, ax, grid, green_curve, x_train_cpu, y_train_cpu, predictions, extra_std, how_many_individual_predictions, title )
     #
     # ~~~ Plot the state of the posterior predictive distribution upon its initialization
@@ -321,7 +321,7 @@ while keep_training:
                         #
                         # ~~~ Save only the "best" parameters thus far
                         if val_loss < min_val_loss:
-                            best_pars_so_far = ensemble.state_dict()
+                            best_pars_so_far = deepcopy(ensemble.state_dict())
                             best_iter_so_far = pbar.n + 1
                             min_val_loss = val_loss
                     #
