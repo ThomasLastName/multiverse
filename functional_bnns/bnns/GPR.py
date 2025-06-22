@@ -344,9 +344,9 @@ class GPYBackend(GPY):
         self.fit( self.dummy_x_train, self.dummy_y_train )  # ~~~ supply dummy training data to get a useless but cheaply fit posterior distibution (we only want the prior)
     #
     # ~~~ Intercept real data for the sake of automatically setting bandwidth
-    def prior_mu_and_Sigma( self, x, n=1, **other_kwargs ):
+    def prior_mu_and_Sigma( self, x, **other_kwargs ):
         if not hasattr(self,"models"): self.no_but_really__init__(x)
-        return super().prior_mu_and_Sigma( x, n, **other_kwargs )
+        return super().prior_mu_and_Sigma( x, **other_kwargs )
     #
     # ~~~ Intercept real data for the sake of automatically setting bandwidth
     def prior_forward( self, x, n=1 ):
