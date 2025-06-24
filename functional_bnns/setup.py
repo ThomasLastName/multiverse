@@ -16,7 +16,7 @@ def txt_to_list(filepath):
 # ~~~ Install
 setup(
     name="bnns",
-    version="0.7.0",
+    version="1.0.0",
     author="Thomas Winckelman",
     author_email="winckelman@tamu.edu",
     description="Package intended for testing (but not optimized for deploying) varions BNN algorithms",
