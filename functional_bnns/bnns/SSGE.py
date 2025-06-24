@@ -1,4 +1,3 @@
-
 """
 Based on code from https://github.com/AntixK/Spectral-Stein-Gradient.
 
@@ -14,6 +13,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 """
+
 ### ~~~
 ## ~~~ Reproduce https://github.com/AntixK/Spectral-Stein-Gradient/blob/master/assets/Gaussian.pdf
 ## ~~~ The returned image should match https://raw.githubusercontent.com/AntixK/Spectral-Stein-Gradient/master/assets/Gaussian.png
@@ -25,23 +25,29 @@ from bnns.utils.handling import my_warn
 
 #
 # ~~~ Convert a 1D tensor to a 2D column tensor, but leave every other tensor as is
-vertical = lambda x: x.unsqueeze(1) if x.dim()==1 else x
+vertical = lambda x: x.unsqueeze(1) if x.dim() == 1 else x
 
 
 class BaseScoreEstimator:
     #
     # ~~~ Define the RBF kernel
     @staticmethod
-    def rbf_kernel( x1, x2, sigma ):
-        return torch.exp( -((x1-x2).pow(2).sum(-1)) / (2*sigma**2) ) # / math.sqrt(2*torch.pi) * sigma
+    def rbf_kernel(x1, x2, sigma):
+        return torch.exp(
+            -((x1 - x2).pow(2).sum(-1)) / (2 * sigma**2)
+        )  # / math.sqrt(2*torch.pi) * sigma
+
     #
     # ~~~ Method that assembles the kernel matrix K
-    def gram_matrix( self, x1, x2, sigma ):     # ~~~ e = torch.exp( -((x1.unsqueeze(-2)-x2.unsqueeze(-3)).pow(2).sum(-1)) / (2*sigma**2) ) - torch.exp( -(torch.cdist(x1,x2)/sigma)**2/2 ) \approx 0
+    def gram_matrix(
+        self, x1, x2, sigma
+    ):  # ~~~ e = torch.exp( -((x1.unsqueeze(-2)-x2.unsqueeze(-3)).pow(2).sum(-1)) / (2*sigma**2) ) - torch.exp( -(torch.cdist(x1,x2)/sigma)**2/2 ) \approx 0
         x1, x2 = vertical(x1), vertical(x2)
-        return torch.exp( -(torch.cdist(x1,x2)/sigma)**2/2 )
+        return torch.exp(-((torch.cdist(x1, x2) / sigma) ** 2) / 2)
+
     #
     # ~~~ Method that gram matrix, as well as, the Jacobian matrices which get averaged when computing \beta
-    def grad_gram( self, x1, x2, sigma ):
+    def grad_gram(self, x1, x2, sigma):
         # """
         # Computes the gradients of the RBF gram matrix with respect
         # to the inputs x1 an x2. It is given by
@@ -59,15 +65,16 @@ class BaseScoreEstimator:
         #
         # """
         with torch.no_grad():
-            Kxx = self.gram_matrix(x1,x2,sigma)
+            Kxx = self.gram_matrix(x1, x2, sigma)
             x1 = x1.unsqueeze(-2)  # Make it into a column tensor
             x2 = x2.unsqueeze(-3)  # Make it into a row tensor
-            diff = (x1 - x2) / (sigma ** 2) # [N x M x D]
+            diff = (x1 - x2) / (sigma**2)  # [N x M x D]
             dKxx_dx1 = Kxx.unsqueeze(-1) * (-diff)
             return Kxx, dKxx_dx1
+
     #
     # ~~~ Method that heuristically chooses the bandwidth sigma for the RBF kernel
-    def heuristic_sigma(self,x1,x2):
+    def heuristic_sigma(self, x1, x2):
         # """
         # Uses the median-heuristic for selecting the
         # appropriate sigma for the RBF kernel based
@@ -80,33 +87,49 @@ class BaseScoreEstimator:
         # """
         with torch.no_grad():
             x1, x2 = vertical(x1), vertical(x2)
-            dists = torch.cdist(x1,x2)
-            return dists[dists>0].median().item()
+            dists = torch.cdist(x1, x2)
+            return dists[dists > 0].median().item()
+
     #
     # ~~~ Placeholder method for the content of __call__(...)
     @abstractmethod
-    def compute_score_gradients(self,x):
+    def compute_score_gradients(self, x):
         raise NotImplementedError
+
     #
     # ~~~ The `__call__` method just calls `compute_score_gradients`
-    def __call__( self, x, *args, **kwargs ):
-        return self.compute_score_gradients( x, *args, **kwargs )
+    def __call__(self, x, *args, **kwargs):
+        return self.compute_score_gradients(x, *args, **kwargs)
 
 
 class SpectralSteinEstimator(BaseScoreEstimator):
     #
     # ~~~ Allow the user to specify eta for numerical stability as well as J for numerical fidelity
-    def __init__( self, samples, eta=None, J=None, sigma=None, h=True, old=False, iterative_avg=False ):
+    def __init__(
+        self,
+        samples,
+        eta=None,
+        J=None,
+        sigma=None,
+        h=True,
+        old=False,
+        iterative_avg=False,
+    ):
         self.eta = eta
         self.num_eigs = J
         self.samples = vertical(samples)
         self.h = h
-        self.M = torch.tensor( samples.size(-2), dtype=samples.dtype, device=samples.device )
-        self.sigma = self.heuristic_sigma(self.samples,self.samples) if sigma is None else sigma
-        self.eigen_decomposition( old=old, iterative_avg=iterative_avg )
+        self.M = torch.tensor(
+            samples.size(-2), dtype=samples.dtype, device=samples.device
+        )
+        self.sigma = (
+            self.heuristic_sigma(self.samples, self.samples) if sigma is None else sigma
+        )
+        self.eigen_decomposition(old=old, iterative_avg=iterative_avg)
+
     #
     # ~~~ NEW
-    def eigen_decomposition( self, old=False, iterative_avg=False ):
+    def eigen_decomposition(self, old=False, iterative_avg=False):
         with torch.no_grad():
             #
             # ~~~ Build the kernel matrix, as well as the associated Jacobians
@@ -115,38 +138,50 @@ class SpectralSteinEstimator(BaseScoreEstimator):
             # ~~~ Both non-iterative implementations seem to have the exact same memory footprint, but einsum is a lot faster
             if not iterative_avg:
                 if old:
-                    K, K_Jacobians = self.grad_gram( xm, xm, self.sigma )
-                    self.avg_jac = K_Jacobians.mean(dim=0) # [M x D]
+                    K, K_Jacobians = self.grad_gram(xm, xm, self.sigma)
+                    self.avg_jac = K_Jacobians.mean(dim=0)  # [M x D]
                 else:
-                    K = self.gram_matrix( xm, xm, self.sigma )
-                    self.avg_jac = torch.einsum('ij,ijk->ik', K, xm[:, None, :]-xm[None, :, :] ) / (self.sigma**2) / self.M # [M x D]
+                    K = self.gram_matrix(xm, xm, self.sigma)
+                    self.avg_jac = (
+                        torch.einsum("ij,ijk->ik", K, xm[:, None, :] - xm[None, :, :])
+                        / (self.sigma**2)
+                        / self.M
+                    )  # [M x D]
             #
             # ~~~ Given M,D = samples.shape, the non-iterative implementation (e.g., using einsum) crashes due to memory footprint when D is large. This iterative implentation is more memory effficient
             if iterative_avg:
-                K = self.gram_matrix( xm, xm, self.sigma )
+                K = self.gram_matrix(xm, xm, self.sigma)
                 avg_Jac = torch.zeros_like(xm)
                 for i in range(xm.shape[1]):
-                    diff_i = (xm[:, i].unsqueeze(-1) - xm[:, i].unsqueeze(-2)) / self.sigma**2  # [M x M]
+                    diff_i = (
+                        xm[:, i].unsqueeze(-1) - xm[:, i].unsqueeze(-2)
+                    ) / self.sigma**2  # [M x M]
                     K_Jacobian_i = K * (-diff_i)
                     avg_Jac[:, i] = K_Jacobian_i.mean(dim=0)
                 self.avg_jac = avg_Jac
             #
             # ~~~ Optionally, K += eta*I for numerical stability
             if self.eta is not None:
-                K += self.eta * torch.eye( xm.size(-2), dtype=xm.dtype, device=xm.device )
+                K += self.eta * torch.eye(xm.size(-2), dtype=xm.dtype, device=xm.device)
             #
             # ~~~ Do the actual eigen-decomposition
             if self.num_eigs is None:
                 try:
-                    eigen_vals, eigen_vecs = torch.linalg.eigh(K) if self.h else torch.linalg.eig(K)
+                    eigen_vals, eigen_vecs = (
+                        torch.linalg.eigh(K) if self.h else torch.linalg.eig(K)
+                    )
                 except RuntimeError:
-                    my_warn("There is a bug in the source torch.linalg.eigh code. Specify h=False to use torch.linalg.eig instead")
+                    my_warn(
+                        "There is a bug in the source torch.linalg.eigh code. Specify h=False to use torch.linalg.eig instead"
+                    )
                     raise
                 eigen_vals, eigen_vecs = eigen_vals.flip([0]), eigen_vecs.flip([1])
             else:
-                U, s, V  = torch.svd_lowrank( K, q=min(K.shape[0],self.num_eigs) )
+                U, s, V = torch.svd_lowrank(K, q=min(K.shape[0], self.num_eigs))
                 eigen_vals = s
-                eigen_vecs = (U+V)/2    # ~~~ by my estimation, because Kxx is symmetric, we actually expect U==V; we are only averaging out the arithmetic errors
+                eigen_vecs = (
+                    U + V
+                ) / 2  # ~~~ by my estimation, because Kxx is symmetric, we actually expect U==V; we are only averaging out the arithmetic errors
             # """
             # instead of:
             # eigen_vals, eigen_vecs = torch.linalg.eig(Kxx)
@@ -156,9 +191,10 @@ class SpectralSteinEstimator(BaseScoreEstimator):
             #     eigen_vecs = eigen_vecs[:, :self.num_eigs]
             # """
             self.eigen_vals, self.eigen_vecs = eigen_vals, eigen_vecs
+
     #
     # ~~~ Compute \widehat{Phi}(x)
-    def Phi(self,x):
+    def Phi(self, x):
         # """
         # Implements the Nystrom method for approximating the
         # eigenfunction (generalized eigenvectors) for the kernel
@@ -177,17 +213,18 @@ class SpectralSteinEstimator(BaseScoreEstimator):
         # """
         with torch.no_grad():
             x = vertical(x)
-            K_mixed = self.gram_matrix( x, self.samples, self.sigma )
-            phi_x =  torch.sqrt(self.M) * K_mixed @ self.eigen_vecs
-            phi_x *= 1. / self.eigen_vals
+            K_mixed = self.gram_matrix(x, self.samples, self.sigma)
+            phi_x = torch.sqrt(self.M) * K_mixed @ self.eigen_vecs
+            phi_x *= 1.0 / self.eigen_vals
             return phi_x
+
     #
     # ~~~ Actually estimate \grad \ln(q(x))
-    def compute_score_gradients(self,x):
+    def compute_score_gradients(self, x):
         # """
         # Computes the Spectral Stein Gradient Estimate (SSGE) for the
         # score function. The SSGE is given by
-        # 
+        #
         # .. math::
         #     \nabla_{xi} phi_j(x) = \frac{1}{\mu_j M} \sum_{m=1}^M \nabla_{xi}k(x,x^m) \phi_j(x^m)
         #
@@ -200,8 +237,7 @@ class SpectralSteinEstimator(BaseScoreEstimator):
         # :return: gradient estimate [N x D]
         # """
         with torch.no_grad():
-            Phi_x = self.Phi(x) # [N x M]
-            beta = - torch.sqrt(self.M) * self.eigen_vecs.T @ self.avg_jac
-            beta *= (1. / self.eigen_vals.unsqueeze(-1))
-            return Phi_x @ beta # [N x D]
-
+            Phi_x = self.Phi(x)  # [N x M]
+            beta = -torch.sqrt(self.M) * self.eigen_vecs.T @ self.avg_jac
+            beta *= 1.0 / self.eigen_vals.unsqueeze(-1)
+            return Phi_x @ beta  # [N x D]

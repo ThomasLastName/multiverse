@@ -1,4 +1,3 @@
-
 ### ~~~
 ## ~~~ Import block
 ### ~~~
@@ -7,7 +6,6 @@ import torch
 from tqdm import trange
 from bnns.Ensemble import SequentialSteinEnsemble as Ensemble
 from bnns.utils import support_for_progress_bars, nonredundant_copy_of_module_list
-
 
 
 ### ~~~
@@ -21,9 +19,9 @@ SEED = 2024
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 from bnns.models.bivar_NN import NN
 from bnns.data.bivar_trivial import D_train as data
+
 X, y = data.X.to(DEVICE), data.y.to(DEVICE)
 NN = NN.to(DEVICE)
-
 
 
 ### ~~~
@@ -37,31 +35,30 @@ _ = torch.manual_seed(SEED)
 #
 # ~~~ Instantiate an ensemble (the same both times)
 ensemble = Ensemble(
-        architecture = nonredundant_copy_of_module_list(NN),    # ~~~ copy for reproducibility
-        n_copies = N_COPIES,
-        Optimizer = lambda params: torch.optim.Adam( params, lr=0.001 ),
-        likelihood_std = torch.tensor(0.19),
-        device = DEVICE
-    )
+    architecture=nonredundant_copy_of_module_list(NN),  # ~~~ copy for reproducibility
+    n_copies=N_COPIES,
+    Optimizer=lambda params: torch.optim.Adam(params, lr=0.001),
+    likelihood_std=torch.tensor(0.19),
+    device=DEVICE,
+)
 
 with torch.no_grad():
-    assert ( ensemble(X,method="vmap") - ensemble(X,method="bmm") ).abs().max() < 1e-6
-    assert ( ensemble(X,method="vmap") - ensemble(X,method="naive")      ).abs().max() < 1e-6
+    assert (ensemble(X, method="vmap") - ensemble(X, method="bmm")).abs().max() < 1e-6
+    assert (ensemble(X, method="vmap") - ensemble(X, method="naive")).abs().max() < 1e-6
     print("")
     print("    Testing the speed of the forward pass.")
     print("")
     with support_for_progress_bars():
-        for method in ["naive","bmm","vmap"]:
-            for _ in trange( 100, desc=f"method={method}" ):
-                _ = ensemble(X,method=method)
-
+        for method in ["naive", "bmm", "vmap"]:
+            for _ in trange(100, desc=f"method={method}"):
+                _ = ensemble(X, method=method)
 
 
 ### ~~~
 ## ~~~ Test the naive training method against the current best
 ### ~~~
 
-for OLD_TRAINING in [True,False]:
+for OLD_TRAINING in [True, False]:
     #
     # ~~~ Set the seed
     _ = torch.manual_seed(SEED)

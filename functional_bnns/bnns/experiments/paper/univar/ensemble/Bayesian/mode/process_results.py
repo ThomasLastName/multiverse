@@ -1,4 +1,3 @@
-
 import os
 import pandas as pd
 from bnns.experiments.paper.univar.ensemble.Bayesian.mode import folder_name
@@ -9,13 +8,16 @@ from bnns.experiments.paper.univar.ensemble.Bayesian.mode import folder_name
 
 folder_dir = os.path.split(folder_name)[0]
 try:
-    results = pd.read_csv(os.path.join( folder_dir, "results.csv" ))
+    results = pd.read_csv(os.path.join(folder_dir, "results.csv"))
 except FileNotFoundError:
     print("")
-    print("    Processing the raw results and storing them in .csv form (this should only need to be done once).")
+    print(
+        "    Processing the raw results and storing them in .csv form (this should only need to be done once)."
+    )
     print("")
     from bnns.utils import load_filtered_json_files
+
     results = load_filtered_json_files(folder_name)
-    results.to_csv(os.path.join( folder_dir, "results.csv" ))
+    results.to_csv(os.path.join(folder_dir, "results.csv"))
 except:
     raise

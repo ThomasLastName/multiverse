@@ -1,18 +1,17 @@
-
 import torch
 from tqdm import trange
 from bnns.utils import support_for_progress_bars
 
 M = 1000
 d = 400
-x = torch.randn(M,d)
-sigma = 1.
+x = torch.randn(M, d)
+sigma = 1.0
 
-K = torch.exp( -(torch.cdist(x,x)/sigma)**2/2 )
+K = torch.exp(-((torch.cdist(x, x) / sigma) ** 2) / 2)
 
 #
 # ~~~ Original implementation (einsum is faster but has same memory footprint)
-diff = (x.unsqueeze(-2) - x.unsqueeze(-3)) / (sigma**2) # [M x M x d]
+diff = (x.unsqueeze(-2) - x.unsqueeze(-3)) / (sigma**2)  # [M x M x d]
 K_Jacobians = K.unsqueeze(-1) * (-diff)
 avg_Jac = K_Jacobians.mean(dim=0)
 
@@ -25,4 +24,4 @@ with support_for_progress_bars():
         K_Jacobian_i = K * (-diff_i)
         iterative_avg_Jac[:, i] = K_Jacobian_i.mean(dim=0)
 
-assert torch.equal( avg_Jac, iterative_avg_Jac )
+assert torch.equal(avg_Jac, iterative_avg_Jac)

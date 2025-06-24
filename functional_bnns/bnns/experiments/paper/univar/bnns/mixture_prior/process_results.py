@@ -1,4 +1,3 @@
-
 import os
 import numpy as np
 import torch
@@ -6,10 +5,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from importlib import import_module
-from bnns.utils import infer_width_and_depth, plot_trained_model_from_dataframe, k_smallest_indices, k_largest_indices
+from bnns.utils import (
+    infer_width_and_depth,
+    plot_trained_model_from_dataframe,
+    k_smallest_indices,
+    k_largest_indices,
+)
 
 from bnns.experiments.paper.univar.bnns.mixture_prior import folder_name
-
 
 
 ### ~~~
@@ -18,34 +21,37 @@ from bnns.experiments.paper.univar.bnns.mixture_prior import folder_name
 
 folder_dir = os.path.split(folder_name)[0]
 try:
-    results = pd.read_csv(os.path.join( folder_dir, "results.csv" ))
+    results = pd.read_csv(os.path.join(folder_dir, "results.csv"))
 except FileNotFoundError:
     print("")
-    print("    Processing the raw results and storing them in .csv form (this should only need to be done once).")
+    print(
+        "    Processing the raw results and storing them in .csv form (this should only need to be done once)."
+    )
     print("")
     from bnns.utils import load_filtered_json_files
+
     results = load_filtered_json_files(folder_name)
-    results.to_csv(os.path.join( folder_dir, "results.csv" ))
+    results.to_csv(os.path.join(folder_dir, "results.csv"))
 except:
     raise
-
 
 
 ### ~~~
 ## ~~~ Process the dataframe slightly
 ### ~~~
 
-results = infer_width_and_depth( results, field="ARCHITECTURE" )
-unique_results = results.loc[:,results.nunique()>1].copy()
-
+results = infer_width_and_depth(results, field="ARCHITECTURE")
+unique_results = results.loc[:, results.nunique() > 1].copy()
 
 
 ### ~~~
 ## ~~~ Observe that the only models which fail to converge are the ones for which the likehood std. is large (this makes sense)
 ### ~~~
 
-plt.figure(figsize=(6,4))
-sns.scatterplot(data=unique_results, x="LIKELIHOOD_STD", y="METRIC_rmse_of_mean", alpha=0.6)
+plt.figure(figsize=(6, 4))
+sns.scatterplot(
+    data=unique_results, x="LIKELIHOOD_STD", y="METRIC_rmse_of_mean", alpha=0.6
+)
 plt.xscale("log")
 plt.yscale("log")
 plt.title("Validation Accuracy (Lower is Better) vs. Likelihood Standard Deviation")
@@ -54,25 +60,34 @@ plt.ylabel("rMSE of Posterior Predictive Mean (log scale)")
 plt.show()
 
 
-
 ### ~~~
 ## ~~~ Check out some models
 ### ~~~
 
-indices_with_great_accuracy_despite_high_noise = np.where( (results.LIKELIHOOD_STD==0.1) & (results.METRIC_rmse_of_mean < 0.02) )[0]
-for i in indices_with_great_accuracy_despite_high_noise[:3]: plot_trained_model_from_dataframe( results, i, title="A Model with Coverage {}" )
+indices_with_great_accuracy_despite_high_noise = np.where(
+    (results.LIKELIHOOD_STD == 0.1) & (results.METRIC_rmse_of_mean < 0.02)
+)[0]
+for i in indices_with_great_accuracy_despite_high_noise[:3]:
+    plot_trained_model_from_dataframe(results, i, title="A Model with Coverage {}")
 
 
-def plot_k( dataframe, metric, small=True, k=3 ):
+def plot_k(dataframe, metric, small=True, k=3):
     selector = k_smallest_indices if small else k_largest_indices
-    indices = selector( dataframe, "METRIC_"+metric, k=k )
-    for i in indices: plot_trained_model_from_dataframe( results, i, title=f"Title?" )
+    indices = selector(dataframe, "METRIC_" + metric, k=k)
+    for i in indices:
+        plot_trained_model_from_dataframe(results, i, title=f"Title?")
 
-plot_k( results, "coverage", small=False )                          # ~~~ plot the 3 models with highest coverage
-plot_k( abs(results.METRIC_coverage-0.95), "coverage", small=True ) # ~~~ plot the 3 models coverage closest to 95%
-plot_k( results, "median_avg_inverval_score", small=True )          # ~~~ plot the 3 models with best interval score
-plot_k( results, "median_energy_score", small=True )                # ~~~ plot the 3 models with best energy score
 
+plot_k(results, "coverage", small=False)  # ~~~ plot the 3 models with highest coverage
+plot_k(
+    abs(results.METRIC_coverage - 0.95), "coverage", small=True
+)  # ~~~ plot the 3 models coverage closest to 95%
+plot_k(
+    results, "median_avg_inverval_score", small=True
+)  # ~~~ plot the 3 models with best interval score
+plot_k(
+    results, "median_energy_score", small=True
+)  # ~~~ plot the 3 models with best energy score
 
 
 # ### ~~~
@@ -136,7 +151,7 @@ plot_k( results, "median_energy_score", small=True )                # ~~~ plot t
 # ### ~~~
 
 # #
-# # ~~~ First, remove any lists from the dictionaries, as pandas doesn't like those, before converting to pd.DataFrame 
+# # ~~~ First, remove any lists from the dictionaries, as pandas doesn't like those, before converting to pd.DataFrame
 # results = load_filtered_json_files(folder_name)
 # unique_results = results.loc[:,results.nunique()>1]
 
@@ -152,7 +167,6 @@ plot_k( results, "median_energy_score", small=True )                # ~~~ plot t
 # a = filtered_results.mean(numeric_only=True).to_numpy()
 # b = mean_results.iloc[0,1:].to_numpy()
 # assert np.array_equal(a,b)
-
 
 
 # ### ~~~
