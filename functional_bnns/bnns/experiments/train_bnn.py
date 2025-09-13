@@ -143,7 +143,7 @@ except:
 BNN = MODEL_WITH_MEAS_SET_SAMPLER(
     *architecture,
     likelihood_std=torch.tensor(hpars["LIKELIHOOD_STD"]),
-    auto_projection=(hpars["PROJECTION_METHOD"].upper() == "HARD"),
+    projection_method=hpars["PROJECTION_METHOD"],
     posterior_distribution=VARIATIONAL_FAMILY,
     **hpars["SSGE_HYPERPARAMETERS"],
     **hpars["PRIOR_HYPERPARAMETERS"],
@@ -154,11 +154,6 @@ BNN.post_GP_ETA = hpars[
 
 if hpars["DEFAULT_INITIALIZATION"] is not None:
     BNN.set_default_uncertainty(**hpars["DEFAULT_INITIALIZATION"])
-
-if not hpars["PROJECTION_METHOD"].upper() == "HARD":
-    BNN.setup_soft_projection(hpars["PROJECTION_METHOD"])
-    if hpars["DEFAULT_INITIALIZATION"] is None:
-        BNN.apply_soft_projection()
 
 
 ### ~~~

@@ -16,6 +16,7 @@ from bnns.utils.handling import (
     my_warn,
     nonredundant_copy_of_module_list,
     get_batch_sizes,
+    fdict,
 )
 from bnns.SSGE import SpectralSteinEstimator as SSGE
 
@@ -38,6 +39,8 @@ class BayesianModule(nn.Module):
         post_eta=0.05,
         prior_M=200,
         post_M=200,
+        hard_fail_if_unexpected_kwarg=True,
+        **kwargs
     ):
         super().__init__()
         #
@@ -50,6 +53,10 @@ class BayesianModule(nn.Module):
         self.post_M = post_M
         self.prior_SSGE = None
         self.prior_samples_batch_size = None  # ~~~ see `setup_prior_SSGE`
+        if len(kwargs)>1:
+            my_warn(f"Found the following unexpected keyword arguments:\n{fdict(kwargs)}\nUsually, this is the result of passing hyper-parameters of the wrong prior distribution, e.g., passing a keyword argument `bw` (which is for GP priors) to the `__init__` method of the class `GaussianBNN` (which is for a Gaussian prior distribution on weights). You can specify `hard_fail_if_unexpected_kwarg=False` to surpress the following error.")
+            if hard_fail_if_unexpected_kwarg:
+                raise TypeError(f"BaysianModule.__init__() got {len(kwargs)} unexpected keyword arguments (see the above warning message).")
 
     #
     # ~~~ Resample from whatever is source is used to seed the samples drawn from the variational distribution
@@ -254,7 +261,6 @@ class IndepLocScaleBNN(BayesianModule):
         self,
         *args,
         likelihood_std=torch.tensor(0.01),
-        auto_projection=True,
         #
         # ~~~ Specify the family of the variational distribution over weights
         posterior_distribution=torch.distributions.Normal,  # ~~~ either, specify this, of specify the following two methods
@@ -273,8 +279,6 @@ class IndepLocScaleBNN(BayesianModule):
         )  # ~~~ a "standard normal [or whatever] distribution in the shape of our neural network"
         for p in self.realized_standard_posterior_sample.parameters():
             p.requires_grad = False
-        if auto_projection:
-            self.ensure_positive(forceful=True, verbose=False)
         #
         # ~~~ Basic information about the model: in_features, out_features, and n_layers
         self.n_layers = len(self.posterior_mean)
@@ -744,3 +748,42 @@ class IndepLocScaleBNN(BayesianModule):
             self.measurement_set = torch.randn(
                 size=(n, self.in_features), device=device, dtype=dtype
             )
+
+
+### ~~~
+## ~~~ Define the projection method for the case in which the posterior and prior distributions over weights both have full support
+### ~~~
+
+
+class FullSupportIndepLocScaleBNN(IndepLocScaleBNN):
+    def __init__(self, *args, projection_method="hard", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setup_projection(method=projection_method)
+
+    #
+    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
+    def apply_hard_projection(self, tol=1e-6):
+        with torch.no_grad():
+            for p in self.posterior_std.parameters():
+                p.data.clamp_(min=tol)
+
+    #
+    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
+    def setup_projection(self, method="hard"):
+        if method.lower() == "hard":
+            self.apply_hard_projection()
+        elif method[0].upper() + method[1:].lower() == "Blundell":
+            self.soft_projection = lambda x: torch.log(1 + torch.exp(x))
+            self.soft_projection_inv = lambda x: torch.log(torch.exp(x) - 1)
+            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
+            self.apply_soft_projection()
+        elif method.lower() == "torchbnn":
+            self.soft_projection = lambda x: torch.exp(x)
+            self.soft_projection_inv = lambda x: torch.log(x)
+            self.soft_projection_prime = lambda x: torch.exp(x)
+            self.apply_soft_projection()
+        else:
+            raise ValueError(
+                f'Unrecognized method="{method}". Currently, only method="hard", method="Blundell", and "method=torchbnn" are supported.'
+            )
+

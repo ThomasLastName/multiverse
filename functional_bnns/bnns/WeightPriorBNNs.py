@@ -14,7 +14,7 @@ from bnns.utils.handling import (
     support_for_progress_bars,
     nonredundant_copy_of_module_list,
 )
-from bnns.NoPriorBNNs import IndepLocScaleBNN
+from bnns.NoPriorBNNs import FullSupportIndepLocScaleBNN
 
 
 ### ~~~
@@ -22,7 +22,7 @@ from bnns.NoPriorBNNs import IndepLocScaleBNN
 ### ~~~
 
 
-class MixturePrior2015BNN(IndepLocScaleBNN):
+class MixturePrior2015BNN(FullSupportIndepLocScaleBNN):
     def __init__(
         self,
         *args,
@@ -155,34 +155,6 @@ class MixturePrior2015BNN(IndepLocScaleBNN):
                     )  # ~~~ apply the appropriately distributed biases
         return x
 
-    # ~~~
-    #
-    ### ~~~
-    ## ~~~ Since the prior distribution has full support, all we need to do is enforce that the variances are positive (rather, >=tol)
-    ### ~~~
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_hard_projection(self, tol=1e-6):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data.clamp_(min=tol)
-
-    #
-    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
-    def setup_soft_projection(self, method="Blundell"):
-        if method == "Blundell":
-            self.soft_projection = lambda x: torch.log(1 + torch.exp(x))
-            self.soft_projection_inv = lambda x: torch.log(torch.exp(x) - 1)
-            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
-        elif method == "torchbnn":
-            self.soft_projection = lambda x: torch.exp(x)
-            self.soft_projection_inv = lambda x: torch.log(x)
-            self.soft_projection_prime = lambda x: torch.exp(x)
-        else:
-            raise ValueError(
-                f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.'
-            )
-
     #
     # ~~~ Infer good prior hyperparameters by maximizing the log posterior
     def MLE_for_prior_hyperparameters(
@@ -252,7 +224,7 @@ class MixturePrior2015BNN(IndepLocScaleBNN):
 ### ~~~
 
 
-class IndepLocScalePriorBNN(IndepLocScaleBNN):
+class IndepLocScalePriorBNN(FullSupportIndepLocScaleBNN):
     def __init__(
         #
         # ~~~ Architecture and stuff
@@ -419,61 +391,28 @@ class IndepLocScalePriorBNN(IndepLocScaleBNN):
 
 
 ### ~~~
-## ~~~ Defint the projection method for the case in which the posterior and prior distributions over weights both have full support
-### ~~~
-
-
-class FullSupportIndepLocScaleBNN(IndepLocScalePriorBNN):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_hard_projection(self, tol=1e-6):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data.clamp_(min=tol)
-
-    #
-    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
-    def setup_soft_projection(self, method="Blundell"):
-        if method == "Blundell":
-            self.soft_projection = lambda x: torch.log(1 + torch.exp(x))
-            self.soft_projection_inv = lambda x: torch.log(torch.exp(x) - 1)
-            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
-        elif method == "torchbnn":
-            self.soft_projection = lambda x: torch.exp(x)
-            self.soft_projection_inv = lambda x: torch.log(x)
-            self.soft_projection_prime = lambda x: torch.exp(x)
-        else:
-            raise ValueError(
-                f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.'
-            )
-
-
-### ~~~
 ## ~~~ Define what most people are talking about when they say "Bayesian neural networks"
 ### ~~~
 
 
-class GaussianBNN(FullSupportIndepLocScaleBNN):
+class GaussianBNN(IndepLocScalePriorBNN):
     def __init__(
         self,
         *args,
         likelihood_std=torch.tensor(0.01),
-        auto_projection=True,
         posterior_generator=None,
         prior_generator=None,
         posterior_distribution=None,  # ~~~ un-used argument for API compatibility
         **kwargs,
     ):
+        if posterior_distribution is torch.distributions.Normal:
+            posterior_distribution = None
         assert (
             posterior_distribution is None
         ), f"GaussianBNN simply implements a Gaussian distribution, which conflicts with the supplied value of the `posterior_distribution` keyword argument: {posterior_distribution}. Please specify the `posterior_distribution` keyword argument to `None`."
         super().__init__(
             *args,
             likelihood_std=likelihood_std,
-            auto_projection=auto_projection,
             posterior_standard_log_density=lambda z: -(z**2) / 2
             - math.log(math.sqrt(2 * torch.pi)),
             posterior_standard_sampler=lambda *shape, **kwargs: torch.randn(
