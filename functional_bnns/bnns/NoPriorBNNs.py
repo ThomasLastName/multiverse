@@ -3,6 +3,7 @@ from abc import abstractmethod
 import math
 import torch
 from torch import nn
+from torch.func import functional_call
 
 from bnns.utils.math import (
     manual_Jacobian,
@@ -16,6 +17,7 @@ from bnns.utils.handling import (
     my_warn,
     nonredundant_copy_of_module_list,
     get_batch_sizes,
+    is_weight_and_bias_layer,
 )
 from bnns.SSGE import SpectralSteinEstimator as SSGE
 
@@ -484,54 +486,58 @@ class IndepLocScaleBNN(BayesianModule):
 
     #
     # ~~~ Sample the distribution of Y|X=x,W=w
+    # fmt: off
     def forward(self, x, n=0):
-        #
-        # ~~~ Basically, do `x=layer(x)` for each layer in model, but with a twist on the weights
         self.ensure_positive(forceful=True)
-        if n > 0:
-            x = torch.stack(
-                n * [x]
-            )  # ~~~ stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
+        # Stack n copies of x if needed
+        if n>0: x = torch.stack(n*[x])  # ~~~ stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
         for j, layer in enumerate(self.realized_standard_posterior_sample):
             #
-            # ~~~ If this layer is just like relu or something, then there aren't any weights; just apply the layer and be done
-            if not isinstance(layer, nn.Linear):
+            # ~~~ If layer is like ReLU, Flatten, Softmax, etc. then just apply it and move on
+            if not is_weight_and_bias_layer(layer):
+                if any(layer.named_parameters()):
+                    raise TypeError(f"Layer {layer} appears to have more parameters than just a weight matrix and bias vector. Unfortunately, such layers are not supported at this time.")
                 x = layer(x)
+                continue
             #
-            # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
-            else:
-                mean_layer = self.posterior_mean[
-                    j
-                ]  # ~~~ the trainable (posterior) means of this layer's parameters
-                std_layer = self.posterior_std[
-                    j
-                ]  # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                if n == 0:
-                    #
-                    # ~~~ Use self.realized_standard_posterior_sample for the random sample
-                    A = (
-                        mean_layer.weight + std_layer.weight * layer.weight
-                    )  # ~~~ A = F_\theta(z_sampled) is sample with trainable (posterior) mean and std
-                    x = (
-                        x @ A.T
-                    )  # ~~~ apply the appropriately distributed weights to this layer's input
-                    if layer.bias is not None:
-                        b = (
-                            mean_layer.bias + std_layer.bias * layer.bias
-                        )  # ~~~ apply the appropriately distributed biases
-                        x += b
+            # ~~~ Otherwise, run the layer with weights and biases given by \mu + \sigma*z
+            μ = self.posterior_mean[j]
+            σ = self.posterior_std[j]
+            if n == 0:
+                #
+                # ~~~ Deterministic forward: use a realized sample of z that is stored in `layer`
+                A = μ.weight + σ.weight * layer.weight
+                b = μ.bias + σ.bias * layer.bias if (layer.bias is not None) else None
+                if isinstance( layer, nn.Linear ):
+                    x = x@A.T+b if (b is not None) else x@A.T
                 else:
-                    z_sampled = self.posterior_standard_sampler(
-                        n, *layer.weight.shape, dtype=x.dtype, device=x.device
-                    )
-                    A = mean_layer.weight + std_layer.weight * z_sampled
-                    x = torch.bmm(x, A.transpose(1, 2))
-                    if layer.bias is not None:
-                        z_sampled = self.posterior_standard_sampler(
-                            n, 1, *layer.bias.shape, dtype=x.dtype, device=x.device
-                        )
-                        b = mean_layer.bias + std_layer.bias * z_sampled
-                        x += b
+                    param_dict = {'weight': A}
+                    if b is not None: param_dict['bias'] = b
+                    x = functional_call(layer, param_dict, x)
+            else:
+                #
+                # ~~~ Sampled forward: n>0 vectorized when possible
+                z_weight = self.posterior_standard_sampler( n, *layer.weight.shape, dtype=x.dtype, device=x.device )
+                sampled_weights = μ.weight + σ.weight * z_weight
+                if layer.bias is not None:
+                    z_bias = self.posterior_standard_sampler( n, *layer.bias.shape, dtype=x.dtype, device=x.device )
+                    sampled_biases = μ.bias + σ.bias * z_bias
+                else:
+                    sampled_biases = [None] * n
+                #
+                # ~~~ Vectorize the forward of linear layers with `torch.bmm`
+                if isinstance( layer, nn.Linear ):
+                    x = torch.bmm( x, sampled_weights.transpose(1,2) ) # ~~~ ==torch.stack([ xi@A.T for (xi,A) in zip(x,sampled_weights)] ) if I am not mistaken
+                    if layer.bias is not None: x = x + sampled_biases.unsqueeze(1)
+                else:
+                    #
+                    # ~~~ For other layers (e.g., Conv2d) fall back to functional_call in a loop, which is less efficient but more general (https://chatgpt.com/share/68c5fc3b-b784-8001-8afc-cb5f7fb34a24)
+                    outputs = []
+                    for w, b, xi in zip( sampled_weights, sampled_biases, x ):
+                        param_dict = { "weight": w }
+                        if b is not None: param_dict['bias'] = b
+                        outputs.append(functional_call( layer, param_dict, xi ))
+                    x = torch.stack(outputs)
         return x
 
     #

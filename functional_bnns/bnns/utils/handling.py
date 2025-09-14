@@ -639,3 +639,15 @@ def nonredundant_copy_of_module_list(module_list, sequential=False):
             # ~~~ For other layers (activations, Flatten, softmax, etc.) just copy it
             layers.append(layer)
     return nn.Sequential(*layers) if sequential else nn.ModuleList(layers)
+
+
+#
+# ~~~ Discern whether or not the provided layer has exactly two parameters: a weight parameter, and a bias parameter (e.g., a Conv2d instance should also pass)
+def is_weight_and_bias_layer(layer):
+    params = dict(layer.named_parameters())
+    buffers = dict(layer.named_buffers())
+    has_weight = 'weight' in params # ~~~ must have a weight parameter, e.g., to rule out ReLU layers
+    only_weight_and_bias = set(params.keys()).issubset({'weight', 'bias'}) # ~~~ only allow weight and optional bias, and nothing else
+    no_buffers = len(buffers) == 0
+    return has_weight and only_weight_and_bias and no_buffers
+
