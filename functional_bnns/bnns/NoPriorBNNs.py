@@ -493,51 +493,47 @@ class IndepLocScaleBNN(BayesianModule):
         if n>0: x = torch.stack(n*[x])  # ~~~ stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
         for j, layer in enumerate(self.realized_standard_posterior_sample):
             #
-            # ~~~ If layer is like ReLU, Flatten, Softmax, etc. then just apply it and move on
-            if not is_weight_and_bias_layer(layer):
-                if any(layer.named_parameters()):
-                    raise TypeError(f"Layer {layer} appears to have more parameters than just a weight matrix and bias vector. Unfortunately, such layers are not supported at this time.")
-                x = layer(x)
-                continue
-            #
-            # ~~~ Otherwise, run the layer with weights and biases given by \mu + \sigma*z
+            # ~~~ Fetch parameters, if any
             μ = self.posterior_mean[j]
             σ = self.posterior_std[j]
-            if n == 0:
+            z = layer
+            if is_weight_and_bias_layer(layer):
+                z_weight = z.weight if n==0 else self.posterior_standard_sampler( n, *layer.weight.shape, dtype=x.dtype, device=x.device )
+                z_bias = z.bias if (n==0 or z.bias is None) else self.posterior_standard_sampler( n, *layer.bias.shape, dtype=x.dtype, device=x.device )
+                A = μ.weight + σ.weight * z_weight
+                b = μ.bias   + σ.bias  *  z_bias if (z_bias is not None) else None
+            elif any(layer.named_parameters()):
+                raise TypeError(f"Layer {layer} appears to have more parameters than just a weight matrix and bias vector. Unfortunately, such layers are not supported at this time.")
+            else:
+                A = n*[None]
+                b = n*[None]
+            #
+            # ~~~ Implement forward pass of the layer, using parameters μ+σ*z if applicable, vectorizing when possible
+            if isinstance( layer, nn.Linear ):
                 #
-                # ~~~ Deterministic forward: use a realized sample of z that is stored in `layer`
-                A = μ.weight + σ.weight * layer.weight
-                b = μ.bias + σ.bias * layer.bias if (layer.bias is not None) else None
-                if isinstance( layer, nn.Linear ):
-                    x = x@A.T+b if (b is not None) else x@A.T
+                # ~~~ For linear layers we vectorize using `torch.bmm` when n>0
+                if n == 0:
+                    x = x@A.T
+                    if (b is not None): x = x+b
                 else:
-                    param_dict = {'weight': A}
-                    if b is not None: param_dict['bias'] = b
-                    x = functional_call(layer, param_dict, x)
+                    x = torch.bmm( x, A.transpose(1,2) ) # ~~~ ==torch.stack([ xi@A.T for (xi,A) in zip(x,sampled_weights)] ) if I am not mistaken
+                    if (b is not None): x = x+b.unsqueeze(1)
             else:
                 #
-                # ~~~ Sampled forward: n>0 vectorized when possible
-                z_weight = self.posterior_standard_sampler( n, *layer.weight.shape, dtype=x.dtype, device=x.device )
-                sampled_weights = μ.weight + σ.weight * z_weight
-                if layer.bias is not None:
-                    z_bias = self.posterior_standard_sampler( n, *layer.bias.shape, dtype=x.dtype, device=x.device )
-                    sampled_biases = μ.bias + σ.bias * z_bias
-                else:
-                    sampled_biases = [None] * n
-                #
-                # ~~~ Vectorize the forward of linear layers with `torch.bmm`
-                if isinstance( layer, nn.Linear ):
-                    x = torch.bmm( x, sampled_weights.transpose(1,2) ) # ~~~ ==torch.stack([ xi@A.T for (xi,A) in zip(x,sampled_weights)] ) if I am not mistaken
-                    if layer.bias is not None: x = x + sampled_biases.unsqueeze(1)
-                else:
-                    #
-                    # ~~~ For other layers (e.g., Conv2d) fall back to functional_call in a loop, which is less efficient but more general (https://chatgpt.com/share/68c5fc3b-b784-8001-8afc-cb5f7fb34a24)
+                # ~~~ For all other layers, we try x=layer(x) else fall back to looping over `functional_call`
+                try: x = layer(x)
+                except RuntimeError:
                     outputs = []
-                    for w, b, xi in zip( sampled_weights, sampled_biases, x ):
-                        param_dict = { "weight": w }
-                        if b is not None: param_dict['bias'] = b
-                        outputs.append(functional_call( layer, param_dict, xi ))
+                    if not is_weight_and_bias_layer(layer):
+                        A = n*[None]
+                        b = n*[None]
+                    for weight, bias, xi in zip( A, b, x ):
+                        params = {}
+                        if (weight is not None): params["weight"] = weight
+                        if (bias is not None): params["bias"] = bias
+                        outputs.append(functional_call( layer, params, xi ))
                     x = torch.stack(outputs)
+                except: raise
         return x
 
     #
