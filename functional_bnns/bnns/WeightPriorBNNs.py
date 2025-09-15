@@ -423,6 +423,7 @@ class GaussianBNN(IndepLocScalePriorBNN):
             prior_standard_sampler=lambda *shape, **kwargs: torch.randn(
                 *shape, generator=prior_generator, **kwargs
             ),
+            check_moments = False,
             **kwargs,
         )
 

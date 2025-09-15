@@ -269,7 +269,7 @@ class IndepLocScaleBNN(BayesianModule):
         posterior_distribution=torch.distributions.Normal,  # ~~~ either, specify this, of specify the following two methods
         posterior_standard_log_density=None,  # ~~~ should be a callable that accepts generic torch.tensors as input, but ideally also works on numpy arrays (otherwise `check_moments` will fail), e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
         posterior_standard_sampler=None,  # ~~~ should be a callable that returns a tensor of random samples from the distribution with mean 0 and variance 1, e.g., `torch.randn` for Gaussian
-        check_moments=True,  # ~~~ if true, test that `\int z*posterior_standard_log_density(z) \dee z = 0` and `\int z**2*posterior_standard_log_density(z) \dee z = 1`
+        check_moments=False,  # ~~~ if true, test that `\int z*posterior_standard_log_density(z) \dee z = 0` and `\int z**2*posterior_standard_log_density(z) \dee z = 1`
         **SSGE_hyperparameters
     ):
         #
@@ -339,7 +339,7 @@ class IndepLocScaleBNN(BayesianModule):
                 lambda z: posterior_standard_distribution.log_prob(mean + std * z)
                 + math.log(std)
             )
-            check_moments = False,
+            check_moments = False
         self.posterior_standard_log_density = posterior_standard_log_density
         self.posterior_log_density = LocationScaleLogDensity( posterior_standard_log_density, check_moments=check_moments )
         self.posterior_standard_sampler = posterior_standard_sampler

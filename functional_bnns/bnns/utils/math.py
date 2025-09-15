@@ -59,7 +59,7 @@ class LocationScaleLogDensity:
                 self.check_mean_zero_unit_variance()
             except:
                 my_warn(
-                    "Unable to verify mean zero and unit variance in the standard log density. To surpress this warning, pass `check_moments=False` in the `__init__` method."
+                    f"Unable to verify mean zero and unit variance in the standard log density {standard_log_density}. To surpress this warning, pass `check_moments=False` in the `__init__` method."
                 )
 
     #
