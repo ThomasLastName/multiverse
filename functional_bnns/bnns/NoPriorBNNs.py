@@ -11,6 +11,7 @@ from bnns.utils.math import (
     std_per_layer,
     compute_Jacobian_of_flattened_model,
     log_gaussian_pdf,
+    LocationScaleLogDensity,
 )
 from bnns.utils.handling import (
     flatten_parameters,
@@ -338,7 +339,9 @@ class IndepLocScaleBNN(BayesianModule):
                 lambda z: posterior_standard_distribution.log_prob(mean + std * z)
                 + math.log(std)
             )
+            check_moments = False,
         self.posterior_standard_log_density = posterior_standard_log_density
+        self.posterior_log_density = LocationScaleLogDensity( posterior_standard_log_density, check_moments=check_moments )
         self.posterior_standard_sampler = posterior_standard_sampler
         self.sample_from_standard_posterior(counter_on=False)
         #
@@ -591,7 +594,7 @@ class IndepLocScaleBNN(BayesianModule):
         sigma_post = flatten_parameters(self.posterior_std)
         z_sampled = flatten_parameters(self.realized_standard_posterior_sample)
         return (
-            self.posterior_standard_log_density(z_sampled) - torch.log(sigma_post)
+            self.posterior_standard_log_density(z_sampled) - torch.log(sigma_post) # ~~~ note: self.posterior_standard_log_density(z_sampled)==self.posterior_log_density(mean=μ, sigma=σ, where=μ+σ*z_sampled); see https://github.com/ThomasLastName/multiverse/commit/fddebc8dba0dc866265162460d642823b18a5cf5
         ).sum()
 
     # ~~~
