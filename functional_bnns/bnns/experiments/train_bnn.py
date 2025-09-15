@@ -131,7 +131,7 @@ try:
             super().__init__(*args, **kwargs)
 
         def resample_measurement_set(self, n=hpars["N_MEAS"]):
-            return sampling_function(self, n)
+            sampling_function(self, n)
 
 except:
     if hpars["MEASUREMENT_SET_SAMPLER"] is not None:
