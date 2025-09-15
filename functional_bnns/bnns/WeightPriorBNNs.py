@@ -2,6 +2,7 @@ import math
 from tqdm import tqdm
 import torch
 from torch import nn
+from torch.func import functional_call
 
 from bnns.utils.math import (
     diagonal_gaussian_kl,
@@ -13,6 +14,7 @@ from bnns.utils.handling import (
     flatten_parameters,
     support_for_progress_bars,
     nonredundant_copy_of_module_list,
+    is_weight_and_bias_layer,
 )
 from bnns.NoPriorBNNs import FullSupportIndepLocScaleBNN
 
@@ -359,34 +361,53 @@ class IndepLocScalePriorBNN(FullSupportIndepLocScaleBNN):
     #
     # ~~~ Define how to sample from the priorly distributed outputs of the network (just replace `posterior_mean` and `posterior_std` with `prior_mean` and `prior_std` in `forward`)
     def prior_forward(self, x, n=1):
-        x = torch.stack(
-            n * [x]
-        )  # ~~~ stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
-        for j, layer in enumerate(self.posterior_mean):
+        self.ensure_positive(forceful=True)
+        if n>0: x = torch.stack(n*[x])  # ~~~ stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
+        for j, layer in enumerate(self.realized_standard_posterior_sample):
             #
-            # ~~~ If this layer is just like relu or something, then there aren't any weights; just apply the layer and be done
-            if not isinstance(layer, nn.Linear):
-                x = layer(x)
+            # ~~~ Fetch parameters, if any
+            μ = self.prior_mean[j]
+            σ = self.prior_std[j]
+            z = layer
+            if is_weight_and_bias_layer(layer):
+                z_weight = z.weight if n==0 else self.prior_standard_sampler( n, *layer.weight.shape, dtype=x.dtype, device=x.device )
+                z_bias = z.bias if (n==0 or z.bias is None) else self.prior_standard_sampler( n, *layer.bias.shape, dtype=x.dtype, device=x.device )
+                A = μ.weight + σ.weight * z_weight
+                b = μ.bias   + σ.bias  *  z_bias if (z_bias is not None) else None
+            elif any(layer.named_parameters()):
+                raise TypeError(f"Layer {layer} appears to have more parameters than just a weight matrix and bias vector. Unfortunately, such layers are not supported at this time.")
+            else: # ~~~ the layer simply doesn't have parameters
+                A = n*[None]
+                b = n*[None]
             #
-            # ~~~ Aforementioned twist is that we apply F_\theta to the weights before doing x = layer(x)
-            else:
-                mean_layer = self.prior_mean[
-                    j
-                ]  # ~~~ the trainable (posterior) means of this layer's parameters
-                std_layer = self.prior_std[
-                    j
-                ]  # ~~~ the trainable (posterior) standard deviations of this layer's parameters
-                z_sampled = self.prior_standard_sampler(
-                    n, *layer.weight.shape, dtype=x.dtype, device=x.device
-                )
-                A = mean_layer.weight + std_layer.weight * z_sampled
-                x = torch.bmm(x, A.transpose(1, 2))
-                if layer.bias is not None:
-                    z_sampled = self.prior_standard_sampler(
-                        n, 1, *layer.bias.shape, dtype=x.dtype, device=x.device
-                    )
-                    b = mean_layer.bias + std_layer.bias * z_sampled
-                    x += b
+            # ~~~ Implement forward pass of the layer, using parameters μ+σ*z if applicable, vectorizing when possible
+            if (n>0 and isinstance( layer, nn.Linear )):
+                x = torch.bmm( x, A.transpose(1,2) ) # ~~~ ==torch.stack([ xi@A.T for (xi,A) in zip(x,sampled_weights)] ) if I am not mistaken
+                if (b is not None): x = x+b.unsqueeze(1)
+                continue # ~~~ that's it for the linear layer, regardless of n==0 or n>0
+            if (n==0 and is_weight_and_bias_layer(layer)):
+                #
+                # ~~~ Just run the weight-and-bias layer using the sampled weight/bias
+                params = {}
+                if (A is not None): params["weight"] = A
+                if (b is not None): params["bias"] = b
+                x = functional_call( layer, params, x )
+                continue # ~~~ that's it for a layer like Conv2d if n==0
+            #
+            # ~~~ For non-linear layers when n>0, we fall back to looping over `functional_call`
+            try:
+                if not any(layer.named_parameters()): x = layer(x) # ~~~ this works for, like, ReLU and such
+                else: raise RuntimeError
+            except RuntimeError:
+                outputs = []
+                for weight, bias, xi in zip( A, b, x ):
+                    params = {}
+                    if (weight is not None): params["weight"] = weight
+                    if (bias is not None): params["bias"] = bias
+                    outputs.append(functional_call( layer, params, xi ))
+                x = torch.stack(outputs)
+            except:
+                raise
         return x
 
 

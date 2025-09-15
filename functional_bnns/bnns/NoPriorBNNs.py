@@ -496,7 +496,6 @@ class IndepLocScaleBNN(BayesianModule):
     # fmt: off
     def forward(self, x, n=0):
         self.ensure_positive(forceful=True)
-        # Stack n copies of x if needed
         if n>0: x = torch.stack(n*[x])  # ~~~ stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
         for j, layer in enumerate(self.realized_standard_posterior_sample):
             #
