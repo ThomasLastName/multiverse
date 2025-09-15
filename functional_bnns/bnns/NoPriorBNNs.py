@@ -18,6 +18,7 @@ from bnns.utils.handling import (
     nonredundant_copy_of_module_list,
     get_batch_sizes,
     is_weight_and_bias_layer,
+    fdict,
 )
 from bnns.SSGE import SpectralSteinEstimator as SSGE
 
