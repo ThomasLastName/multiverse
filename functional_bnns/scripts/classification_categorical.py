@@ -77,7 +77,8 @@ def evaluate_accuracy(model, dataloader, device, n_samples=30):
 #
 # ~~~ Train model
 vi, lik, kl, acc = [], [], [], []
-bnn = GaussianBNN(*architecture, projection_method="torchbnn").to(device)
+bnn = GaussianBNN(*architecture).to(device)
+# bnn = GaussianBNN(*architecture, projection_method="torchbnn").to(device)
 optimizer = torch.optim.Adam(bnn.parameters(), lr=0.001)  # start a bit higher
 kl_weight = 0.01
 
@@ -90,9 +91,11 @@ for e in range(4):
         kl_div  = bnn.weight_kl()
         vi_loss = kl_weight*kl_div - log_lik          # negative ELBO
         vi_loss.backward()
+        # bnn.apply_chain_rule_for_soft_projection()
         optimizer.step()
         optimizer.zero_grad()
         train_acc = ( yhat.detach().argmax(dim=1) == y ).sum() / len(y)
+        # bnn.apply_soft_projection()
         vi.append(vi_loss.item())
         lik.append(log_lik.item())
         kl.append(kl_div.item())
