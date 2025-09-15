@@ -1,7 +1,7 @@
 import torch
 
 from bnns.utils.handling import my_warn
-from bnns.NoPriorBNNs import IndepLocScaleBNN
+from bnns.NoPriorBNNs import FullSupportIndepLocScaleBNN
 from bnns.GPR import GPYBackend, RPF_kernel_GP
 
 
@@ -10,7 +10,7 @@ from bnns.GPR import GPYBackend, RPF_kernel_GP
 ### ~~~
 
 
-class GPPriorBNN(IndepLocScaleBNN):
+class GPPriorBNN(FullSupportIndepLocScaleBNN):
     def __init__(
         self,
         *args,
@@ -58,36 +58,6 @@ class GPPriorBNN(IndepLocScaleBNN):
     # ~~~ Define how to sample from the priorly distributed outputs of the network (just sample from the normal distribution with mean and covariance specified by the GP)
     def prior_forward(self, x, n=1):
         return self.GP.prior_forward(x, n)
-
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_hard_projection(self, tol=1e-6):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data.clamp_(min=tol)
-
-    #
-    # ~~~ If not using projected gradient descent, then "parameterize the standard deviation pointwise" such that any positive value is acceptable (as on page 4 of https://arxiv.org/pdf/1505.05424)
-    def setup_soft_projection(self, method="Blundell"):
-        if method == "Blundell":
-            self.soft_projection = lambda x: torch.log(1 + torch.exp(x))
-            self.soft_projection_inv = lambda x: torch.log(torch.exp(x) - 1)
-            self.soft_projection_prime = lambda x: 1 / (1 + torch.exp(-x))
-        elif method == "torchbnn":
-            self.soft_projection = lambda x: torch.exp(x)
-            self.soft_projection_inv = lambda x: torch.log(x)
-            self.soft_projection_prime = lambda x: torch.exp(x)
-        else:
-            raise ValueError(
-                f'Unrecognized method="{method}". Currently, only method="Blundell" and "method=torchbnn" are supported.'
-            )
-
-    #
-    # ~~~ If using projected gradient descent, then project onto the non-negative orthant
-    def apply_soft_projection(self):
-        with torch.no_grad():
-            for p in self.posterior_std.parameters():
-                p.data = self.soft_projection(p.data)
 
 
 ### ~~~

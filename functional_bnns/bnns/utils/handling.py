@@ -387,9 +387,8 @@ def format_value(value):
 
 #
 # ~~~ Pretty print a dictionary; from https://www.geeksforgeeks.org/python-pretty-print-a-dictionary-with-dictionary-value/
-print_dict = lambda dict: print(
-    json.dumps({k: format_value(v) for k, v in dict.items()}, indent=4)
-)
+fdict = lambda dict: json.dumps({k: format_value(v) for k, v in dict.items()}, indent=4)
+print_dict = lambda dict: print(fdict(dict))
 
 
 #
