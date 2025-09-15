@@ -504,36 +504,38 @@ class IndepLocScaleBNN(BayesianModule):
                 b = μ.bias   + σ.bias  *  z_bias if (z_bias is not None) else None
             elif any(layer.named_parameters()):
                 raise TypeError(f"Layer {layer} appears to have more parameters than just a weight matrix and bias vector. Unfortunately, such layers are not supported at this time.")
-            else:
+            else: # ~~~ the layer simply doesn't have parameters
                 A = n*[None]
                 b = n*[None]
             #
             # ~~~ Implement forward pass of the layer, using parameters μ+σ*z if applicable, vectorizing when possible
-            if isinstance( layer, nn.Linear ):
+            if (n>0 and isinstance( layer, nn.Linear )):
+                x = torch.bmm( x, A.transpose(1,2) ) # ~~~ ==torch.stack([ xi@A.T for (xi,A) in zip(x,sampled_weights)] ) if I am not mistaken
+                if (b is not None): x = x+b.unsqueeze(1)
+                continue # ~~~ that's it for the linear layer, regardless of n==0 or n>0
+            if (n==0 and is_weight_and_bias_layer(layer)):
                 #
-                # ~~~ For linear layers we vectorize using `torch.bmm` when n>0
-                if n == 0:
-                    x = x@A.T
-                    if (b is not None): x = x+b
-                else:
-                    x = torch.bmm( x, A.transpose(1,2) ) # ~~~ ==torch.stack([ xi@A.T for (xi,A) in zip(x,sampled_weights)] ) if I am not mistaken
-                    if (b is not None): x = x+b.unsqueeze(1)
-            else:
-                #
-                # ~~~ For all other layers, we try x=layer(x) else fall back to looping over `functional_call`
-                try: x = layer(x)
-                except RuntimeError:
-                    outputs = []
-                    if not is_weight_and_bias_layer(layer):
-                        A = n*[None]
-                        b = n*[None]
-                    for weight, bias, xi in zip( A, b, x ):
-                        params = {}
-                        if (weight is not None): params["weight"] = weight
-                        if (bias is not None): params["bias"] = bias
-                        outputs.append(functional_call( layer, params, xi ))
-                    x = torch.stack(outputs)
-                except: raise
+                # ~~~ Just run the weight-and-bias layer using the sampled weight/bias
+                params = {}
+                if (A is not None): params["weight"] = A
+                if (b is not None): params["bias"] = b
+                x = functional_call( layer, params, x )
+                continue # ~~~ that's it for a layer like Conv2d if n==0
+            #
+            # ~~~ For non-linear layers when n>0, we fall back to looping over `functional_call`
+            try:
+                if not any(layer.named_parameters()): x = layer(x) # ~~~ this works for, like, ReLU and such
+                else: raise RuntimeError
+            except RuntimeError:
+                outputs = []
+                for weight, bias, xi in zip( A, b, x ):
+                    params = {}
+                    if (weight is not None): params["weight"] = weight
+                    if (bias is not None): params["bias"] = bias
+                    outputs.append(functional_call( layer, params, xi ))
+                x = torch.stack(outputs)
+            except:
+                raise
         return x
 
     #
