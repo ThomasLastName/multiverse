@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import torch
 from torch import nn
+from copy import deepcopy
 import platform
-import sys
 import os
 import re
 import json
@@ -622,21 +622,13 @@ def set_flat_grads(model, flat_grads):
 #
 # ~~~ Helper function which creates a new instance of the supplied sequential architeture
 def nonredundant_copy_of_module_list(module_list, sequential=False):
-    architecture = [(type(layer), layer) for layer in module_list]
     layers = []
-    for layer_type, layer in architecture:
-        if layer_type == nn.Linear:
-            #
-            # ~~~ For linear layers, create a brand new linear layer of the same size independent of the original
-            layers.append(
-                nn.Linear(
-                    layer.in_features, layer.out_features, bias=(layer.bias is not None)
-                )
-            )
-        else:
-            #
-            # ~~~ For other layers (activations, Flatten, softmax, etc.) just copy it
-            layers.append(layer)
+    for layer in module_list:
+        new_layer = deepcopy(layer)   # new object, new Parameters
+        # Important: reinitialize its parameters to avoid identical copies
+        if hasattr(new_layer, "reset_parameters"):
+            new_layer.reset_parameters()
+        layers.append(new_layer)
     return nn.Sequential(*layers) if sequential else nn.ModuleList(layers)
 
 
