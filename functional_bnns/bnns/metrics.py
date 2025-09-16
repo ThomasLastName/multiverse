@@ -256,6 +256,17 @@ def uncertainty_spread(predictions, quantile_uncertainty):
 
 
 #
+# ~~~ Measure how heterognenous the posterior predictive distribution is, i.e., how much spread we witness in the uncertainty levels for different inputs
+def uncertainty_min(predictions, quantile_uncertainty):
+    with torch.no_grad():
+        uncertainty = (
+            iqr(predictions, dim=0) if quantile_uncertainty else predictions.std(dim=0)
+        )
+        all_uncertainty_levels = uncertainty.flatten()
+        return all_uncertainty_levels.min().item()
+
+
+#
 # ~~~ Compute the interval score for all predictions "averaged over the spatial domain" (dim=1) instead of over the testing dataset (dim=0)
 def avg_interval_score_of_response_features(
     predictions, y_test, quantile_uncertainty, alpha=0.95
@@ -312,12 +323,12 @@ def energy_scores(predictions, y_test):
 def aggregate_covarge(predictions, y_test, quantile_uncertainty, alpha=0.95):
     with torch.no_grad():
         if quantile_uncertainty:
+            # fmt: off
             lo, hi = predictions.quantile(
-                q=torch.Tensor([(1 - alpha) / 2, alpha + (1 - alpha) / 2]).to(
-                    predictions.device
-                ),
-                dim=0,
-            )
+                    q   = torch.Tensor([ (1-alpha)/2, alpha+(1-alpha)/2 ]).to(predictions.device),
+                    dim = 0
+                )
+            # fmt: on
         else:
             point_estimate = predictions.mean(dim=0)
             std_of_pt_ests = predictions.std(dim=0)

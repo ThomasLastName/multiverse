@@ -586,7 +586,7 @@ while keep_training:
         hpars["METRIC_median_energy_score"] = (
             energy_scores(predictions, y_test).median().item()
         )
-        hpars["METRIC_coverage"] = aggregate_covarge(
+        hpars["METRIC_95_coverage"] = aggregate_covarge(
             predictions,
             y_test,
             quantile_uncertainty=hpars["VISUALIZE_DISTRIBUTION_USING_QUANTILES"],
@@ -608,8 +608,8 @@ while keep_training:
             )  # ~~~ i.e., diagnostics are requesed, the prediction type mathces the uncertainty type (mean and std. dev., or median and iqr)
             tag = "quantile" if use_quantiles else "pm2_std"
             (
-                hpars[f"METRIC_uncertainty_vs_accuracy_slope_{tag}"],
-                hpars[f"METRIC_uncertainty_vs_accuracy_cor_{tag}"],
+                hpars[f"METRIC_{tag}_uncertainty_vs_accuracy_slope"],
+                hpars[f"METRIC_{tag}_uncertainty_vs_accuracy_cor"],
             ) = uncertainty_vs_accuracy(
                 predictions,
                 y_test,
@@ -620,8 +620,8 @@ while keep_training:
             )
             try:
                 (
-                    hpars[f"METRIC_extrapolation_uncertainty_vs_proximity_slope_{tag}"],
-                    hpars[f"METRIC_uncertainty_vs_proximity_cor_{tag}"],
+                    hpars[f"METRIC_extrapolation_{tag}_uncertainty_vs_proximity_slope"],
+                    hpars[f"METRIC_{tag}_uncertainty_vs_proximity_cor"],
                 ) = uncertainty_vs_proximity(
                     predictions_on_extrapolary_grid,
                     use_quantiles,
@@ -632,8 +632,8 @@ while keep_training:
                     verbose=hpars["SHOW_DIAGNOSTICS"],
                 )
                 (
-                    hpars[f"METRIC_interpolation_uncertainty_vs_proximity_slope_{tag}"],
-                    hpars[f"METRIC_uncertainty_vs_proximity_cor_{tag}"],
+                    hpars[f"METRIC_interpolation_{tag}_uncertainty_vs_proximity_slope"],
+                    hpars[f"METRIC_{tag}_uncertainty_vs_proximity_cor"],
                 ) = uncertainty_vs_proximity(
                     predictions_on_interpolary_grid,
                     use_quantiles,
@@ -643,11 +643,14 @@ while keep_training:
                     title="Uncertainty vs Proximity to Data Within the Region of Interpolation",
                     verbose=hpars["SHOW_DIAGNOSTICS"],
                 )
-                hpars[f"METRIC_extrapolation_uncertainty_spread_{tag}"] = (
+                hpars[f"METRIC_extrapolation_{tag}_uncertainty_spread"] = (
                     uncertainty_spread(predictions_on_extrapolary_grid, use_quantiles)
                 )
-                hpars[f"METRIC_interpolation_uncertainty_spread_{tag}"] = (
+                hpars[f"METRIC_interpolation_{tag}_uncertainty_spread"] = (
                     uncertainty_spread(predictions_on_interpolary_grid, use_quantiles)
+                )
+                hpars[f"METRIC_interpolation_{tag}_uncertainty_min"] = (
+                    uncertainty_min(predictions, use_quantiles)
                 )
             except NameError:
                 pass  # ~~~ the user was already warned "Could import `extrapolary_grid` or `interpolary_grid` from bnns.data.{data}."
@@ -691,7 +694,7 @@ while keep_training:
             hpars["METRIC_unprocessed_max_norm_of_median"] = max_norm_of_median(
                 predictions, Y
             )
-            hpars["METRIC_unproccessed_coverage"] = aggregate_covarge(
+            hpars["METRIC_unproccessed_95_coverage"] = aggregate_covarge(
                 predictions,
                 Y,
                 quantile_uncertainty=hpars["VISUALIZE_DISTRIBUTION_USING_QUANTILES"],
