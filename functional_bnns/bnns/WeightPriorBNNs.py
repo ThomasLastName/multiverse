@@ -316,6 +316,11 @@ class IndepLocScalePriorBNN(FullSupportIndepLocScaleBNN):
                 f'Variable `prior_type` should be one of "torch.nn.init", "Xavier", or "IID", not {prior_type}.'
             )
         #
+        # ~~~ Implement prior_type=="IID"
+        if prior_type == "IID":
+            for p in self.prior_std.parameters():
+                p.data = torch.ones_like(p.data)
+        #
         # ~~~ Implement prior_type=="Xavier"
         if prior_type == "Xavier":
             for p in self.prior_std.parameters():
@@ -333,11 +338,6 @@ class IndepLocScalePriorBNN(FullSupportIndepLocScaleBNN):
                         layer.bias.data = std * torch.ones_like(layer.bias.data)
                 elif any(layer.named_parameters()):
                     raise TypeError(f"Layer {layer} appears to have more parameters than just a weight matrix and bias vector. Unfortunately, such layers are not supported at this time.")
-        #
-        # ~~~ Implement prior_type=="IID"
-        if prior_type == "IID":
-            for p in self.prior_std.parameters():
-                p.data = gain_multiplier * torch.ones_like(p.data)
         #
         # ~~~ Scale the range of output, by scaling the parameters of the final linear layer, much like the scale paramter in a GP
         for layer in reversed(self.prior_std):
