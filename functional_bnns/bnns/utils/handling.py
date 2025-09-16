@@ -624,7 +624,7 @@ def set_flat_grads(model, flat_grads):
 def nonredundant_copy_of_module_list(module_list, sequential=False):
     layers = []
     for layer in module_list:
-        new_layer = deepcopy(layer)   # new object, new Parameters
+        new_layer = deepcopy(layer)  # new object, new Parameters
         # Important: reinitialize its parameters to avoid identical copies
         if hasattr(new_layer, "reset_parameters"):
             new_layer.reset_parameters()
@@ -637,8 +637,11 @@ def nonredundant_copy_of_module_list(module_list, sequential=False):
 def is_weight_and_bias_layer(layer):
     params = dict(layer.named_parameters())
     buffers = dict(layer.named_buffers())
-    has_weight = 'weight' in params # ~~~ must have a weight parameter, e.g., to rule out ReLU layers
-    only_weight_and_bias = set(params.keys()).issubset({'weight', 'bias'}) # ~~~ only allow weight and optional bias, and nothing else
+    has_weight = (
+        "weight" in params
+    )  # ~~~ must have a weight parameter, e.g., to rule out ReLU layers
+    only_weight_and_bias = set(params.keys()).issubset(
+        {"weight", "bias"}
+    )  # ~~~ only allow weight and optional bias, and nothing else
     no_buffers = len(buffers) == 0
     return has_weight and only_weight_and_bias and no_buffers
-

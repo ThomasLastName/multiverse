@@ -20,9 +20,9 @@ from bnns.utils.handling import convert_Tensors_to_Dataset
 #
 # ~~~ Scale down the data
 scale = 12
-y_train = y_train/scale
-y_test = y_test/scale
-y_val = y_val/scale
+y_train = y_train / scale
+y_test = y_test / scale
+y_val = y_val / scale
 ground_truth = lambda x: f(x) / scale
 
 #

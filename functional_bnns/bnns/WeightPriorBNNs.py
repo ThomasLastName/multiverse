@@ -360,6 +360,7 @@ class IndepLocScalePriorBNN(FullSupportIndepLocScaleBNN):
 
     #
     # ~~~ Define how to sample from the priorly distributed outputs of the network (just replace `posterior_mean` and `posterior_std` with `prior_mean` and `prior_std` in `forward`)
+    # fmt: off
     def prior_forward(self, x, n=1):
         self.ensure_positive(forceful=True)
         if n>0: x = torch.stack(n*[x])  # ~~~ stack n copies of x for bacthed multiplication with n different samples of the parameters (a loop would be simpler but less efficient)
@@ -409,6 +410,7 @@ class IndepLocScalePriorBNN(FullSupportIndepLocScaleBNN):
             except:
                 raise
         return x
+    # fmt: on
 
 
 ### ~~~
@@ -444,7 +446,7 @@ class GaussianBNN(IndepLocScalePriorBNN):
             prior_standard_sampler=lambda *shape, **kwargs: torch.randn(
                 *shape, generator=prior_generator, **kwargs
             ),
-            check_moments = False,
+            check_moments=False,
             **kwargs,
         )
 

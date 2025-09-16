@@ -43,7 +43,7 @@ class BayesianModule(nn.Module):
         prior_M=200,
         post_M=200,
         hard_fail_if_unexpected_kwarg=True,
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
         #
@@ -56,10 +56,14 @@ class BayesianModule(nn.Module):
         self.post_M = post_M
         self.prior_SSGE = None
         self.prior_samples_batch_size = None  # ~~~ see `setup_prior_SSGE`
-        if len(kwargs)>1:
-            my_warn(f"Found the following unexpected keyword arguments:\n{fdict(kwargs)}\nUsually, this is the result of passing hyper-parameters of the wrong prior distribution, e.g., passing a keyword argument `bw` (which is for GP priors) to the `__init__` method of the class `GaussianBNN` (which is for a Gaussian prior distribution on weights). You can specify `hard_fail_if_unexpected_kwarg=False` to surpress the following error.")
+        if len(kwargs) > 1:
+            my_warn(
+                f"Found the following unexpected keyword arguments:\n{fdict(kwargs)}\nUsually, this is the result of passing hyper-parameters of the wrong prior distribution, e.g., passing a keyword argument `bw` (which is for GP priors) to the `__init__` method of the class `GaussianBNN` (which is for a Gaussian prior distribution on weights). You can specify `hard_fail_if_unexpected_kwarg=False` to surpress the following error."
+            )
             if hard_fail_if_unexpected_kwarg:
-                raise TypeError(f"BaysianModule.__init__() got {len(kwargs)} unexpected keyword arguments (see the above warning message).")
+                raise TypeError(
+                    f"BaysianModule.__init__() got {len(kwargs)} unexpected keyword arguments (see the above warning message)."
+                )
 
     #
     # ~~~ Resample from whatever is source is used to seed the samples drawn from the variational distribution
@@ -270,7 +274,7 @@ class IndepLocScaleBNN(BayesianModule):
         posterior_standard_log_density=None,  # ~~~ should be a callable that accepts generic torch.tensors as input, but ideally also works on numpy arrays (otherwise `check_moments` will fail), e.g. `lambda z: -z**2/2 - math.log( math.sqrt(2*torch.pi) )` for Gaussian
         posterior_standard_sampler=None,  # ~~~ should be a callable that returns a tensor of random samples from the distribution with mean 0 and variance 1, e.g., `torch.randn` for Gaussian
         check_moments=False,  # ~~~ if true, test that `\int z*posterior_standard_log_density(z) \dee z = 0` and `\int z**2*posterior_standard_log_density(z) \dee z = 1`
-        **SSGE_hyperparameters
+        **SSGE_hyperparameters,
     ):
         #
         # ~~~ Means and standard deviations for each network parameter
@@ -341,7 +345,9 @@ class IndepLocScaleBNN(BayesianModule):
             )
             check_moments = False
         self.posterior_standard_log_density = posterior_standard_log_density
-        self.posterior_log_density = LocationScaleLogDensity( posterior_standard_log_density, check_moments=check_moments )
+        self.posterior_log_density = LocationScaleLogDensity(
+            posterior_standard_log_density, check_moments=check_moments
+        )
         self.posterior_standard_sampler = posterior_standard_sampler
         self.sample_from_standard_posterior(counter_on=False)
         #
@@ -543,6 +549,7 @@ class IndepLocScaleBNN(BayesianModule):
             except:
                 raise
         return x
+    # fmt: on
 
     #
     # ~~~ Compute ln( f_{Y \mid X,W}(F_\theta(z),x_train,y_train) ) at a point z sampled from the standard MVN distribution ( F_\theta(z)=\mu+\sigma*z are the appropriately distributed network weights; \theta=(\mu,\sigma) )
@@ -593,7 +600,10 @@ class IndepLocScaleBNN(BayesianModule):
         sigma_post = flatten_parameters(self.posterior_std)
         z_sampled = flatten_parameters(self.realized_standard_posterior_sample)
         return (
-            self.posterior_standard_log_density(z_sampled) - torch.log(sigma_post) # ~~~ note: self.posterior_standard_log_density(z_sampled)==self.posterior_log_density(mean=μ, sigma=σ, where=μ+σ*z_sampled); see https://github.com/ThomasLastName/multiverse/commit/fddebc8dba0dc866265162460d642823b18a5cf5
+            self.posterior_standard_log_density(z_sampled)
+            - torch.log(
+                sigma_post
+            )  # ~~~ note: self.posterior_standard_log_density(z_sampled)==self.posterior_log_density(mean=μ, sigma=σ, where=μ+σ*z_sampled); see https://github.com/ThomasLastName/multiverse/commit/fddebc8dba0dc866265162460d642823b18a5cf5
         ).sum()
 
     # ~~~
@@ -792,4 +802,3 @@ class FullSupportIndepLocScaleBNN(IndepLocScaleBNN):
             raise ValueError(
                 f'Unrecognized method="{method}". Currently, only method="hard", method="Blundell", and "method=torchbnn" are supported.'
             )
-
