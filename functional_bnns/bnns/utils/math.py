@@ -20,7 +20,7 @@ from bnns.utils.handling import my_warn
 #
 # ~~~ Propose a good "prior" standard deviation for a parameter group
 def std_per_param(p):
-    if len(p.shape) == 2:
+    if len(p.shape) >= 2:
         #
         # ~~~ For weight matrices, use the standard deviation of pytorch's `xavier normal` initialization (https://pytorch.org/docs/stable/_modules/torch/nn/init.html#xavier_normal_)
         fan_in, fan_out = _calculate_fan_in_and_fan_out(p)
@@ -31,19 +31,32 @@ def std_per_param(p):
         # ~~~ For bias vectors, just use variance==1/len(p) because `_calculate_fan_in_and_fan_out` throws a ValueError(""Fan in and fan out can not be computed for tensor with fewer than 2 dimensions"")
         numb_pars = len(p)
         std = 1 / math.sqrt(numb_pars)
+
     return torch.tensor(std, device=p.device, dtype=p.dtype)
 
 
 #
+# ~~~ Propose a good "prior" standard deviation for a parameter group
+def empirical_std_per_layer(layer, K=100):
+    sampled_weights = []
+    for _ in range(K):
+        layer.reset_parameters()
+        sampled_weights.append(layer.weight.data.clone())
+    return torch.stack(sampled_weights).std()
+
+
+#
 # ~~~ Propose good a "prior" standard deviation for weights and biases of a linear layer; mimics pytorch's default initialization, but using a normal instead of uniform distribution (https://discuss.pytorch.org/t/how-are-layer-weights-and-biases-initialized-by-default/13073/2)
-def std_per_layer(linear_layer):
-    assert isinstance(linear_layer, nn.Linear)
-    bound = 1 / math.sqrt(
-        linear_layer.weight.size(1)
-    )  # ~~~ see the link above (https://discuss.pytorch.org/t/how-are-layer-weights-and-biases-initialized-by-default/13073/2)
-    std = bound / math.sqrt(
-        3
-    )  # ~~~ our reference distribution `uniform_(-bound,bound)` from the deafult pytorch weight initialization has standard deviation bound/sqrt(3), the value of which we copy
+def std_per_layer(layer):
+    if isinstance(layer, nn.Linear):
+        bound = 1 / math.sqrt(
+            layer.weight.size(1)
+        )  # ~~~ see the link above (https://discuss.pytorch.org/t/how-are-layer-weights-and-biases-initialized-by-default/13073/2)
+        std = bound / math.sqrt(
+            3
+        )  # ~~~ our reference distribution `uniform_(-bound,bound)` from the deafult pytorch weight initialization has standard deviation bound/sqrt(3), the value of which we copy
+    else:
+        std = empirical_std_per_layer(layer)
     return std
 
 

@@ -316,21 +316,23 @@ class IndepLocScalePriorBNN(FullSupportIndepLocScaleBNN):
                 f'Variable `prior_type` should be one of "torch.nn.init", "Xavier", or "IID", not {prior_type}.'
             )
         #
+        # ~~~ Implement prior_type=="Xavier"
+        if prior_type == "Xavier":
+            for p in self.prior_std.parameters():
+                p.data = gain_multiplier * std_per_param(p) * torch.ones_like(p.data)
+        #
         # ~~~ Implement prior_type=="torch.nn.init"
         if (
             prior_type == "torch.nn.init"
         ):  # ~~~ use the stanard deviation of the distribution of pytorch's default initialization
             for layer in self.prior_std:
-                if isinstance(layer, nn.Linear):
+                if is_weight_and_bias_layer(layer):
                     std = gain_multiplier * std_per_layer(layer)
                     layer.weight.data = std * torch.ones_like(layer.weight.data)
                     if layer.bias is not None:
                         layer.bias.data = std * torch.ones_like(layer.bias.data)
-        #
-        # ~~~ Implement prior_type=="Xavier"
-        if prior_type == "Xavier":
-            for p in self.prior_std.parameters():
-                p.data = gain_multiplier * std_per_param(p) * torch.ones_like(p.data)
+                elif any(layer.named_parameters()):
+                    raise TypeError(f"Layer {layer} appears to have more parameters than just a weight matrix and bias vector. Unfortunately, such layers are not supported at this time.")
         #
         # ~~~ Implement prior_type=="IID"
         if prior_type == "IID":
