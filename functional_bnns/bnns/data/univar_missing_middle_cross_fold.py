@@ -8,8 +8,6 @@ from bnns.data.univar_missing_middle import (
     y_test,
     n_train,
     n_val,
-)
-from bnns.data.univar_missing_middle import (
     f,
     grid,
     interpolary_grid,

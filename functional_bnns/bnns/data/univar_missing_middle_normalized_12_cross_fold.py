@@ -5,8 +5,6 @@ from bnns.data.univar_missing_middle_cross_fold import (
     y_test,
     x_val,
     y_val,
-)
-from bnns.data.univar_missing_middle import (
     f,
     grid,
     interpolary_grid,
@@ -20,9 +18,9 @@ from bnns.utils.handling import convert_Tensors_to_Dataset
 #
 # ~~~ Scale down the data
 scale = 12
-y_train /= scale
-y_test /= scale
-y_val /= scale
+y_train = y_train/scale
+y_test = y_test/scale
+y_val = y_val/scale
 ground_truth = lambda x: f(x) / scale
 
 #
