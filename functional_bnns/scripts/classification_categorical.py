@@ -79,8 +79,8 @@ def evaluate_accuracy(model, dataloader, device, n_samples=30):
 vi, lik, kl, acc = [], [], [], []
 bnn = GaussianBNN(*architecture).to(device)
 # bnn = GaussianBNN(*architecture, projection_method="torchbnn").to(device)
-optimizer = torch.optim.Adam(bnn.parameters(), lr=0.001)  # start a bit higher
-kl_weight = 0.01
+optimizer = torch.optim.Adam(bnn.parameters(), lr=0.005)  # start a bit higher
+kl_weight = 0.0001
 
 for e in range(4):
     for (X, y) in tqdm(train_loader, desc=f"epoch {e+1}"):
