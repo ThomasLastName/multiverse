@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 from torch import nn
 from copy import deepcopy
+from subprocess import run
 import platform
 import os
 import re
@@ -164,7 +165,7 @@ def filter_by_attributes(dataframe, **kwargs):
 
 #
 # ~~~ Load a trained BNN, based on the string `architecture` that points to the file where the model is defined
-def load_trained_bnn(architecture: str, model: str, state_dict_path):
+def load_trained_bnn(architecture: str, model: str, state_dict_path, results_series=None):
     #
     # ~~~ Load the untrained model
     import bnns
@@ -173,7 +174,18 @@ def load_trained_bnn(architecture: str, model: str, state_dict_path):
         f"bnns.models.{architecture}"
     ).NN  # ~~~ e.g., architecture=="my_model" points to a file `my_model.py` in the `models` folder
     model = getattr(bnns, model)(*architecture)
-    model.load_state_dict(torch.load(state_dict_path))
+    try: model.load_state_dict(torch.load(state_dict_path))
+    except FileNotFoundError:
+        if results_series is None: raise
+        hpars = results_series.to_dict()
+        hpars["EARLY_STOPPING"] = False
+        hpars["N_EPOCHS"] = hpars["epochs_completed"]
+        hpars["SHOW_PLOT"] = True
+        hpars["DEVICE"] = "cuda" if torch.cuda.is_available() else "cpu"
+        json_path = dict_to_json(hpars, "temp.json", verbose=False)
+        trainer_path = os.path.join(os.path.abspath(find_train_bnn()), "train_bnn.py")
+        run(["python", trainer_path, "--json", json_path], check=True)
+    except: raise
     return model
 
 
@@ -210,14 +222,15 @@ def load_trained_nn(architecture: str, state_dict_path):
 def load_trained_model_from_dataframe(results_dataframe, i):
     #
     # ~~~ Load the untrained model
-    architecture = results_dataframe.iloc[i].ARCHITECTURE
-    state_dict_path = results_dataframe.iloc[i].STATE_DICT_PATH
+    results_series = results_dataframe.iloc[i]
+    architecture = results_series.ARCHITECTURE
+    state_dict_path = results_series.STATE_DICT_PATH
     try:
-        model = results_dataframe.iloc[i].MODEL
-        return load_trained_bnn(architecture, model, state_dict_path)
+        model = results_series.MODEL
+        return load_trained_bnn(architecture, model, state_dict_path, results_series=results_series)
     except:
         try:
-            n_models = results_dataframe.iloc[i].N_MODELS
+            n_models = results_series.N_MODELS
             return load_trained_ensemble(architecture, n_models, state_dict_path)
         except:
             return load_trained_nn(architecture, state_dict_path)
@@ -417,6 +430,7 @@ def dict_to_json(dict, path_including_file_extension, override=False, verbose=Tr
         print(
             f"    Created {path_including_file_extension} at {os.path.abspath(path_including_file_extension)}:\n"
         )
+    return path_including_file_extension
 
 
 #
@@ -645,3 +659,21 @@ def is_weight_and_bias_layer(layer):
     )  # ~~~ only allow weight and optional bias, and nothing else
     no_buffers = len(buffers) == 0
     return has_weight and only_weight_and_bias and no_buffers
+
+
+#
+# ~~~ Start from the current working directory
+def peel_back_cwd(stopping_lambda):
+    path = os.getcwd()
+    while not stopping_lambda(path):
+        path, dirname = os.path.split(path)
+        if len(dirname)==0:
+            raise OSError(f"The stopping criterion was not met by any ancestor of the working directory {os.getcwd()}")
+    return path
+
+
+#
+# ~~~ Start from the current working directory
+def find_train_bnn():
+    contains_train_bnn = lambda path: os.path.exists(os.path.join(path,"train_bnn.py"))
+    return peel_back_cwd( contains_train_bnn )
