@@ -182,9 +182,10 @@ def load_trained_bnn(architecture: str, model: str, state_dict_path, results_ser
         hpars["N_EPOCHS"] = hpars["epochs_completed"]
         hpars["SHOW_PLOT"] = True
         hpars["DEVICE"] = "cuda" if torch.cuda.is_available() else "cpu"
-        json_path = dict_to_json(hpars, "temp.json", verbose=False)
+        json_path = process_for_saving(dict_to_json(hpars, "temp.json", verbose=False))
         trainer_path = os.path.join(os.path.abspath(find_train_bnn()), "train_bnn.py")
         run(["python", trainer_path, "--json", json_path], check=True)
+        for f in glob("temp*.json"): os.remove(f)
     except: raise
     return model
 
@@ -430,7 +431,6 @@ def dict_to_json(dict, path_including_file_extension, override=False, verbose=Tr
         print(
             f"    Created {path_including_file_extension} at {os.path.abspath(path_including_file_extension)}:\n"
         )
-    return path_including_file_extension
 
 
 #
