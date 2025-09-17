@@ -10,7 +10,7 @@ folder_name = os.path.join(
 ### ~~~
 
 N_HYPERPAR_SAMPLES = 10
-SEED = [2021, 2022, 2023, 2024, 2025, 2026, 2027]  # ~~~ years of my PhD program ;)
+SEED = [2021, 2022, 2023, 2024, 2025, 2026, 2027]  # ~~~ years of my PhD program...
 
 #
 # ~~~ Train/val split
