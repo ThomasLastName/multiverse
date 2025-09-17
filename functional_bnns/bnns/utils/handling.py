@@ -256,17 +256,18 @@ def generate_json_filename(verbose=True, message=None):
     #
     # ~~~ Craft a message to print
     if verbose:
-        if time.hour > 12:
-            hour = time.hour - 12
-            suffix = "pm"
-        else:
+        if time.hour == 0:
+            hour = 12
+            suffix = "am"
+        elif time.hour < 12:
             hour = time.hour
             suffix = "am"
-        base_message = (
-            bcolors.OKBLUE
-            + f"    Generating file name {file_name} at {hour}:{time.minute:02d}{suffix} CST"
-            + bcolors.HEADER
-        )
+        elif time.hour == 12:
+            hour = 12
+            suffix = "pm"
+        else:  # time.hour > 12
+            hour = time.hour - 12
+            suffix = "pm"
         if message is not None:
             if not message[0] == " ":
                 message = " " + message
