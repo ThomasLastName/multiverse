@@ -268,6 +268,11 @@ def generate_json_filename(verbose=True, message=None):
         else:  # time.hour > 12
             hour = time.hour - 12
             suffix = "pm"
+        base_message = (
+            bcolors.OKBLUE
+            + f"    Generating file name {file_name} at {hour}:{time.minute:02d}{suffix} CST"
+            + bcolors.HEADER
+        )
         if message is not None:
             if not message[0] == " ":
                 message = " " + message
