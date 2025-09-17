@@ -18,13 +18,13 @@ VARIATIONAL_FAMILY = ["Normal", "Uniform"]
 
 #
 # ~~~ Likelihood
-LIKELIHOOD_STD = [0.1, 0.01, 0.001]
+LIKELIHOOD_STD = [0.02, 0.007, 0.0001]
 
 #
 # ~~~ Prior
 MODEL = [
-    "MixtureWeightPrior2015BNN",  # ~~~ mixture prior proposed in Blundell et al. 2015 (https://arxiv.org/abs/1505.05424)
-    "FullSupportLocScaleBNN",  # ~~~ fully factorized Gaussian prior which as in torchbnn
+    "MixturePrior2015BNN",   # ~~~ mixture prior proposed in Blundell et al. 2015 (https://arxiv.org/abs/1505.05424)
+    "IndepLocScalePriorBNN", # ~~~ (more general than) fully factorized Gaussian prior as in torchbnn
 ]
 PI = [1 / 4, 2 / 4, 3 / 4]  # ~~~ hyper-parameter of the mixture prior
 SIGMA1 = [exp(-0), exp(-1), exp(-2)]  # ~~~ hyper-parameter of the mixture prior
@@ -52,5 +52,5 @@ PRIOR_J = [100, 500]
 POST_J = [25, 50]
 PRIOR_ETA = [0.001, 0.1]
 POST_ETA = [0.001, 0.1]
-PRIOR_M = [500, 1500]
-POST_M = [50, 200]
+PRIOR_M = [100, 400]
+POST_M = [100, 400]
