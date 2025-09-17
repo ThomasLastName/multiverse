@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -8,7 +9,6 @@ from bnns.experiments.paper.univar.ensemble.frequentist import (
     folder_name,
     DATA,
     ARCHITECTURE,
-    LR,
 )
 
 
@@ -56,6 +56,8 @@ else:
         f"The hyperparameters specified in {folder_dir} do not match their expected lengths"
     )
 
+assert len(ARCHITECTURE) * len(DATA) == len(results[["ARCHITECTURE", "DATA"]].drop_duplicates())
+
 
 ### ~~~
 ## ~~~ For each width, from the 4 diffent depths tested with that width, choose the one that has the smallest median validation error, as well as the one that has the smallest validation error overall
@@ -90,13 +92,30 @@ for w in widths:
 assert len(set(WL)) == len(WL) == 8, f"Failed to identify 8 different models"
 BEST_8_ARCHITECTURES = [f"univar_NN.univar_NN_{'_'.join(l*[str(w)])}" for (w, l) in WL]
 
-for i in range(len(results)):
-    print("")
-    print(f"    epochs completed: {results.epochs_completed.iloc[i]}")
-    print(f"    width x depth: {results.width.iloc[i]} x {results.depth.iloc[i]}")
-    print(f"    mse: {results.METRIC_rmse_of_median.iloc[i]}")
-    plot_trained_model_from_dataframe(
-        results,
-        i,
-        title=f"Model {i}/{len(results)}... epochs: {results.epochs_completed.iloc[i]}, width x depth: {results.width.iloc[i]} x {results.depth.iloc[i]}, mse: {results.METRIC_rmse_of_median.iloc[i]:.2f}",
-    )
+
+### ~~~
+## ~~~ Diagnostics
+### ~~~
+
+def plot(i,title=None):
+    return plot_trained_model_from_dataframe( results, i, title=f"Model {i}/{len(results)}" if (title is None) else title )
+
+plot( results.METRIC_rmse_of_mean.argmin(), title="Model with Smallest Validation Loss" )
+
+
+#
+# ~~~ Check for positive correlations
+cor_cols = [ _ for _ in results.columns if "cor" in _ ]
+min_corr = results[cor_cols].min(axis=1)
+plot( min_corr.argmax(), title="Model with Best Min. Corr." )
+plot( min_corr.argmin(), title="Model with Worst Min. Corr." )
+# for i in np.argsort(min_corr.values):
+#     plot(i)
+
+# for i in range(len(results)):
+#     print("")
+#     print(f"    epochs completed: {results.epochs_completed.iloc[i]}")
+#     print(f"    width x depth: {results.width.iloc[i]} x {results.depth.iloc[i]}")
+#     print(f"    mse: {results.METRIC_rmse_of_median.iloc[i]}")
+#     print(f"    {results.DATA.iloc[i]}")
+#     model, x_train_cpu, y_train_cpu, grid, green_curve = plot(i)
