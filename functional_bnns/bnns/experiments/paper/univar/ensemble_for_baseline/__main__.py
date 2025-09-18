@@ -2,7 +2,7 @@ import os
 import random
 import torch
 from bnns.utils.handling import dict_to_json, my_warn
-from bnns.experiments.paper.univar.ensemble.frequentist import (
+from bnns.experiments.paper.univar.ensemble_for_baseline import (
     folder_name,
     DATA,
     ARCHITECTURE,
