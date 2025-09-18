@@ -8,10 +8,10 @@ folder_name = os.path.join(
 #
 # ~~~ Architecture
 ARCHITECTURE = [  # ~~~ == the list `BEST_4_ARCHITECTURES` defined in univar/dropout/process_results.py
-    "univar_NN.univar_NN_30_30",
-    "univar_NN.univar_NN_100_100",
-    "univar_NN.univar_NN_250_250",
-    "univar_NN.univar_NN_500_500_500_500",
+    "univar_NN.univar_NN_30_30_30_30",
+    "univar_NN.univar_NN_100",
+    "univar_NN.univar_NN_250",
+    "univar_NN.univar_NN_500_500"
 ]
 VARIATIONAL_FAMILY = ["Normal", "Uniform"]
 

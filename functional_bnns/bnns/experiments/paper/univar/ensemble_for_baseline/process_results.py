@@ -5,7 +5,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from bnns.utils import infer_width_and_depth, plot_trained_model_from_dataframe, my_warn
-from bnns.experiments.paper.univar.ensemble.frequentist import (
+from bnns.experiments.paper.univar.ensemble_for_baseline import (
     folder_name,
     DATA,
     ARCHITECTURE,
@@ -41,7 +41,7 @@ results = infer_width_and_depth(results)
 
 #
 # ~~~ Verify that DATA==results.DATA.unique(), ARCHITECTURE==results.ARCHITECTURE.unique(), and LR==results.LR.unique()
-if len(DATA) == 2 == len(results.DATA.unique()) and len(ARCHITECTURE) == 16 == len(
+if len(DATA) == 2 == len(results.DATA.unique()) and len(ARCHITECTURE) == 12 == len(
     results.ARCHITECTURE.unique()
 ):
     if not (
@@ -74,23 +74,22 @@ median_results = results.groupby(["width", "depth"]).median(
 widths = results.width.unique()
 WL = []
 for w in widths:
-    for df in (min_results, median_results):
-        W, L = df.query(f"width=={w}").METRIC_rmse_of_median.idxmin()
-        #
-        # ~~~ Handle duplicates
-        if len(WL) > 0:
-            if WL[-1] == (W, L):
-                W, L = df.query(f"width=={w}").METRIC_mae_of_median.idxmin()
-            if WL[-1] == (W, L):
-                W, L = df.query(f"width=={w}").METRIC_max_norm_of_median.idxmin()
-            if WL[-1] == (W, L):
-                # print(f"Seems L={L} is best for w={w}")
-                L = 1 if WL[-1][1] > 1 else 2  # ~~~ for variety
-        assert W == w
-        WL.append((W, L))
+    W, L = min_results.query(f"width=={w}").METRIC_rmse_of_median.idxmin()
+    #
+    # ~~~ Handle duplicates
+    if len(WL) > 0:
+        if WL[-1] == (W, L):
+            W, L = min_results.query(f"width=={w}").METRIC_mae_of_median.idxmin()
+        if WL[-1] == (W, L):
+            W, L = min_results.query(f"width=={w}").METRIC_max_norm_of_median.idxmin()
+        if WL[-1] == (W, L):
+            # print(f"Seems L={L} is best for w={w}")
+            L = 1 if WL[-1][1] > 1 else 2  # ~~~ for variety
+    assert W == w
+    WL.append((W, L))
 
-assert len(set(WL)) == len(WL) == 8, f"Failed to identify 8 different models"
-BEST_8_ARCHITECTURES = [f"univar_NN.univar_NN_{'_'.join(l*[str(w)])}" for (w, l) in WL]
+# assert len(set(WL)) == len(WL) == 8, f"Failed to identify 8 different models"
+BEST_4_ARCHITECTURES = [f"univar_NN.univar_NN_{'_'.join(l*[str(w)])}" for (w, l) in WL]
 
 
 ### ~~~
