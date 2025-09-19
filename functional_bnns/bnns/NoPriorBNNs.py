@@ -472,7 +472,7 @@ class IndepLocScaleBNN(BayesianModule):
         if (
             type == "torch.nn.init"
         ):  # ~~~ use the stanard deviation of the distribution of pytorch's default initialization
-            for layer in self.prior_std:
+            for layer in self.posterior_std:
                 if isinstance(layer, nn.Linear):
                     std = gain_multiplier * std_per_layer(layer)
                     layer.weight.data = std * torch.ones_like(layer.weight.data)
@@ -481,16 +481,16 @@ class IndepLocScaleBNN(BayesianModule):
         #
         # ~~~ Implement type=="Xavier"
         if type == "Xavier":
-            for p in self.prior_std.parameters():
+            for p in self.posterior_std.parameters():
                 p.data = gain_multiplier * std_per_param(p) * torch.ones_like(p.data)
         #
         # ~~~ Implement type=="IID"
         if type == "IID":
-            for p in self.prior_std.parameters():
+            for p in self.posterior_std.parameters():
                 p.data = gain_multiplier * torch.ones_like(p.data)
         #
         # ~~~ Scale the range of output, by scaling the parameters of the final linear layer, much like the scale paramter in a GP
-        for layer in reversed(self.prior_std):
+        for layer in reversed(self.posterior_std):
             if isinstance(layer, nn.Linear):
                 layer.weight.data *= scale
                 if layer.bias is not None:

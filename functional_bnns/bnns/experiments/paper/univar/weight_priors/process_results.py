@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from importlib import import_module
-from bnns.experiments.paper.univar.weight_training_vs_functional_training import (
+from bnns.experiments.paper.univar.weight_priors import (
     folder_name,
 )
 from bnns.utils import (

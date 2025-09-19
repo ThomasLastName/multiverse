@@ -1,8 +1,8 @@
 import os
 import random
 import torch
-from bnns.utils.handling import dict_to_json, my_warn
-from bnns.experiments.paper.univar.weight_training_vs_functional_training import (
+from bnns.utils.handling import dict_to_json, my_warn, fdict
+from bnns.experiments.paper.univar.weight_priors import (
     folder_name,
     ARCHITECTURE,
     VARIATIONAL_FAMILY,
@@ -81,10 +81,10 @@ hyperparameter_template = {
     "N_MC_SAMPLES": 1,
     "WEIGHTING": "standard",
     "DEFAULT_INITIALIZATION": EXPLORE_DURING_TUNING,
-    "EXTRA_STD": False,
+    "EXTRA_STD": True,
     "N_POSTERIOR_SAMPLES_EVALUATION": 100,
     "N_POSTERIOR_SAMPLES": 50,
-    "SHOW_DIAGNOSTICS": True,
+    "SHOW_DIAGNOSTICS": False,
     #
     # Training hyper-parameters that are specific to BBB
     "EXACT_WEIGHT_KL": False,
@@ -123,28 +123,30 @@ hyperparameter_template = {
 ## ~~~ Randomized less important params
 ### ~~~
 
-def randomly_sample_less_important_hyperparameters(config, model):
+def randomly_sample_less_important_hyperparameters(config):
     #
     # ~~~ Misc.
     projection_method = random.choice(PROJECTION_METHOD)
     config["PROJECTION_METHOD"] = projection_method
     config["DEFAULT_INITIALIZATION"] = random.choice(
-        DEFAULT_INITIALIZATION if projection_method.uppder() == "HARD" else DEFAULT_INITIALIZATION[1:]
+        DEFAULT_INITIALIZATION if projection_method.upper() == "HARD" else DEFAULT_INITIALIZATION[1:]
     )
     config["VARIATIONAL_FAMILY"] = random.choice(VARIATIONAL_FAMILY)
     #
     # ~~~ Prior hyperparameters
-    if model == "MixturePrior2015BNN":
+    if config["MODEL"] == "MixturePrior2015BNN":
         config["PRIOR_HYPERPARAMETERS"] = {
             "pi": random.choice(PI),
             "sigma1": random.choice(SIGMA1),
             "sigma2": random.choice(SIGMA2),
         }
-    else:
+    elif config["MODEL"] == "IndepLocScalePriorBNN":
         config["PRIOR_HYPERPARAMETERS"] = {
             "prior_type": random.choice(PRIOR_TYPE),
             "scale": random.choice(SCALE),
         }
+    else:
+        raise ValueError(f"Unrecognized model: '{config['MODEL']}' in\n{fdict(config)}\n")
     #
     # ~~~ fBNN hyperparameters
     n_meas = random.choice(N_MEAS)
@@ -178,12 +180,12 @@ for lr in LR:
     for architecture in ARCHITECTURE:
         for model in MODEL:  # ~~~ i.e., prior
             for likelihood_std in LIKELIHOOD_STD:
+                hyperparameter_template["LR"] = lr
+                hyperparameter_template["ARCHITECTURE"] = architecture
+                hyperparameter_template["MODEL"] = model
+                hyperparameter_template["LIKELIHOOD_STD"] = likelihood_std
                 hyperparameter_template = randomly_sample_less_important_hyperparameters(hyperparameter_template)
                 for functional in FUNCTIONAL:
-                    hyperparameter_template["LR"] = lr
-                    hyperparameter_template["ARCHITECTURE"] = architecture
-                    hyperparameter_template["MODEL"] = model
-                    hyperparameter_template["LIKELIHOOD_STD"] = likelihood_std
                     hyperparameter_template["FUNCTIONAL"] = functional
                     #
                     # ~~~ Save the hyperparameters to a .json file

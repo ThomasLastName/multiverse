@@ -31,7 +31,7 @@ SIGMA1 = [exp(-0), exp(-1), exp(-2)]  # ~~~ hyper-parameter of the mixture prior
 SIGMA2 = [exp(-6), exp(-7), exp(-8)]  # ~~~ hyper-parameter of the mixture prior
 PRIOR_TYPE = [
     "torch.nn.init",
-    "Tom",
+    "Xavier",
     "IID",
 ]  # ~~~ hyper-parameter of the Gaussian prior
 SCALE = [0.25, 1, 4]  # ~~~ hyper-parameter of the Gaussian prior
@@ -41,7 +41,7 @@ SCALE = [0.25, 1, 4]  # ~~~ hyper-parameter of the Gaussian prior
 LR = [0.001, 0.0001]
 FUNCTIONAL = [True, False]
 PROJECTION_METHOD = ["HARD", "Blundell", "torchbnn"]
-DEFAULT_INITIALIZATION = [None, "new", "old"]
+DEFAULT_INITIALIZATION = [None, {"type":"Xavier"}, {"type":"torch.nn.init"}]
 MEASUREMENT_SET_SAMPLER = [
     "random_points_only",
     "data_only",
