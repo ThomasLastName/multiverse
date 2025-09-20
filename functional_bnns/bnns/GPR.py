@@ -6,7 +6,7 @@ from bnns.utils.handling import my_warn
 
 #
 # ~~~ Convert a 1D tensor to a 2D column tensor, but leave every other tensor as is
-vertical = lambda x: x.unsqueeze(1) if x.dim() == 1 else x
+vertical = lambda x: x.unsqueeze(1) if x.dim() == 1 else x.reshape(x.shape[0], -1)
 
 #
 # ~~~ Solve Ax=b for x when A is lower-triangular

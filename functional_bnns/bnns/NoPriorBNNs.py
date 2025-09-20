@@ -713,7 +713,7 @@ class IndepLocScaleBNN(BayesianModule):
         # ~~~ Attempt to assess validity of this default implementaiton
         if not isinstance(self.posterior_mean[0], nn.Linear):
             my_warn(
-                "Because the first model layer is not a linear layer, the default implementation of `resample_measurement_set` may fail. If so (or to avoid this warning message), please sub-class the model you wish to use and implement resample_measurement_set() for the sub-class."
+                "Because the first model layer is not a linear layer, the default implementation of `resample_measurement_set` may fail. If so (or to avoid this warning message), please sub-class the model you wish to use and implement resample_measurement_set() for the sub-class. As a hacky workaround, try replacing a line of code like `kl_div = bnn.functional_kl()` in your training log with the two-liner: \n\n\tbnn.measurement_set = current_batch_of_data\n\tkl_div = bnn.functional_kl(resample_measurement_set=False)\n\nwhich should still give fair results if everything else is done correctly, although this hack may under-penalize the prior."
             )
         if (
             len(self.first_moments_of_input_batches) == after_how_many_batches_to_warn
