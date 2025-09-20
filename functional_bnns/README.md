@@ -1,7 +1,5 @@
 # Summary
 
-**IMPORTANT: At this time, the package is still in development, and is not yet ready for use by a general audience.**
-
 ## Main Features
 
 This package fulfills a need for reliable, modular, general, and efficient open source implementations of variational Bayesian neural networks (BNNs).
@@ -73,6 +71,34 @@ Consequently, this package, also, serves to test whether or not BBB deserves its
 So that is _why_ this package provides implementations of training methods other than BBB.
 At the same time, modularizing the code and ensuring its flexibility became a necessity once we ramped up the variety of different architectures and priors we sought to test; that's _why_ this package provides a flexible, canonical framework for custom user-defined BNNs.
 Finally, since the original purpose of this package was to test rigorously which type of prior distribution gives the most desirable outcomes, of course a testing pipeline was necessary, as was a bunch of hyper-parameter tuning; that's _why_ this package provides a minimalist infrastructure for hyper-parameter tuning and model benchmarking.
+
+
+## Intended Use Case
+
+This package is intended for neural networks that are good old super-positions of linear layers and activation layers.
+Most (though not all) classes allow any trainable layer as long as its only parameters are called `weight` and `bias`.
+However, certain very important sub-routines are optimized for linear layers and will be far less efficient for, e.g., `nn.Conv2d` layers (see **Missing Features**).
+Moreover, non-sequential architectures are not supported out of the box, although much of the machinery built up in this package for functional training could be repurposed for such architectures by sub-classing the most general class `BayesianModule`.
+
+With all of that being said, if your neural network architecture looks at all like
+
+```
+architecture = nn.Sequential(
+    nn.Linear( in_dim, w1 ),
+    activation(),
+    # and so on, back and forth between linear and activation layers
+)
+```
+then this package should work _extremely_ well for you. In the opposite extreme, if your architecture isn't sequential (e.g., includes skip connections), then you'll need to implement a lot of stuff youtself as a custom sub-class of `BayesianModule`. In the intermediate scenario that your architecture _is_ sequential but there's a convolutional layer in there, the code will just be a little slower and certain sub-classes in this package will tell you the architecture isn't supported: TODO list which ones
+
+
+## Missing Features
+
+ - **Non-Sequential Architectures:** Just like when using `PyTorch`, completely general architectures are *not* supported out of the box. In `PyTorch`, you would normally need to sub-class `nn.Module` and define the forward method for your architecture. In this package, you need to sub-class `bnns.BayesianModule` and define the `forward` method, which is equivalent to specifying the variational distribution. What's more, you need to specify a prior distribution for your custom architecture, meaning that, in addition to the `forward` method (which generates samples from the variational distribution), you also should specify the `prior_forward` method (which generates samples from the prior distribution), which the provided method `functional_kl` calls under the hood. Because it is not possible to forsee arbitrary user-defined architectures, this is essentially impossible to support, as evidenced by the fact that `PyTroch`, also, forces you to define custom architectures by creating a user-defined sub-class.
+ - **Likelihoods for Classification:** Although this would be very easy to support out of the box, we have not done so and likely will not. I would just add an argument `type="Gaussian"` to the `estimate_expected_log_likelihood` method of the second-most general class in the package: `IndepLocScaleBNN`. A contribution on this front would be greatly appreciated.
+ - **Trainable Layers with More Parameters than Simply Weight and Bias:** If any layer has named parameters besides `weight` and `bias`, the second-most general class in the package `IndepLocScaleBNN` will throw an error. This would need to be implemented by the user as a direct sub-class of the master class `BayesianModule`. For instance, this means that transformers are not at all supported out of the box.
+ - **More Efficient Implementaiton of Non-Linear Traininable Layers:** This is probably the most egregious missing feature, at the moment. If your architecture has a `Conv2d` layer, or other trainable layer that isn't `nn.Linear`, then the code will be somewhat slow, and few options will not be supported, at all.
+
 
 ---
 
