@@ -1,7 +1,9 @@
+import math
 import numpy as np
 import pandas as pd
 import torch
 from torch import nn
+from statistics import mean as avg
 from copy import deepcopy
 from subprocess import run
 import platform
@@ -42,7 +44,7 @@ def convert_to_list_and_check_items(x, classes, other_requirement=lambda *args: 
     #
     # ~~~ Verify the type of each item in the list
     for item in X:
-        assert isinstance(item, classes)
+        assert isinstance(item, classes), f"Item {item} was expected to be one of the following types: {classes}"
         assert other_requirement(item), "The user supplied check was not satisfied."
     #
     # ~~~ Return the list whose items all meet the type and other requirements
@@ -99,6 +101,12 @@ class EarlyStopper:
 #
 # ~~~ Load all the .json files in a directory to data frame
 def load_filtered_json_files(directory, verbose=True):
+    # fmt: off
+    if verbose:
+        print("")
+        print("    Processing the raw results and storing them in .csv form (this should only need to be done once).")
+        print("")
+    # fmt: on
     #
     # ~~~ Load (as a list of dictionaries) all the .json files in a directory that don't start with "RUN_THIS"
     with support_for_progress_bars():
@@ -399,9 +407,11 @@ def parse(hint=None):
 # ~~~ Format a long list for printing
 def format_value(value):
     if isinstance(value, list) and len(value) > 4:
-        #
-        # ~~~ Show only the first two and last two elements
-        return [value[0], value[1], "...", value[-2], value[-1]]
+        return [value[0], value[1], "...", value[-2], value[-1]] # ~~~ show only the first two and last two elements
+    if hasattr(value, "item"):
+        value = value.item()
+    if isinstance(value, float) and math.isnan(value):
+        return None # ~~~ convert NaN to None
     return value
 
 
@@ -683,3 +693,27 @@ def peel_back_cwd(stopping_lambda):
 def find_train_bnn():
     contains_train_bnn = lambda path: os.path.exists(os.path.join(path,"train_bnn.py"))
     return peel_back_cwd( contains_train_bnn )
+
+
+#
+# ~~~ Add retroactively this one metric that I forgot to store
+def add_metrics(results_dataframe, verbose=True):
+    for i in range(len(results_dataframe)):
+        filename = results_dataframe.filename.iloc[i]
+        data = json_to_dict(filename)
+        if i==0:
+            to_append = []
+            suffix = "_curve"
+            for c in data:
+                if c.endswith(suffix):
+                    to_append.append(c)
+        stride = non_negative_list(data["STRIDE"])[0]
+        for c in to_append:
+            new_c = f"METRIC_{c[:-len(suffix)]}"
+            results_dataframe.loc[i, new_c] = avg(data[c][-stride:])
+    if verbose:
+        print("Added the following metrics:")
+        for c in to_append:
+            print(f"    METRIC_{c[:-len(suffix)]}")
+    return results_dataframe
+

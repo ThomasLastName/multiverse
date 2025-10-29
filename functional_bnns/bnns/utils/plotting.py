@@ -438,18 +438,21 @@ def plot_bnn_empirical_quantiles(
 #
 # ~~~ Load a trained model, based on the dataframe of results you get from hyperparameter search, and then plot it
 def plot_trained_model_from_dataframe(
-    dataframe, i, n_samples=50, show=True, extra_std=False, title=None, **other_kwargs
+    dataframe, i, n_samples=50, show=True, visualize_using_quantiles=False, extra_std=True, val=False, title=None, **other_kwargs
 ):
     data = import_module(f"bnns.data.{dataframe.iloc[i].DATA}")
     grid = data.x_test.cpu()
     green_curve = data.y_test.cpu().squeeze()
-    x_train_cpu = data.x_train.cpu()
+    x_train_cpu = data.x_train.cpu().squeeze()
     y_train_cpu = data.y_train.cpu().squeeze()
+    x_val_cpu = data.x_val.cpu().squeeze()
+    y_val_cpu = data.y_val.cpu().squeeze()
     model = load_trained_model_from_dataframe(dataframe, i)
     if show:
+        visualize_using_quantiles = dataframe.iloc[i].VISUALIZE_DISTRIBUTION_USING_QUANTILES if (visualize_using_quantiles is None) else visualize_using_quantiles
         plot_predictions = (
             plot_bnn_empirical_quantiles
-            if dataframe.iloc[i].VISUALIZE_DISTRIBUTION_USING_QUANTILES
+            if visualize_using_quantiles
             else plot_bnn_mean_and_std
         )
         with torch.no_grad():
@@ -463,12 +466,13 @@ def plot_trained_model_from_dataframe(
                 ax=ax,
                 grid=grid,
                 green_curve=green_curve,
-                x_train=x_train_cpu,
-                y_train=y_train_cpu,
+                x_train=x_val_cpu if val else x_train_cpu,
+                y_train=y_val_cpu if val else y_train_cpu,
                 predictions=predictions,
-                how_many_individual_predictions=dataframe.iloc[
-                    i
-                ].HOW_MANY_INDIVIDUAL_PREDICTIONS,
+                how_many_individual_predictions=0,
+                # dataframe.iloc[
+                #     i
+                # ].HOW_MANY_INDIVIDUAL_PREDICTIONS,
                 extra_std=extra_std,
                 title=title or f"Trained Model i={i}/{len(dataframe)}",
                 **other_kwargs,

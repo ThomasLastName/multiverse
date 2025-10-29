@@ -562,6 +562,7 @@ while keep_training:
             )
         #
         # ~~~ Compute the desired metrics
+        # fmt: off
         hpars["total_iter"] = total_iterations / len(dataloader)
         hpars["best_iter"] = best_iter_so_far
         hpars["epochs_completed"] = epochs_completed_so_far
@@ -576,31 +577,25 @@ while keep_training:
         hpars["val_lik_curve"] = val_lik_curve
         hpars["train_lik_curve"] = train_lik_curve
         hpars["log_prior_curve"] = log_prior_curve
-        hpars["train_acc"] = avg(train_loss_curve[-min(STRIDE) :])
         hpars["METRIC_rmse_of_median"] = rmse_of_median(predictions, y_test)
         hpars["METRIC_rmse_of_mean"] = rmse_of_mean(predictions, y_test)
         hpars["METRIC_mae_of_median"] = mae_of_median(predictions, y_test)
         hpars["METRIC_mae_of_mean"] = mae_of_mean(predictions, y_test)
         hpars["METRIC_max_norm_of_median"] = max_norm_of_median(predictions, y_test)
         hpars["METRIC_max_norm_of_mean"] = max_norm_of_mean(predictions, y_test)
-        hpars["METRIC_median_energy_score"] = (
-            energy_scores(predictions, y_test).median().item()
-        )
+        hpars["METRIC_median_energy_score"] = energy_scores(predictions, y_test).median().item()
         hpars["METRIC_95_coverage"] = aggregate_covarge(
             predictions,
             y_test,
             quantile_uncertainty=hpars["VISUALIZE_DISTRIBUTION_USING_QUANTILES"],
         )
-        hpars["METRIC_median_avg_inverval_score"] = (
-            avg_interval_score_of_response_features(
+        hpars["METRIC_median_avg_inverval_score"] = avg_interval_score_of_response_features(
                 predictions,
                 y_test,
                 quantile_uncertainty=hpars["VISUALIZE_DISTRIBUTION_USING_QUANTILES"],
-            )
-            .median()
-            .item()
-        )
-        for use_quantiles in (
+            ).median().item()
+        # fmt: on
+        for use_quantiles in (True, False) if not hpars["MAKE_GIF"] else (
             True,
         ):  # ~~~ if (True,False), then the code hangs when hpars["MAKE_GIF"]==True and hpars["DEVICE"]=="cuda"!!! what the f
             show = hpars["SHOW_DIAGNOSTICS"] and (

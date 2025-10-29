@@ -115,10 +115,9 @@ bandwidth_estimator = SSGE_backend().heuristic_sigma
 
 #
 # ~~~ Do GPR
-bw = 0.1  # bandwidth_estimator( x_test.unsqueeze(-1), x_train.unsqueeze(-1) )
-K_in = kernel_matrix(x_train.unsqueeze(-1), x_train.unsqueeze(-1), bw)
-K_out = kernel_matrix(x_test.unsqueeze(-1), x_test.unsqueeze(-1), bw)
-K_btwn = kernel_matrix(x_test.unsqueeze(-1), x_train.unsqueeze(-1), bw)
+K_in = scale * kernel_matrix(x_train.unsqueeze(-1), x_train.unsqueeze(-1), bw)
+K_out = scale * kernel_matrix(x_test.unsqueeze(-1), x_test.unsqueeze(-1), bw)
+K_btwn = scale * kernel_matrix(x_test.unsqueeze(-1), x_train.unsqueeze(-1), bw)
 with torch.no_grad():
     sigma2 = torch.tensor(conditional_std) ** 2
 

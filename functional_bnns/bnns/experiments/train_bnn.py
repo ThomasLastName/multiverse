@@ -148,9 +148,7 @@ BNN = MODEL_WITH_MEAS_SET_SAMPLER(
     **hpars["SSGE_HYPERPARAMETERS"],
     **hpars["PRIOR_HYPERPARAMETERS"],
 ).to(device=hpars["DEVICE"], dtype=DTYPE)
-BNN.post_GP_ETA = hpars[
-    "POST_GP_ETA"
-]  # ~~~ stabilizing noise for the GP approximation of the neural net (only relevant for Rudner et al. 2023, i.e., GAUSSIAN_APPROXIMATION==True)
+BNN.post_GP_ETA = hpars["POST_GP_ETA"]
 
 if hpars["DEFAULT_INITIALIZATION"] is not None:
     BNN.set_default_uncertainty(**hpars["DEFAULT_INITIALIZATION"])
@@ -409,7 +407,7 @@ while keep_training and (target_epochs > 0):
                         kl_div = BNN.functional_kl()
                     else:
                         kl_div = BNN.gaussian_kl(
-                            approximate_mean=hpars["APPPROXIMATE_GAUSSIAN_MEAN"]
+                            approximate_mean=hpars["APPROXIMATE_GAUSSIAN_MEAN"]
                         )
                     #
                     # ~~~ Compute the loss==negative_ELBO
@@ -631,7 +629,8 @@ while keep_training and (target_epochs > 0):
         hpars["val_lik_curve"] = val_lik_curve
         hpars["train_lik_curve"] = train_lik_curve
         hpars["kl_div_curve"] = kl_div_curve
-        hpars["train_acc"] = avg(train_loss_curve[-min(STRIDE) :])
+        hpars["train_acc"] = avg(train_acc_curve[-min(STRIDE) :])
+        hpars["METRIC_val_lik"] = val_lik_curve[-1]
         hpars["METRIC_rmse_of_median"] = rmse_of_median(predictions, y_test)
         hpars["METRIC_rmse_of_mean"] = rmse_of_mean(predictions, y_test)
         hpars["METRIC_mae_of_median"] = mae_of_median(predictions, y_test)

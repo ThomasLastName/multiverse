@@ -6,7 +6,6 @@ from bnns.experiments.paper.univar.weight_priors import (
     folder_name,
     ARCHITECTURE,
     VARIATIONAL_FAMILY,
-    LR,
     MODEL,
     PI,
     SIGMA1,
@@ -126,6 +125,7 @@ hyperparameter_template = {
 def randomly_sample_less_important_hyperparameters(config):
     #
     # ~~~ Misc.
+    config["LR"] = random.choice(LR)
     projection_method = random.choice(PROJECTION_METHOD)
     config["PROJECTION_METHOD"] = projection_method
     config["DEFAULT_INITIALIZATION"] = random.choice(
@@ -176,23 +176,21 @@ os.mkdir(folder_name)
 os.mkdir(os.path.join(folder_name, "experimental_models"))
 count = 1
 random.seed(2025)
-for lr in LR:
-    for architecture in ARCHITECTURE:
-        for model in MODEL:  # ~~~ i.e., prior
-            for likelihood_std in LIKELIHOOD_STD:
-                hyperparameter_template["LR"] = lr
-                hyperparameter_template["ARCHITECTURE"] = architecture
-                hyperparameter_template["MODEL"] = model
-                hyperparameter_template["LIKELIHOOD_STD"] = likelihood_std
-                hyperparameter_template = randomly_sample_less_important_hyperparameters(hyperparameter_template)
-                for functional in FUNCTIONAL:
-                    hyperparameter_template["FUNCTIONAL"] = functional
-                    #
-                    # ~~~ Save the hyperparameters to a .json file
-                    tag = f"RUN_THIS_{count}.json"
-                    json_filename = os.path.join(folder_name, tag)
-                    count += 1
-                    dict_to_json(hyperparameter_template, json_filename, verbose=False)
+for architecture in ARCHITECTURE:
+    for model in MODEL:  # ~~~ i.e., prior
+        for likelihood_std in LIKELIHOOD_STD:
+            hyperparameter_template["ARCHITECTURE"] = architecture
+            hyperparameter_template["MODEL"] = model
+            hyperparameter_template["LIKELIHOOD_STD"] = likelihood_std
+            hyperparameter_template = randomly_sample_less_important_hyperparameters(hyperparameter_template)
+            for functional in FUNCTIONAL:
+                hyperparameter_template["FUNCTIONAL"] = functional
+                #
+                # ~~~ Save the hyperparameters to a .json file
+                tag = f"RUN_THIS_{count}.json"
+                json_filename = os.path.join(folder_name, tag)
+                count += 1
+                dict_to_json(hyperparameter_template, json_filename, verbose=False)
 
 print("")
 print(f"Successfully created and populted the folder {folder_name} with {count-1} .json files. To run an hour of hyperparameter search, navigate to the directory of `tuning_loop.py` and say:")

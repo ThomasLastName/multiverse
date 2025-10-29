@@ -7,7 +7,7 @@ folder_name = os.path.join(
 
 #
 # ~~~ Architecture
-ARCHITECTURE = [  # ~~~ == the list `BEST_4_ARCHITECTURES` defined in univar/dropout/process_results.py
+ARCHITECTURE = [  # ~~~ == the list `BEST_4_ARCHITECTURES` defined in univar/ensemble_for_baseline/process_results.py
     "univar_NN.univar_NN_30_30_30_30",
     "univar_NN.univar_NN_100",
     "univar_NN.univar_NN_250",
@@ -18,7 +18,7 @@ VARIATIONAL_FAMILY = ["Normal", "Uniform"]
 
 #
 # ~~~ Likelihood
-LIKELIHOOD_STD = [0.02, 0.007, 0.0001]
+LIKELIHOOD_STD = [0.03, 0.02, 0.01, 0.075, 0.005, 0.0025]
 
 #
 # ~~~ Prior
@@ -34,11 +34,11 @@ PRIOR_TYPE = [
     "Xavier",
     "IID",
 ]  # ~~~ hyper-parameter of the Gaussian prior
-SCALE = [0.25, 1, 4]  # ~~~ hyper-parameter of the Gaussian prior
+SCALE = [0.2, 1, 5]  # ~~~ hyper-parameter of the Gaussian prior
 
 #
 # ~~~ Triaining
-LR = [0.001, 0.0001]
+LR = [0.005, 0.001, 0.0005, 0.0001, 0.00001]
 FUNCTIONAL = [True, False]
 PROJECTION_METHOD = ["HARD", "Blundell", "torchbnn"]
 DEFAULT_INITIALIZATION = [None, {"type":"Xavier"}, {"type":"torch.nn.init"}]
